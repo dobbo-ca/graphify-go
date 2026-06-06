@@ -21,6 +21,7 @@ simplest possible implementation, security-first, find performance wins.
 - [x] Public repo under dobbo-ca, MIT preserving the original copyright, attribution in `NOTICE.md`.
 - [x] Clean-room reimplementation of the pipeline: `detect → extract → build → cluster → analyze → report → export`.
 - [x] Tree-sitter extractors for **Go, JavaScript, TypeScript** (files, functions, types, methods; `contains` / `calls` / `imports` / `imports_from` edges).
+- [x] Tree-sitter extractor for **Terraform / HCL** (`.tf`/`.tfvars`/`.hcl`): resources, data sources, modules, variables, outputs, providers, locals; `contains` / `references` / `depends_on` edges, directory-scoped so cross-file references resolve.
 - [x] Whole-corpus call + import resolution (calls resolve to definitions; relative imports resolve to files).
 - [x] Louvain community detection (gonum) with oversized-community splitting.
 - [x] Analysis: god nodes, surprising connections, file-level import cycles.
@@ -37,6 +38,7 @@ simplest possible implementation, security-first, find performance wins.
 Roughly priority order.
 
 ### Language coverage
+- [x] **Terraform / HCL extractor** (done — higher priority than Python/Rust).
 - [ ] **Python extractor** (next, per original scope). Tree-sitter Python binding available.
 - [ ] **Rust extractor**. Tree-sitter Rust binding available.
 - [ ] Wire each into `detect.SupportedExtensions`, `extract.File` dispatch, and `langFamily` in `internal/graph/build.go`.

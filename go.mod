@@ -3,6 +3,7 @@ module github.com/dobbo-ca/graphify-go
 go 1.25.0
 
 require (
+	github.com/tree-sitter-grammars/tree-sitter-hcl v1.2.0
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/tree-sitter/tree-sitter-go v0.25.0
 	github.com/tree-sitter/tree-sitter-javascript v0.25.0

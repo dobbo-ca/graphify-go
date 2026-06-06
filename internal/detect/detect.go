@@ -14,13 +14,16 @@ import (
 // SupportedExtensions are the file suffixes this port can extract. Python and
 // Rust are deliberately out of scope for now.
 var SupportedExtensions = map[string]bool{
-	".go":  true,
-	".js":  true,
-	".jsx": true,
-	".mjs": true,
-	".cjs": true,
-	".ts":  true,
-	".tsx": true,
+	".go":     true,
+	".js":     true,
+	".jsx":    true,
+	".mjs":    true,
+	".cjs":    true,
+	".ts":     true,
+	".tsx":    true,
+	".tf":     true,
+	".tfvars": true,
+	".hcl":    true,
 }
 
 var skipDirs = map[string]bool{

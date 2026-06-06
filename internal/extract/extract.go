@@ -60,6 +60,8 @@ func File(root, rel string) (Result, error) {
 		return extractJS(rel, src, tstsx.LanguageTSX()), nil
 	case ".ts":
 		return extractJS(rel, src, tstsx.LanguageTypescript()), nil
+	case ".tf", ".tfvars", ".hcl":
+		return extractTerraform(rel, src), nil
 	}
 	return Result{}, nil
 }
