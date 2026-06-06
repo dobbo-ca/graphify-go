@@ -1,11 +1,11 @@
 # Graph Report - .
 
 ## Summary
-- 194 nodes · 419 edges · 9 communities
+- 195 nodes · 425 edges · 9 communities
 - Extraction: 56% EXTRACTED · 43% INFERRED · 0% AMBIGUOUS
 
 ## Graph Freshness
-- Built from commit: `321d06d5`
+- Built from commit: `14cf96de`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify build .` after code changes to rebuild.
 
@@ -22,16 +22,16 @@
 10. `builder.goMethod()` - 8 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `GodNodes()` --calls--> `Graph.NodeIDs()`  [INFERRED]
-  internal/analyze/analyze.go → internal/model/model.go  _bridges separate communities_
-- `ImportCycles()` --calls--> `Graph.Edges()`  [INFERRED]
-  internal/analyze/analyze.go → internal/model/model.go  _bridges separate communities_
-- `Surprising()` --calls--> `NodeCommunity()`  [INFERRED]
-  internal/analyze/analyze.go → internal/cluster/cluster.go  _bridges separate communities_
-- `Surprising()` --calls--> `Graph.Edges()`  [INFERRED]
-  internal/analyze/analyze.go → internal/model/model.go  _bridges separate communities_
-- `ToHTML()` --calls--> `SanitizeLabel()`  [INFERRED]
-  internal/export/html.go → internal/security/security.go  _bridges separate communities_
+- `Cluster()` --calls--> `Graph.NodeIDs()`  [INFERRED]
+  internal/cluster/cluster.go → internal/model/model.go  _bridges separate communities_
+- `louvain()` --calls--> `Graph.Edges()`  [INFERRED]
+  internal/cluster/cluster.go → internal/model/model.go  _bridges separate communities_
+- `ToJSON()` --calls--> `NodeCommunity()`  [INFERRED]
+  internal/export/export.go → internal/cluster/cluster.go  _bridges separate communities_
+- `ToJSON()` --calls--> `Graph.Edges()`  [INFERRED]
+  internal/export/export.go → internal/model/model.go  _bridges separate communities_
+- `ToJSON()` --calls--> `Graph.NodeIDs()`  [INFERRED]
+  internal/export/export.go → internal/model/model.go  _bridges separate communities_
 
 ## Import Cycles
 - None detected.
@@ -39,32 +39,32 @@
 ## Communities (9 total)
 
 ### Community 0
+Cohesion: 0.08
+Nodes (37): encoding/json, fmt, github.com/dobbo-ca/graphify-go/internal/cluster, github.com/dobbo-ca/graphify-go/internal/detect, github.com/dobbo-ca/graphify-go/internal/export, github.com/dobbo-ca/graphify-go/internal/extract, github.com/dobbo-ca/graphify-go/internal/graph, github.com/dobbo-ca/graphify-go/internal/query (+29 more)
+
+### Community 1
 Cohesion: 0.13
 Nodes (38): builder, builder.addNode(), builder.call(), builder.contains(), builder.def(), builder.imp(), Call, Def (+30 more)
 
-### Community 1
-Cohesion: 0.10
-Nodes (34): Cluster(), Cohesion(), less(), louvain(), NodeCommunity(), reindexBySize(), Scores(), splitOversized() (+26 more)
-
 ### Community 2
-Cohesion: 0.09
-Nodes (33): github.com/dobbo-ca/graphify-go/internal/detect, github.com/dobbo-ca/graphify-go/internal/export, github.com/dobbo-ca/graphify-go/internal/extract, github.com/dobbo-ca/graphify-go/internal/graph, github.com/dobbo-ca/graphify-go/internal/query, github.com/dobbo-ca/graphify-go/internal/report, arg(), cmdExplain() (+25 more)
+Cohesion: 0.11
+Nodes (29): Cluster(), Cohesion(), less(), louvain(), reindexBySize(), Scores(), splitOversized(), github.com/dobbo-ca/graphify-go/internal/model (+21 more)
 
 ### Community 3
-Cohesion: 0.11
-Nodes (21): CollectFiles(), isSensitive(), fmt, golang.org/x/text/cases, golang.org/x/text/unicode/norm, clean(), NormalizeID(), io/fs (+13 more)
+Cohesion: 0.15
+Nodes (22): Cycle, GodNode, GodNodes(), ImportCycles(), isConceptNode(), isFileNode(), rotateKey(), Surprise (+14 more)
 
 ### Community 4
-Cohesion: 0.16
-Nodes (19): Cycle, GodNode, GodNodes(), ImportCycles(), isConceptNode(), isFileNode(), rotateKey(), Surprise (+11 more)
+Cohesion: 0.14
+Nodes (17): CollectFiles(), isSensitive(), io/fs, net, net/url, os, path/filepath, regexp (+9 more)
 
 ### Community 5
-Cohesion: 0.18
-Nodes (10): File(), TestExtractAndResolve(), Resolve(), resolveRelImport(), github.com/dobbo-ca/graphify-go/internal/idutil, cmdExtract(), TestMakeID(), TestNormalizeIDMatchesMakeID() (+2 more)
+Cohesion: 0.19
+Nodes (11): jsonGraph, jsonLink, jsonNode, normLabel(), ToJSON(), golang.org/x/text/cases, golang.org/x/text/unicode/norm, clean() (+3 more)
 
 ### Community 6
-Cohesion: 0.24
-Nodes (8): encoding/json, jsonGraph, jsonLink, jsonNode, github.com/dobbo-ca/graphify-go/internal/cluster, github.com/dobbo-ca/graphify-go/internal/security, os, unicode
+Cohesion: 0.18
+Nodes (10): File(), TestExtractAndResolve(), Resolve(), resolveRelImport(), github.com/dobbo-ca/graphify-go/internal/idutil, cmdExtract(), TestMakeID(), TestNormalizeIDMatchesMakeID() (+2 more)
 
 ### Community 7
 Cohesion: 0.40
