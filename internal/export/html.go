@@ -46,7 +46,8 @@ func ToHTML(g *model.Graph, communities map[int][]string, path string) error {
 		Label string `json:"label"`
 		Title string `json:"title"`
 		Color string `json:"color"`
-		C     string `json:"c"` // original colour, for restoring after a highlight
+		C     string `json:"c"`    // original colour, for restoring after a highlight
+		Comm  int    `json:"comm"` // community id, drives select-to-expand
 	}
 	type vedge struct {
 		From string `json:"from"`
@@ -62,7 +63,7 @@ func ToHTML(g *model.Graph, communities map[int][]string, path string) error {
 		nodes = append(nodes, vnode{
 			ID: id, Label: security.SanitizeLabel(n.Label),
 			Title: security.SanitizeLabel(strings.TrimSpace(n.SourceFile + " " + n.SourceLocation)),
-			Color: col, C: col,
+			Color: col, C: col, Comm: nc[id],
 		})
 	}
 	var edges []vedge
@@ -145,7 +146,7 @@ const htmlTemplate = `<!DOCTYPE html>
  #legend .li{display:flex;align-items:center;gap:8px;padding:2px 0;font-size:12px}
  #legend .dot{width:11px;height:11px;border-radius:50%;flex:0 0 auto}
  #legend .ct{margin-left:auto;color:#666;font-size:11px}
- #help{bottom:12px;left:12px;padding:8px 12px;color:#9a9ab0;font-size:12px;line-height:1.5}
+ #help{bottom:12px;left:12px;padding:8px 12px;color:#9a9ab0;font-size:12px;line-height:1.5;max-width:46vw}
  #help b{color:#cfcfe0}
  #banner{top:12px;left:12px;padding:6px 10px;color:#bbb;font-size:12px}
  #banner code{color:#7da9d8}
@@ -154,7 +155,7 @@ const htmlTemplate = `<!DOCTYPE html>
 <div id="g"></div>
 <div id="banner" class="panel"><!--BANNER--></div>
 <div id="legend" class="panel"><h4>Communities</h4><!--LEGEND--></div>
-<div id="help" class="panel">scroll <b>zoom</b> · drag <b>pan</b> · click a node to <b>highlight its neighbours</b> · click empty space to reset</div>
+<div id="help" class="panel">scroll <b>zoom</b> · drag <b>pan</b> · click a node to <b>expand its community</b> (others are pushed away, then the layout re-freezes) · click empty space to reset</div>
 <script>
 if(!document.getElementById("banner").textContent.trim())document.getElementById("banner").style.display="none";
 const RAW=/*NODES*/;
@@ -168,15 +169,20 @@ const net=new vis.Network(document.getElementById("g"),{nodes,edges},{
   forceAtlas2Based:{gravitationalConstant:-50,centralGravity:0.01,springLength:120,springConstant:0.08},
   stabilization:{iterations:250,fit:true}}});
 // Freeze the layout once it settles so the graph stays static instead of drifting.
-net.once("stabilizationIterationsDone",()=>net.setOptions({physics:{enabled:false}}));
-// Click a node: keep it and its neighbours coloured, dim everything else.
+const freeze=()=>net.setOptions({physics:{enabled:false}});
+net.once("stabilizationIterationsDone",freeze);
+function reset(){nodes.update(RAW.map(n=>({id:n.id,color:n.c,mass:1,fixed:false})));}
+// Click a node: anchor its whole community (heavy + pinned) so the other
+// communities are repelled outward, run one physics burst, then re-freeze.
 net.on("click",p=>{
- if(p.nodes.length){
-  const id=p.nodes[0], keep=new Set([id]);
-  net.getConnectedNodes(id).forEach(n=>keep.add(n));
-  nodes.update(RAW.map(n=>({id:n.id,color:keep.has(n.id)?n.c:"` + dimColor + `"})));
- }else{
-  nodes.update(RAW.map(n=>({id:n.id,color:n.c})));
- }
+ if(!p.nodes.length){reset();freeze();return;}
+ const c=nodes.get(p.nodes[0]).comm;
+ nodes.update(RAW.map(n=>{
+  const inComm=n.comm===c;
+  return {id:n.id,color:inComm?n.c:"` + dimColor + `",mass:inComm?6:1,fixed:inComm};
+ }));
+ net.once("stabilizationIterationsDone",freeze); // re-freeze after the burst settles
+ net.setOptions({physics:{enabled:true}});
+ net.stabilize(150);
 });
 </script></body></html>`
