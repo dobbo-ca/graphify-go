@@ -161,34 +161,37 @@ if(!document.getElementById("banner").textContent.trim())document.getElementById
 const RAW=/*NODES*/;
 const nodes=new vis.DataSet(RAW);
 const edges=new vis.DataSet(/*EDGES*/);
-// barnesHut (not forceAtlas2) — forceAtlas2 makes the whole graph slowly spin,
-// and barnesHut's gravitationalConstant gives clear, controllable repulsion.
-const REST={solver:"barnesHut",barnesHut:{gravitationalConstant:-3000,centralGravity:0.3,springLength:110,springConstant:0.04,damping:0.6,avoidOverlap:0.1},minVelocity:0.6};
-// During an expansion: zero central pull + much stronger repulsion, so nodes
-// fly outward instead of being held in a central ball.
-const BLAST={solver:"barnesHut",barnesHut:{gravitationalConstant:-30000,centralGravity:0,springLength:220,springConstant:0.02,damping:0.5,avoidOverlap:0.2},minVelocity:0.6};
+// barnesHut (not forceAtlas2) — forceAtlas2 slowly rotates the whole graph;
+// barnesHut's gravitationalConstant gives clear, controllable repulsion.
+const REST={gravitationalConstant:-3000,centralGravity:0.3,springLength:110,springConstant:0.04,damping:0.6,avoidOverlap:0.1};
+// On select: strong repulsion + no central gravity (so the push radiates from
+// the pinned clicked node, not the canvas centre) + stiff short springs (so the
+// clicked node's own community is pulled in tight toward it).
+const BLAST={gravitationalConstant:-22000,centralGravity:0,springLength:85,springConstant:0.18,damping:0.5,avoidOverlap:0.3};
 const net=new vis.Network(document.getElementById("g"),{nodes,edges},{
  nodes:{shape:"dot",size:11,font:{color:"#e0e0e0",size:12}},
  edges:{color:{color:"#3a3a5e",opacity:0.5},arrows:{to:{enabled:true,scaleFactor:0.4}},smooth:false},
  interaction:{hover:true,tooltipDelay:120},
- // stabilization disabled so physics runs live (on screen) instead of solving
- // off-screen and snapping to the result — that is what makes the motion visible.
- physics:Object.assign({enabled:true,stabilization:false},REST)});
-// Let physics animate for a moment, then freeze so the graph settles and stays put.
+ // Initial layout solves off-screen and is shown already settled — no long
+ // opening animation; we freeze it the instant the solve completes.
+ physics:{enabled:true,solver:"barnesHut",barnesHut:REST,stabilization:{enabled:true,iterations:200,fit:true}}});
 let timer;
 const freeze=()=>net.setOptions({physics:{enabled:false}});
-function run(cfg,ms){clearTimeout(timer);net.setOptions({physics:Object.assign({enabled:true,stabilization:false},cfg)});timer=setTimeout(freeze,ms);}
-run(REST,4500);                    // initial animated layout, then freeze
-function reset(){nodes.update(RAW.map(n=>({id:n.id,color:n.c,fixed:false})));run(REST,2500);}
-// Click a node: pin its whole community in place and blast the rest outward
-// with strong repulsion + no central gravity, then re-freeze once it settles.
+net.once("stabilizationIterationsDone",freeze);
+// burst: run live physics (visible) with the given profile, then freeze fast.
+function burst(cfg,ms){clearTimeout(timer);net.setOptions({physics:{enabled:true,solver:"barnesHut",barnesHut:cfg,stabilization:false}});timer=setTimeout(freeze,ms);}
+function reset(){nodes.update(RAW.map(n=>({id:n.id,color:n.c,fixed:false,mass:1})));burst(REST,700);}
+// Click a node: pin that node and make it heavy so repulsion radiates from it;
+// its community (connected by stiff springs) is pulled in close while the other
+// communities are pushed away. Re-freeze after a short burst.
 net.on("click",p=>{
  if(!p.nodes.length){reset();return;}
- const c=nodes.get(p.nodes[0]).comm;
+ const id=p.nodes[0],c=nodes.get(id).comm;
  nodes.update(RAW.map(n=>{
+  if(n.id===id)return {id:n.id,color:n.c,fixed:true,mass:25};
   const inComm=n.comm===c;
-  return {id:n.id,color:inComm?n.c:"` + dimColor + `",fixed:inComm};
+  return {id:n.id,color:inComm?n.c:"` + dimColor + `",fixed:false,mass:1};
  }));
- run(BLAST,3500);
+ burst(BLAST,800);
 });
 </script></body></html>`
