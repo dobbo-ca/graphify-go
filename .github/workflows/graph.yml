@@ -1,0 +1,46 @@
+# Regenerate the knowledge graph on every merge to main and commit it back, so
+# graphify-out/graph.json always reflects the tip of main. This file doubles as
+# the template to drop into your own repo: install the binary, build, commit.
+name: graph
+
+on:
+  push:
+    branches: [main]
+
+# Avoid stacking runs; a queued run would rebuild stale state.
+concurrency:
+  group: graph-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-graph:
+    runs-on: ubuntu-latest
+    # Skip the commit this job itself pushes, so it can't trigger itself.
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      # In your own repo, replace this with:
+      #   go install github.com/dobbo-ca/graphify-go/cmd/graphify@latest
+      - name: Install graphify
+        run: go build -o /usr/local/bin/graphify ./cmd/graphify
+
+      - name: Build graph
+        run: graphify build .
+
+      - name: Commit graph if changed
+        run: |
+          if git diff --quiet -- graphify-out; then
+            echo "graph unchanged"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add graphify-out
+          git commit -m "chore: regenerate knowledge graph [skip ci]"
+          git push
