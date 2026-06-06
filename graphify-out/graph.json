@@ -395,7 +395,7 @@
       "label": "colorFor()",
       "file_type": "code",
       "source_file": "internal/export/html.go",
-      "source_location": "L92",
+      "source_location": "L93",
       "community": 4,
       "norm_label": "colorfor()"
     },
@@ -404,7 +404,7 @@
       "label": "legendHTML()",
       "file_type": "code",
       "source_file": "internal/export/html.go",
-      "source_location": "L100",
+      "source_location": "L101",
       "community": 4,
       "norm_label": "legendhtml()"
     },
@@ -413,7 +413,7 @@
       "label": "topNodes()",
       "file_type": "code",
       "source_file": "internal/export/html.go",
-      "source_location": "L121",
+      "source_location": "L122",
       "community": 4,
       "norm_label": "topnodes()"
     },
@@ -2206,7 +2206,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/export/html.go",
-      "source_location": "L114",
+      "source_location": "L115",
       "confidence_score": 0.5
     },
     {
@@ -2224,7 +2224,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/export/html.go",
-      "source_location": "L60",
+      "source_location": "L61",
       "confidence_score": 0.5
     },
     {
@@ -2233,7 +2233,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/export/html.go",
-      "source_location": "L86",
+      "source_location": "L87",
       "confidence_score": 0.5
     },
     {
@@ -2251,7 +2251,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/export/html.go",
-      "source_location": "L69",
+      "source_location": "L70",
       "confidence_score": 0.5
     },
     {
@@ -2269,7 +2269,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/export/html.go",
-      "source_location": "L63",
+      "source_location": "L64",
       "confidence_score": 0.5
     },
     {
@@ -2278,7 +2278,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/export/html.go",
-      "source_location": "L127",
+      "source_location": "L128",
       "confidence_score": 0.5
     },
     {
@@ -2287,7 +2287,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/export/html.go",
-      "source_location": "L122",
+      "source_location": "L123",
       "confidence_score": 0.5
     },
     {
@@ -3799,7 +3799,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/export/html.go",
-      "source_location": "L92",
+      "source_location": "L93",
       "confidence_score": 1
     },
     {
@@ -3808,7 +3808,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/export/html.go",
-      "source_location": "L100",
+      "source_location": "L101",
       "confidence_score": 1
     },
     {
@@ -3826,7 +3826,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/export/html.go",
-      "source_location": "L121",
+      "source_location": "L122",
       "confidence_score": 1
     },
     {
@@ -5613,5 +5613,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "3e62a36f8dc0004028f100527f49f7a51cbe3257"
+  "built_at_commit": "a1fad1504066562b84ab6b5dcf47b9ea981d6748"
 }
