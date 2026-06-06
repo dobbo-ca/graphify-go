@@ -135,12 +135,16 @@ then `showNode(id)`.
 
 ### Phase 3 — selection behavior
 
-Change `net.on("click")` for node-level mode from *isolate-community* to
-*highlight-neighborhood*: on node click, dim all nodes/edges except the clicked node,
-its neighbors, and their connecting edges, and open the info panel. Click empty space
-resets. Consider keeping community-isolate as a secondary action (e.g. double-click or
-a legend click) since it's genuinely useful — but the primary click should inspect,
-matching the original. Decide during implementation; default to the Python behavior.
+**Copy the Python behavior.** Change `net.on("click")` for node-level mode from
+*isolate-community* to *inspect + highlight-neighborhood*: on node click, dim all
+nodes/edges except the clicked node, its neighbors, and their connecting edges, and
+open the info panel. Click empty space resets (un-dim everything, clear the panel).
+
+Keep community-isolate available, but as a *secondary* action so it doesn't displace
+inspect — the legend's existing show/hide checkboxes already cover hiding a whole
+community, so a separate isolate gesture is optional; only add one (e.g. a "focus this
+community" affordance) if it falls out cheaply. The primary click is inspect, matching
+the original.
 
 ### Phase 4 — verify
 
