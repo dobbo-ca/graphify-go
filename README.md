@@ -20,11 +20,20 @@ Two uses, both first-class:
 
 ## Install
 
+Homebrew:
+
+```bash
+brew install dobbo-ca/taps/graphify-go
+```
+
+Or from source (requires a C toolchain — extraction uses cgo/tree-sitter):
+
 ```bash
 go install github.com/dobbo-ca/graphify-go/cmd/graphify@latest
 ```
 
-Requires a C toolchain (cgo) — extraction uses tree-sitter.
+Releases are cut automatically from conventional commits (Uplift) and published
+as GitHub releases + a Homebrew formula on every merge to `main`.
 
 ## Usage
 

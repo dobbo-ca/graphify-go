@@ -22,6 +22,13 @@ import (
 
 const defaultGraphPath = "graphify-out/graph.json"
 
+// Build metadata, injected via -ldflags at release time.
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -29,6 +36,9 @@ func main() {
 	}
 	var err error
 	switch os.Args[1] {
+	case "version", "--version", "-v":
+		fmt.Printf("graphify %s (commit %s, built %s)\n", version, commit, date)
+		return
 	case "build":
 		err = cmdBuild(arg(2, "."))
 	case "query":
@@ -211,5 +221,6 @@ usage:
   graphify query <pattern>     find nodes by name (regex, case-insensitive)
   graphify explain <node>      show a node and its neighbours
   graphify path <from> <to>    shortest dependency path between two nodes
-  graphify extract <file>      print one file's extracted nodes/edges (debug)`)
+  graphify extract <file>      print one file's extracted nodes/edges (debug)
+  graphify version             print version`)
 }
