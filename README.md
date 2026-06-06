@@ -87,6 +87,6 @@ detect → extract → build → cluster → analyze → report → export
 
 ## Scope
 
-Languages today: **Go, JavaScript, TypeScript**. Python and Rust are planned.
+Languages today: **Go, JavaScript, TypeScript, Terraform/HCL**. Python and Rust are planned.
 The original's LLM-based semantic extraction, Obsidian/Neo4j/SVG exports, MCP
 server, and AI-assistant installers are intentionally out of scope.

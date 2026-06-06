@@ -38,5 +38,5 @@ absent or behind `git rev-parse HEAD`, rebuild it:
 graphify build .
 ```
 
-Supported languages: Go, JavaScript, TypeScript. For files in other languages,
-fall back to reading the source directly.
+Supported languages: Go, JavaScript, TypeScript, Terraform/HCL. For files in
+other languages, fall back to reading the source directly.
