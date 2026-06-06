@@ -165,24 +165,29 @@ const net=new vis.Network(document.getElementById("g"),{nodes,edges},{
  nodes:{shape:"dot",size:11,font:{color:"#e0e0e0",size:12}},
  edges:{color:{color:"#3a3a5e",opacity:0.5},arrows:{to:{enabled:true,scaleFactor:0.4}},smooth:false},
  interaction:{hover:true,tooltipDelay:120},
+ // stabilization disabled so physics runs live (on screen) instead of solving
+ // off-screen and snapping to the result — that is what makes the motion visible.
  physics:{enabled:true,solver:"forceAtlas2Based",
   forceAtlas2Based:{gravitationalConstant:-50,centralGravity:0.01,springLength:120,springConstant:0.08},
-  stabilization:{iterations:250,fit:true}}});
-// Freeze the layout once it settles so the graph stays static instead of drifting.
+  stabilization:false}});
+// Let physics animate for a moment, then freeze so the graph settles and stays put.
+let timer;
 const freeze=()=>net.setOptions({physics:{enabled:false}});
-net.once("stabilizationIterationsDone",freeze);
+function settle(ms){clearTimeout(timer);timer=setTimeout(freeze,ms);}
+net.on("stabilized",freeze);       // freeze early if vis reports it has settled
+settle(4500);                      // initial animated layout, then freeze
 function reset(){nodes.update(RAW.map(n=>({id:n.id,color:n.c,mass:1,fixed:false})));}
-// Click a node: anchor its whole community (heavy + pinned) so the other
-// communities are repelled outward, run one physics burst, then re-freeze.
+// Click a node: anchor its whole community (heavy + pinned) and turn physics
+// back on live, so the other communities are visibly repelled outward, then
+// re-freeze a couple of seconds later.
 net.on("click",p=>{
- if(!p.nodes.length){reset();freeze();return;}
+ if(!p.nodes.length){reset();net.setOptions({physics:{enabled:true}});settle(2500);return;}
  const c=nodes.get(p.nodes[0]).comm;
  nodes.update(RAW.map(n=>{
   const inComm=n.comm===c;
   return {id:n.id,color:inComm?n.c:"` + dimColor + `",mass:inComm?6:1,fixed:inComm};
  }));
- net.once("stabilizationIterationsDone",freeze); // re-freeze after the burst settles
  net.setOptions({physics:{enabled:true}});
- net.stabilize(150);
+ settle(3000);
 });
 </script></body></html>`
