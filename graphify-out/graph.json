@@ -1,0 +1,5491 @@
+{
+  "directed": false,
+  "multigraph": false,
+  "graph": {},
+  "nodes": [
+    {
+      "id": "cmd_graphify_main_go",
+      "label": "main.go",
+      "file_type": "code",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L1",
+      "community": 2,
+      "norm_label": "main.go"
+    },
+    {
+      "id": "graphify_main_main",
+      "label": "main()",
+      "file_type": "code",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L25",
+      "community": 2,
+      "norm_label": "main()"
+    },
+    {
+      "id": "graphify_main_cmdbuild",
+      "label": "cmdBuild()",
+      "file_type": "code",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L58",
+      "community": 1,
+      "norm_label": "cmdbuild()"
+    },
+    {
+      "id": "graphify_main_cmdquery",
+      "label": "cmdQuery()",
+      "file_type": "code",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L98",
+      "community": 2,
+      "norm_label": "cmdquery()"
+    },
+    {
+      "id": "graphify_main_cmdexplain",
+      "label": "cmdExplain()",
+      "file_type": "code",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L117",
+      "community": 2,
+      "norm_label": "cmdexplain()"
+    },
+    {
+      "id": "graphify_main_cmdpath",
+      "label": "cmdPath()",
+      "file_type": "code",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L136",
+      "community": 2,
+      "norm_label": "cmdpath()"
+    },
+    {
+      "id": "graphify_main_cmdextract",
+      "label": "cmdExtract()",
+      "file_type": "code",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L153",
+      "community": 5,
+      "norm_label": "cmdextract()"
+    },
+    {
+      "id": "graphify_main_load",
+      "label": "load()",
+      "file_type": "code",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L172",
+      "community": 2,
+      "norm_label": "load()"
+    },
+    {
+      "id": "graphify_main_locof",
+      "label": "locOf()",
+      "file_type": "code",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L174",
+      "community": 2,
+      "norm_label": "locof()"
+    },
+    {
+      "id": "graphify_main_githead",
+      "label": "gitHead()",
+      "file_type": "code",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L182",
+      "community": 1,
+      "norm_label": "githead()"
+    },
+    {
+      "id": "graphify_main_arg",
+      "label": "arg()",
+      "file_type": "code",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L191",
+      "community": 2,
+      "norm_label": "arg()"
+    },
+    {
+      "id": "graphify_main_mustarg",
+      "label": "mustArg()",
+      "file_type": "code",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L198",
+      "community": 2,
+      "norm_label": "mustarg()"
+    },
+    {
+      "id": "graphify_main_usage",
+      "label": "usage()",
+      "file_type": "code",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L206",
+      "community": 2,
+      "norm_label": "usage()"
+    },
+    {
+      "id": "internal_analyze_analyze_go",
+      "label": "analyze.go",
+      "file_type": "code",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L1",
+      "community": 4,
+      "norm_label": "analyze.go"
+    },
+    {
+      "id": "analyze_analyze_godnode",
+      "label": "GodNode",
+      "file_type": "code",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L17",
+      "community": 4,
+      "norm_label": "godnode"
+    },
+    {
+      "id": "analyze_analyze_godnodes",
+      "label": "GodNodes()",
+      "file_type": "code",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L26",
+      "community": 4,
+      "norm_label": "godnodes()"
+    },
+    {
+      "id": "analyze_analyze_surprise",
+      "label": "Surprise",
+      "file_type": "code",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L43",
+      "community": 4,
+      "norm_label": "surprise"
+    },
+    {
+      "id": "analyze_analyze_surprising",
+      "label": "Surprising()",
+      "file_type": "code",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L54",
+      "community": 4,
+      "norm_label": "surprising()"
+    },
+    {
+      "id": "analyze_analyze_cycle",
+      "label": "Cycle",
+      "file_type": "code",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L99",
+      "community": 4,
+      "norm_label": "cycle"
+    },
+    {
+      "id": "analyze_analyze_importcycles",
+      "label": "ImportCycles()",
+      "file_type": "code",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L106",
+      "community": 4,
+      "norm_label": "importcycles()"
+    },
+    {
+      "id": "analyze_analyze_rotatekey",
+      "label": "rotateKey()",
+      "file_type": "code",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L159",
+      "community": 4,
+      "norm_label": "rotatekey()"
+    },
+    {
+      "id": "analyze_analyze_isfilenode",
+      "label": "isFileNode()",
+      "file_type": "code",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L170",
+      "community": 4,
+      "norm_label": "isfilenode()"
+    },
+    {
+      "id": "analyze_analyze_isconceptnode",
+      "label": "isConceptNode()",
+      "file_type": "code",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L187",
+      "community": 4,
+      "norm_label": "isconceptnode()"
+    },
+    {
+      "id": "internal_cluster_cluster_go",
+      "label": "cluster.go",
+      "file_type": "code",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L1",
+      "community": 1,
+      "norm_label": "cluster.go"
+    },
+    {
+      "id": "cluster_cluster_cluster",
+      "label": "Cluster()",
+      "file_type": "code",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L24",
+      "community": 1,
+      "norm_label": "cluster()"
+    },
+    {
+      "id": "cluster_cluster_louvain",
+      "label": "louvain()",
+      "file_type": "code",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L48",
+      "community": 1,
+      "norm_label": "louvain()"
+    },
+    {
+      "id": "cluster_cluster_splitoversized",
+      "label": "splitOversized()",
+      "file_type": "code",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L85",
+      "community": 1,
+      "norm_label": "splitoversized()"
+    },
+    {
+      "id": "cluster_cluster_reindexbysize",
+      "label": "reindexBySize()",
+      "file_type": "code",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L95",
+      "community": 1,
+      "norm_label": "reindexbysize()"
+    },
+    {
+      "id": "cluster_cluster_less",
+      "label": "less()",
+      "file_type": "code",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L112",
+      "community": 1,
+      "norm_label": "less()"
+    },
+    {
+      "id": "cluster_cluster_cohesion",
+      "label": "Cohesion()",
+      "file_type": "code",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L122",
+      "community": 1,
+      "norm_label": "cohesion()"
+    },
+    {
+      "id": "cluster_cluster_nodecommunity",
+      "label": "NodeCommunity()",
+      "file_type": "code",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L143",
+      "community": 1,
+      "norm_label": "nodecommunity()"
+    },
+    {
+      "id": "cluster_cluster_scores",
+      "label": "Scores()",
+      "file_type": "code",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L154",
+      "community": 1,
+      "norm_label": "scores()"
+    },
+    {
+      "id": "internal_detect_detect_go",
+      "label": "detect.go",
+      "file_type": "code",
+      "source_file": "internal/detect/detect.go",
+      "source_location": "L1",
+      "community": 3,
+      "norm_label": "detect.go"
+    },
+    {
+      "id": "detect_detect_collectfiles",
+      "label": "CollectFiles()",
+      "file_type": "code",
+      "source_file": "internal/detect/detect.go",
+      "source_location": "L57",
+      "community": 3,
+      "norm_label": "collectfiles()"
+    },
+    {
+      "id": "detect_detect_issensitive",
+      "label": "isSensitive()",
+      "file_type": "code",
+      "source_file": "internal/detect/detect.go",
+      "source_location": "L86",
+      "community": 3,
+      "norm_label": "issensitive()"
+    },
+    {
+      "id": "internal_export_export_go",
+      "label": "export.go",
+      "file_type": "code",
+      "source_file": "internal/export/export.go",
+      "source_location": "L1",
+      "community": 6,
+      "norm_label": "export.go"
+    },
+    {
+      "id": "export_export_jsonnode",
+      "label": "jsonNode",
+      "file_type": "code",
+      "source_file": "internal/export/export.go",
+      "source_location": "L21",
+      "community": 6,
+      "norm_label": "jsonnode"
+    },
+    {
+      "id": "export_export_jsonlink",
+      "label": "jsonLink",
+      "file_type": "code",
+      "source_file": "internal/export/export.go",
+      "source_location": "L31",
+      "community": 6,
+      "norm_label": "jsonlink"
+    },
+    {
+      "id": "export_export_jsongraph",
+      "label": "jsonGraph",
+      "file_type": "code",
+      "source_file": "internal/export/export.go",
+      "source_location": "L41",
+      "community": 6,
+      "norm_label": "jsongraph"
+    },
+    {
+      "id": "export_export_tojson",
+      "label": "ToJSON()",
+      "file_type": "code",
+      "source_file": "internal/export/export.go",
+      "source_location": "L54",
+      "community": 1,
+      "norm_label": "tojson()"
+    },
+    {
+      "id": "export_export_normlabel",
+      "label": "normLabel()",
+      "file_type": "code",
+      "source_file": "internal/export/export.go",
+      "source_location": "L93",
+      "community": 1,
+      "norm_label": "normlabel()"
+    },
+    {
+      "id": "internal_export_html_go",
+      "label": "html.go",
+      "file_type": "code",
+      "source_file": "internal/export/html.go",
+      "source_location": "L1",
+      "community": 6,
+      "norm_label": "html.go"
+    },
+    {
+      "id": "export_html_tohtml",
+      "label": "ToHTML()",
+      "file_type": "code",
+      "source_file": "internal/export/html.go",
+      "source_location": "L16",
+      "community": 1,
+      "norm_label": "tohtml()"
+    },
+    {
+      "id": "internal_extract_extract_go",
+      "label": "extract.go",
+      "file_type": "code",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L1",
+      "community": 0,
+      "norm_label": "extract.go"
+    },
+    {
+      "id": "extract_extract_def",
+      "label": "Def",
+      "file_type": "code",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L23",
+      "community": 0,
+      "norm_label": "def"
+    },
+    {
+      "id": "extract_extract_call",
+      "label": "Call",
+      "file_type": "code",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L28",
+      "community": 0,
+      "norm_label": "call"
+    },
+    {
+      "id": "extract_extract_imp",
+      "label": "Imp",
+      "file_type": "code",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L33",
+      "community": 0,
+      "norm_label": "imp"
+    },
+    {
+      "id": "extract_extract_result",
+      "label": "Result",
+      "file_type": "code",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L38",
+      "community": 0,
+      "norm_label": "result"
+    },
+    {
+      "id": "extract_extract_file",
+      "label": "File()",
+      "file_type": "code",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L48",
+      "community": 5,
+      "norm_label": "file()"
+    },
+    {
+      "id": "extract_extract_parseroot",
+      "label": "parseRoot()",
+      "file_type": "code",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L70",
+      "community": 0,
+      "norm_label": "parseroot()"
+    },
+    {
+      "id": "extract_extract_filestem",
+      "label": "fileStem()",
+      "file_type": "code",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L80",
+      "community": 0,
+      "norm_label": "filestem()"
+    },
+    {
+      "id": "extract_extract_line",
+      "label": "line()",
+      "file_type": "code",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L88",
+      "community": 0,
+      "norm_label": "line()"
+    },
+    {
+      "id": "extract_extract_itoa",
+      "label": "itoa()",
+      "file_type": "code",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L92",
+      "community": 0,
+      "norm_label": "itoa()"
+    },
+    {
+      "id": "extract_extract_builder",
+      "label": "builder",
+      "file_type": "code",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L107",
+      "community": 0,
+      "norm_label": "builder"
+    },
+    {
+      "id": "extract_extract_newbuilder",
+      "label": "newBuilder()",
+      "file_type": "code",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L115",
+      "community": 0,
+      "norm_label": "newbuilder()"
+    },
+    {
+      "id": "extract_extract_builder_addnode",
+      "label": "builder.addNode()",
+      "file_type": "code",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L122",
+      "community": 0,
+      "norm_label": "builder.addnode()"
+    },
+    {
+      "id": "extract_extract_builder_contains",
+      "label": "builder.contains()",
+      "file_type": "code",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L132",
+      "community": 0,
+      "norm_label": "builder.contains()"
+    },
+    {
+      "id": "extract_extract_builder_def",
+      "label": "builder.def()",
+      "file_type": "code",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L141",
+      "community": 0,
+      "norm_label": "builder.def()"
+    },
+    {
+      "id": "extract_extract_builder_call",
+      "label": "builder.call()",
+      "file_type": "code",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L147",
+      "community": 0,
+      "norm_label": "builder.call()"
+    },
+    {
+      "id": "extract_extract_builder_imp",
+      "label": "builder.imp()",
+      "file_type": "code",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L154",
+      "community": 0,
+      "norm_label": "builder.imp()"
+    },
+    {
+      "id": "extract_extract_walk",
+      "label": "walk()",
+      "file_type": "code",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L162",
+      "community": 0,
+      "norm_label": "walk()"
+    },
+    {
+      "id": "internal_extract_extract_test_go",
+      "label": "extract_test.go",
+      "file_type": "code",
+      "source_file": "internal/extract/extract_test.go",
+      "source_location": "L1",
+      "community": 5,
+      "norm_label": "extract_test.go"
+    },
+    {
+      "id": "extract_extract_test_testextractandresolve",
+      "label": "TestExtractAndResolve()",
+      "file_type": "code",
+      "source_file": "internal/extract/extract_test.go",
+      "source_location": "L5",
+      "community": 5,
+      "norm_label": "testextractandresolve()"
+    },
+    {
+      "id": "internal_extract_golang_go",
+      "label": "golang.go",
+      "file_type": "code",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L1",
+      "community": 0,
+      "norm_label": "golang.go"
+    },
+    {
+      "id": "extract_golang_extractgo",
+      "label": "extractGo()",
+      "file_type": "code",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L14",
+      "community": 0,
+      "norm_label": "extractgo()"
+    },
+    {
+      "id": "extract_golang_builder_gofunc",
+      "label": "builder.goFunc()",
+      "file_type": "code",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L35",
+      "community": 0,
+      "norm_label": "builder.gofunc()"
+    },
+    {
+      "id": "extract_golang_builder_gomethod",
+      "label": "builder.goMethod()",
+      "file_type": "code",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L45",
+      "community": 0,
+      "norm_label": "builder.gomethod()"
+    },
+    {
+      "id": "extract_golang_goreceivertype",
+      "label": "goReceiverType()",
+      "file_type": "code",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L63",
+      "community": 0,
+      "norm_label": "goreceivertype()"
+    },
+    {
+      "id": "extract_golang_builder_gotypes",
+      "label": "builder.goTypes()",
+      "file_type": "code",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L82",
+      "community": 0,
+      "norm_label": "builder.gotypes()"
+    },
+    {
+      "id": "extract_golang_builder_goimports",
+      "label": "builder.goImports()",
+      "file_type": "code",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L96",
+      "community": 0,
+      "norm_label": "builder.goimports()"
+    },
+    {
+      "id": "extract_golang_builder_gocalls",
+      "label": "builder.goCalls()",
+      "file_type": "code",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L110",
+      "community": 0,
+      "norm_label": "builder.gocalls()"
+    },
+    {
+      "id": "extract_golang_fieldtext",
+      "label": "fieldText()",
+      "file_type": "code",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L134",
+      "community": 0,
+      "norm_label": "fieldtext()"
+    },
+    {
+      "id": "extract_golang_unquote",
+      "label": "unquote()",
+      "file_type": "code",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L141",
+      "community": 0,
+      "norm_label": "unquote()"
+    },
+    {
+      "id": "internal_extract_javascript_go",
+      "label": "javascript.go",
+      "file_type": "code",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L1",
+      "community": 0,
+      "norm_label": "javascript.go"
+    },
+    {
+      "id": "extract_javascript_extractjs",
+      "label": "extractJS()",
+      "file_type": "code",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L15",
+      "community": 0,
+      "norm_label": "extractjs()"
+    },
+    {
+      "id": "extract_javascript_builder_jsstatement",
+      "label": "builder.jsStatement()",
+      "file_type": "code",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L27",
+      "community": 0,
+      "norm_label": "builder.jsstatement()"
+    },
+    {
+      "id": "extract_javascript_builder_jsfunc",
+      "label": "builder.jsFunc()",
+      "file_type": "code",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L48",
+      "community": 0,
+      "norm_label": "builder.jsfunc()"
+    },
+    {
+      "id": "extract_javascript_builder_jsclass",
+      "label": "builder.jsClass()",
+      "file_type": "code",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L58",
+      "community": 0,
+      "norm_label": "builder.jsclass()"
+    },
+    {
+      "id": "extract_javascript_builder_jsnamedtype",
+      "label": "builder.jsNamedType()",
+      "file_type": "code",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L90",
+      "community": 0,
+      "norm_label": "builder.jsnamedtype()"
+    },
+    {
+      "id": "extract_javascript_builder_jsvarfuncs",
+      "label": "builder.jsVarFuncs()",
+      "file_type": "code",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L100",
+      "community": 0,
+      "norm_label": "builder.jsvarfuncs()"
+    },
+    {
+      "id": "extract_javascript_builder_jscalls",
+      "label": "builder.jsCalls()",
+      "file_type": "code",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L120",
+      "community": 0,
+      "norm_label": "builder.jscalls()"
+    },
+    {
+      "id": "internal_extract_resolve_go",
+      "label": "resolve.go",
+      "file_type": "code",
+      "source_file": "internal/extract/resolve.go",
+      "source_location": "L1",
+      "community": 5,
+      "norm_label": "resolve.go"
+    },
+    {
+      "id": "extract_resolve_resolve",
+      "label": "Resolve()",
+      "file_type": "code",
+      "source_file": "internal/extract/resolve.go",
+      "source_location": "L18",
+      "community": 5,
+      "norm_label": "resolve()"
+    },
+    {
+      "id": "extract_resolve_resolverelimport",
+      "label": "resolveRelImport()",
+      "file_type": "code",
+      "source_file": "internal/extract/resolve.go",
+      "source_location": "L88",
+      "community": 5,
+      "norm_label": "resolverelimport()"
+    },
+    {
+      "id": "internal_extract_testdata_proj_util_math_go",
+      "label": "math.go",
+      "file_type": "code",
+      "source_file": "internal/extract/testdata/proj/util/math.go",
+      "source_location": "L1",
+      "community": 8,
+      "norm_label": "math.go"
+    },
+    {
+      "id": "util_math_calc",
+      "label": "Calc",
+      "file_type": "code",
+      "source_file": "internal/extract/testdata/proj/util/math.go",
+      "source_location": "L3",
+      "community": 8,
+      "norm_label": "calc"
+    },
+    {
+      "id": "util_math_add",
+      "label": "Add()",
+      "file_type": "code",
+      "source_file": "internal/extract/testdata/proj/util/math.go",
+      "source_location": "L5",
+      "community": 8,
+      "norm_label": "add()"
+    },
+    {
+      "id": "util_math_calc_sum",
+      "label": "Calc.Sum()",
+      "file_type": "code",
+      "source_file": "internal/extract/testdata/proj/util/math.go",
+      "source_location": "L7",
+      "community": 8,
+      "norm_label": "calc.sum()"
+    },
+    {
+      "id": "internal_extract_testdata_proj_web_server_ts",
+      "label": "server.ts",
+      "file_type": "code",
+      "source_file": "internal/extract/testdata/proj/web/server.ts",
+      "source_location": "L1",
+      "community": 7,
+      "norm_label": "server.ts"
+    },
+    {
+      "id": "web_server_server",
+      "label": "Server",
+      "file_type": "code",
+      "source_file": "internal/extract/testdata/proj/web/server.ts",
+      "source_location": "L4",
+      "community": 7,
+      "norm_label": "server"
+    },
+    {
+      "id": "web_server_server_start",
+      "label": "Server.start()",
+      "file_type": "code",
+      "source_file": "internal/extract/testdata/proj/web/server.ts",
+      "source_location": "L5",
+      "community": 7,
+      "norm_label": "server.start()"
+    },
+    {
+      "id": "web_server_boot",
+      "label": "boot()",
+      "file_type": "code",
+      "source_file": "internal/extract/testdata/proj/web/server.ts",
+      "source_location": "L10",
+      "community": 7,
+      "norm_label": "boot()"
+    },
+    {
+      "id": "internal_graph_build_go",
+      "label": "build.go",
+      "file_type": "code",
+      "source_file": "internal/graph/build.go",
+      "source_location": "L1",
+      "community": 4,
+      "norm_label": "build.go"
+    },
+    {
+      "id": "graph_build_build",
+      "label": "Build()",
+      "file_type": "code",
+      "source_file": "internal/graph/build.go",
+      "source_location": "L27",
+      "community": 1,
+      "norm_label": "build()"
+    },
+    {
+      "id": "graph_build_crosslanguage",
+      "label": "crossLanguage()",
+      "file_type": "code",
+      "source_file": "internal/graph/build.go",
+      "source_location": "L76",
+      "community": 1,
+      "norm_label": "crosslanguage()"
+    },
+    {
+      "id": "internal_graph_build_test_go",
+      "label": "build_test.go",
+      "file_type": "code",
+      "source_file": "internal/graph/build_test.go",
+      "source_location": "L1",
+      "community": 1,
+      "norm_label": "build_test.go"
+    },
+    {
+      "id": "graph_build_test_testbuilddropsdanglingandcrosslangcalls",
+      "label": "TestBuildDropsDanglingAndCrossLangCalls()",
+      "file_type": "code",
+      "source_file": "internal/graph/build_test.go",
+      "source_location": "L9",
+      "community": 1,
+      "norm_label": "testbuilddropsdanglingandcrosslangcalls()"
+    },
+    {
+      "id": "graph_build_test_testbuildkeepsbothdirections",
+      "label": "TestBuildKeepsBothDirections()",
+      "file_type": "code",
+      "source_file": "internal/graph/build_test.go",
+      "source_location": "L37",
+      "community": 1,
+      "norm_label": "testbuildkeepsbothdirections()"
+    },
+    {
+      "id": "internal_idutil_idutil_go",
+      "label": "idutil.go",
+      "file_type": "code",
+      "source_file": "internal/idutil/idutil.go",
+      "source_location": "L1",
+      "community": 3,
+      "norm_label": "idutil.go"
+    },
+    {
+      "id": "idutil_idutil_makeid",
+      "label": "MakeID()",
+      "file_type": "code",
+      "source_file": "internal/idutil/idutil.go",
+      "source_location": "L27",
+      "community": 0,
+      "norm_label": "makeid()"
+    },
+    {
+      "id": "idutil_idutil_normalizeid",
+      "label": "NormalizeID()",
+      "file_type": "code",
+      "source_file": "internal/idutil/idutil.go",
+      "source_location": "L42",
+      "community": 3,
+      "norm_label": "normalizeid()"
+    },
+    {
+      "id": "idutil_idutil_clean",
+      "label": "clean()",
+      "file_type": "code",
+      "source_file": "internal/idutil/idutil.go",
+      "source_location": "L44",
+      "community": 3,
+      "norm_label": "clean()"
+    },
+    {
+      "id": "internal_idutil_idutil_test_go",
+      "label": "idutil_test.go",
+      "file_type": "code",
+      "source_file": "internal/idutil/idutil_test.go",
+      "source_location": "L1",
+      "community": 5,
+      "norm_label": "idutil_test.go"
+    },
+    {
+      "id": "idutil_idutil_test_testmakeid",
+      "label": "TestMakeID()",
+      "file_type": "code",
+      "source_file": "internal/idutil/idutil_test.go",
+      "source_location": "L5",
+      "community": 5,
+      "norm_label": "testmakeid()"
+    },
+    {
+      "id": "idutil_idutil_test_testnormalizeidmatchesmakeid",
+      "label": "TestNormalizeIDMatchesMakeID()",
+      "file_type": "code",
+      "source_file": "internal/idutil/idutil_test.go",
+      "source_location": "L25",
+      "community": 5,
+      "norm_label": "testnormalizeidmatchesmakeid()"
+    },
+    {
+      "id": "internal_model_model_go",
+      "label": "model.go",
+      "file_type": "code",
+      "source_file": "internal/model/model.go",
+      "source_location": "L1",
+      "community": 1,
+      "norm_label": "model.go"
+    },
+    {
+      "id": "model_model_node",
+      "label": "Node",
+      "file_type": "code",
+      "source_file": "internal/model/model.go",
+      "source_location": "L9",
+      "community": 1,
+      "norm_label": "node"
+    },
+    {
+      "id": "model_model_edge",
+      "label": "Edge",
+      "file_type": "code",
+      "source_file": "internal/model/model.go",
+      "source_location": "L20",
+      "community": 1,
+      "norm_label": "edge"
+    },
+    {
+      "id": "model_model_extraction",
+      "label": "Extraction",
+      "file_type": "code",
+      "source_file": "internal/model/model.go",
+      "source_location": "L32",
+      "community": 1,
+      "norm_label": "extraction"
+    },
+    {
+      "id": "model_model_graph",
+      "label": "Graph",
+      "file_type": "code",
+      "source_file": "internal/model/model.go",
+      "source_location": "L40",
+      "community": 1,
+      "norm_label": "graph"
+    },
+    {
+      "id": "model_model_new",
+      "label": "New()",
+      "file_type": "code",
+      "source_file": "internal/model/model.go",
+      "source_location": "L49",
+      "community": 1,
+      "norm_label": "new()"
+    },
+    {
+      "id": "model_model_graph_addnode",
+      "label": "Graph.AddNode()",
+      "file_type": "code",
+      "source_file": "internal/model/model.go",
+      "source_location": "L58",
+      "community": 1,
+      "norm_label": "graph.addnode()"
+    },
+    {
+      "id": "model_model_graph_addedge",
+      "label": "Graph.AddEdge()",
+      "file_type": "code",
+      "source_file": "internal/model/model.go",
+      "source_location": "L70",
+      "community": 1,
+      "norm_label": "graph.addedge()"
+    },
+    {
+      "id": "model_model_graph_hasedge",
+      "label": "Graph.HasEdge()",
+      "file_type": "code",
+      "source_file": "internal/model/model.go",
+      "source_location": "L89",
+      "community": 1,
+      "norm_label": "graph.hasedge()"
+    },
+    {
+      "id": "model_model_graph_degree",
+      "label": "Graph.Degree()",
+      "file_type": "code",
+      "source_file": "internal/model/model.go",
+      "source_location": "L92",
+      "community": 4,
+      "norm_label": "graph.degree()"
+    },
+    {
+      "id": "model_model_graph_neighbors",
+      "label": "Graph.Neighbors()",
+      "file_type": "code",
+      "source_file": "internal/model/model.go",
+      "source_location": "L95",
+      "community": 1,
+      "norm_label": "graph.neighbors()"
+    },
+    {
+      "id": "model_model_graph_nodeids",
+      "label": "Graph.NodeIDs()",
+      "file_type": "code",
+      "source_file": "internal/model/model.go",
+      "source_location": "L105",
+      "community": 1,
+      "norm_label": "graph.nodeids()"
+    },
+    {
+      "id": "model_model_graph_numnodes",
+      "label": "Graph.NumNodes()",
+      "file_type": "code",
+      "source_file": "internal/model/model.go",
+      "source_location": "L108",
+      "community": 1,
+      "norm_label": "graph.numnodes()"
+    },
+    {
+      "id": "model_model_graph_numedges",
+      "label": "Graph.NumEdges()",
+      "file_type": "code",
+      "source_file": "internal/model/model.go",
+      "source_location": "L111",
+      "community": 1,
+      "norm_label": "graph.numedges()"
+    },
+    {
+      "id": "model_model_graph_edges",
+      "label": "Graph.Edges()",
+      "file_type": "code",
+      "source_file": "internal/model/model.go",
+      "source_location": "L114",
+      "community": 1,
+      "norm_label": "graph.edges()"
+    },
+    {
+      "id": "internal_query_query_go",
+      "label": "query.go",
+      "file_type": "code",
+      "source_file": "internal/query/query.go",
+      "source_location": "L1",
+      "community": 2,
+      "norm_label": "query.go"
+    },
+    {
+      "id": "query_query_graph",
+      "label": "Graph",
+      "file_type": "code",
+      "source_file": "internal/query/query.go",
+      "source_location": "L19",
+      "community": 2,
+      "norm_label": "graph"
+    },
+    {
+      "id": "query_query_node",
+      "label": "Node",
+      "file_type": "code",
+      "source_file": "internal/query/query.go",
+      "source_location": "L28",
+      "community": 2,
+      "norm_label": "node"
+    },
+    {
+      "id": "query_query_link",
+      "label": "Link",
+      "file_type": "code",
+      "source_file": "internal/query/query.go",
+      "source_location": "L39",
+      "community": 2,
+      "norm_label": "link"
+    },
+    {
+      "id": "query_query_load",
+      "label": "Load()",
+      "file_type": "code",
+      "source_file": "internal/query/query.go",
+      "source_location": "L48",
+      "community": 2,
+      "norm_label": "load()"
+    },
+    {
+      "id": "query_query_match",
+      "label": "Match",
+      "file_type": "code",
+      "source_file": "internal/query/query.go",
+      "source_location": "L79",
+      "community": 2,
+      "norm_label": "match"
+    },
+    {
+      "id": "query_query_query",
+      "label": "Query()",
+      "file_type": "code",
+      "source_file": "internal/query/query.go",
+      "source_location": "L85",
+      "community": 2,
+      "norm_label": "query()"
+    },
+    {
+      "id": "query_query_neighbor",
+      "label": "Neighbor",
+      "file_type": "code",
+      "source_file": "internal/query/query.go",
+      "source_location": "L102",
+      "community": 2,
+      "norm_label": "neighbor"
+    },
+    {
+      "id": "query_query_explanation",
+      "label": "Explanation",
+      "file_type": "code",
+      "source_file": "internal/query/query.go",
+      "source_location": "L107",
+      "community": 2,
+      "norm_label": "explanation"
+    },
+    {
+      "id": "query_query_explain",
+      "label": "Explain()",
+      "file_type": "code",
+      "source_file": "internal/query/query.go",
+      "source_location": "L115",
+      "community": 2,
+      "norm_label": "explain()"
+    },
+    {
+      "id": "query_query_path",
+      "label": "Path()",
+      "file_type": "code",
+      "source_file": "internal/query/query.go",
+      "source_location": "L149",
+      "community": 2,
+      "norm_label": "path()"
+    },
+    {
+      "id": "query_query_graph_resolve",
+      "label": "Graph.resolve()",
+      "file_type": "code",
+      "source_file": "internal/query/query.go",
+      "source_location": "L195",
+      "community": 2,
+      "norm_label": "graph.resolve()"
+    },
+    {
+      "id": "query_query_loc",
+      "label": "loc()",
+      "file_type": "code",
+      "source_file": "internal/query/query.go",
+      "source_location": "L218",
+      "community": 2,
+      "norm_label": "loc()"
+    },
+    {
+      "id": "internal_query_query_test_go",
+      "label": "query_test.go",
+      "file_type": "code",
+      "source_file": "internal/query/query_test.go",
+      "source_location": "L1",
+      "community": 2,
+      "norm_label": "query_test.go"
+    },
+    {
+      "id": "query_query_test_loadsample",
+      "label": "loadSample()",
+      "file_type": "code",
+      "source_file": "internal/query/query_test.go",
+      "source_location": "L22",
+      "community": 2,
+      "norm_label": "loadsample()"
+    },
+    {
+      "id": "query_query_test_testquerymatches",
+      "label": "TestQueryMatches()",
+      "file_type": "code",
+      "source_file": "internal/query/query_test.go",
+      "source_location": "L35",
+      "community": 2,
+      "norm_label": "testquerymatches()"
+    },
+    {
+      "id": "query_query_test_testexplainneighbors",
+      "label": "TestExplainNeighbors()",
+      "file_type": "code",
+      "source_file": "internal/query/query_test.go",
+      "source_location": "L49",
+      "community": 2,
+      "norm_label": "testexplainneighbors()"
+    },
+    {
+      "id": "query_query_test_testpath",
+      "label": "TestPath()",
+      "file_type": "code",
+      "source_file": "internal/query/query_test.go",
+      "source_location": "L70",
+      "community": 2,
+      "norm_label": "testpath()"
+    },
+    {
+      "id": "internal_report_report_go",
+      "label": "report.go",
+      "file_type": "code",
+      "source_file": "internal/report/report.go",
+      "source_location": "L1",
+      "community": 4,
+      "norm_label": "report.go"
+    },
+    {
+      "id": "report_report_generate",
+      "label": "Generate()",
+      "file_type": "code",
+      "source_file": "internal/report/report.go",
+      "source_location": "L19",
+      "community": 4,
+      "norm_label": "generate()"
+    },
+    {
+      "id": "report_report_confidencebreakdown",
+      "label": "confidenceBreakdown()",
+      "file_type": "code",
+      "source_file": "internal/report/report.go",
+      "source_location": "L95",
+      "community": 4,
+      "norm_label": "confidencebreakdown()"
+    },
+    {
+      "id": "report_report_reallabels",
+      "label": "realLabels()",
+      "file_type": "code",
+      "source_file": "internal/report/report.go",
+      "source_location": "L112",
+      "community": 4,
+      "norm_label": "reallabels()"
+    },
+    {
+      "id": "report_report_sortedkeys",
+      "label": "sortedKeys()",
+      "file_type": "code",
+      "source_file": "internal/report/report.go",
+      "source_location": "L124",
+      "community": 4,
+      "norm_label": "sortedkeys()"
+    },
+    {
+      "id": "report_report_base",
+      "label": "base()",
+      "file_type": "code",
+      "source_file": "internal/report/report.go",
+      "source_location": "L133",
+      "community": 4,
+      "norm_label": "base()"
+    },
+    {
+      "id": "report_report_short",
+      "label": "short()",
+      "file_type": "code",
+      "source_file": "internal/report/report.go",
+      "source_location": "L140",
+      "community": 4,
+      "norm_label": "short()"
+    },
+    {
+      "id": "internal_security_security_go",
+      "label": "security.go",
+      "file_type": "code",
+      "source_file": "internal/security/security.go",
+      "source_location": "L1",
+      "community": 3,
+      "norm_label": "security.go"
+    },
+    {
+      "id": "security_security_validateurl",
+      "label": "ValidateURL()",
+      "file_type": "code",
+      "source_file": "internal/security/security.go",
+      "source_location": "L31",
+      "community": 3,
+      "norm_label": "validateurl()"
+    },
+    {
+      "id": "security_security_isblockedip",
+      "label": "isBlockedIP()",
+      "file_type": "code",
+      "source_file": "internal/security/security.go",
+      "source_location": "L61",
+      "community": 3,
+      "norm_label": "isblockedip()"
+    },
+    {
+      "id": "security_security_mustcidr",
+      "label": "mustCIDR()",
+      "file_type": "code",
+      "source_file": "internal/security/security.go",
+      "source_location": "L66",
+      "community": 3,
+      "norm_label": "mustcidr()"
+    },
+    {
+      "id": "security_security_validategraphpath",
+      "label": "ValidateGraphPath()",
+      "file_type": "code",
+      "source_file": "internal/security/security.go",
+      "source_location": "L77",
+      "community": 3,
+      "norm_label": "validategraphpath()"
+    },
+    {
+      "id": "security_security_checkgraphfilesize",
+      "label": "CheckGraphFileSize()",
+      "file_type": "code",
+      "source_file": "internal/security/security.go",
+      "source_location": "L100",
+      "community": 2,
+      "norm_label": "checkgraphfilesize()"
+    },
+    {
+      "id": "security_security_sanitizelabel",
+      "label": "SanitizeLabel()",
+      "file_type": "code",
+      "source_file": "internal/security/security.go",
+      "source_location": "L115",
+      "community": 3,
+      "norm_label": "sanitizelabel()"
+    },
+    {
+      "id": "internal_security_security_test_go",
+      "label": "security_test.go",
+      "file_type": "code",
+      "source_file": "internal/security/security_test.go",
+      "source_location": "L1",
+      "community": 3,
+      "norm_label": "security_test.go"
+    },
+    {
+      "id": "security_security_test_testvalidateurlscheme",
+      "label": "TestValidateURLScheme()",
+      "file_type": "code",
+      "source_file": "internal/security/security_test.go",
+      "source_location": "L9",
+      "community": 3,
+      "norm_label": "testvalidateurlscheme()"
+    },
+    {
+      "id": "security_security_test_testvalidateurlblocksloopback",
+      "label": "TestValidateURLBlocksLoopback()",
+      "file_type": "code",
+      "source_file": "internal/security/security_test.go",
+      "source_location": "L17",
+      "community": 3,
+      "norm_label": "testvalidateurlblocksloopback()"
+    },
+    {
+      "id": "security_security_test_testvalidategraphpathcontainment",
+      "label": "TestValidateGraphPathContainment()",
+      "file_type": "code",
+      "source_file": "internal/security/security_test.go",
+      "source_location": "L24",
+      "community": 3,
+      "norm_label": "testvalidategraphpathcontainment()"
+    },
+    {
+      "id": "security_security_test_testsanitizelabel",
+      "label": "TestSanitizeLabel()",
+      "file_type": "code",
+      "source_file": "internal/security/security_test.go",
+      "source_location": "L38",
+      "community": 3,
+      "norm_label": "testsanitizelabel()"
+    },
+    {
+      "id": "fmt",
+      "label": "fmt",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 3,
+      "norm_label": "fmt"
+    },
+    {
+      "id": "os",
+      "label": "os",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 6,
+      "norm_label": "os"
+    },
+    {
+      "id": "os_exec",
+      "label": "os/exec",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 2,
+      "norm_label": "os/exec"
+    },
+    {
+      "id": "path_filepath",
+      "label": "path/filepath",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 3,
+      "norm_label": "path/filepath"
+    },
+    {
+      "id": "strings",
+      "label": "strings",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 4,
+      "norm_label": "strings"
+    },
+    {
+      "id": "github_com_dobbo_ca_graphify_go_internal_cluster",
+      "label": "github.com/dobbo-ca/graphify-go/internal/cluster",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 6,
+      "norm_label": "github.com/dobbo-ca/graphify-go/internal/cluster"
+    },
+    {
+      "id": "github_com_dobbo_ca_graphify_go_internal_detect",
+      "label": "github.com/dobbo-ca/graphify-go/internal/detect",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 2,
+      "norm_label": "github.com/dobbo-ca/graphify-go/internal/detect"
+    },
+    {
+      "id": "github_com_dobbo_ca_graphify_go_internal_export",
+      "label": "github.com/dobbo-ca/graphify-go/internal/export",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 2,
+      "norm_label": "github.com/dobbo-ca/graphify-go/internal/export"
+    },
+    {
+      "id": "github_com_dobbo_ca_graphify_go_internal_extract",
+      "label": "github.com/dobbo-ca/graphify-go/internal/extract",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 2,
+      "norm_label": "github.com/dobbo-ca/graphify-go/internal/extract"
+    },
+    {
+      "id": "github_com_dobbo_ca_graphify_go_internal_graph",
+      "label": "github.com/dobbo-ca/graphify-go/internal/graph",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 2,
+      "norm_label": "github.com/dobbo-ca/graphify-go/internal/graph"
+    },
+    {
+      "id": "github_com_dobbo_ca_graphify_go_internal_query",
+      "label": "github.com/dobbo-ca/graphify-go/internal/query",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 2,
+      "norm_label": "github.com/dobbo-ca/graphify-go/internal/query"
+    },
+    {
+      "id": "github_com_dobbo_ca_graphify_go_internal_report",
+      "label": "github.com/dobbo-ca/graphify-go/internal/report",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 2,
+      "norm_label": "github.com/dobbo-ca/graphify-go/internal/report"
+    },
+    {
+      "id": "sort",
+      "label": "sort",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 4,
+      "norm_label": "sort"
+    },
+    {
+      "id": "github_com_dobbo_ca_graphify_go_internal_model",
+      "label": "github.com/dobbo-ca/graphify-go/internal/model",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 1,
+      "norm_label": "github.com/dobbo-ca/graphify-go/internal/model"
+    },
+    {
+      "id": "golang_org_x_exp_rand",
+      "label": "golang.org/x/exp/rand",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 1,
+      "norm_label": "golang.org/x/exp/rand"
+    },
+    {
+      "id": "gonum_org_v1_gonum_graph_community",
+      "label": "gonum.org/v1/gonum/graph/community",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 1,
+      "norm_label": "gonum.org/v1/gonum/graph/community"
+    },
+    {
+      "id": "gonum_org_v1_gonum_graph_simple",
+      "label": "gonum.org/v1/gonum/graph/simple",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 1,
+      "norm_label": "gonum.org/v1/gonum/graph/simple"
+    },
+    {
+      "id": "io_fs",
+      "label": "io/fs",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 3,
+      "norm_label": "io/fs"
+    },
+    {
+      "id": "regexp",
+      "label": "regexp",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 3,
+      "norm_label": "regexp"
+    },
+    {
+      "id": "encoding_json",
+      "label": "encoding/json",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 6,
+      "norm_label": "encoding/json"
+    },
+    {
+      "id": "unicode",
+      "label": "unicode",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 6,
+      "norm_label": "unicode"
+    },
+    {
+      "id": "golang_org_x_text_unicode_norm",
+      "label": "golang.org/x/text/unicode/norm",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 3,
+      "norm_label": "golang.org/x/text/unicode/norm"
+    },
+    {
+      "id": "github_com_dobbo_ca_graphify_go_internal_security",
+      "label": "github.com/dobbo-ca/graphify-go/internal/security",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 6,
+      "norm_label": "github.com/dobbo-ca/graphify-go/internal/security"
+    },
+    {
+      "id": "unsafe",
+      "label": "unsafe",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 0,
+      "norm_label": "unsafe"
+    },
+    {
+      "id": "github_com_tree_sitter_go_tree_sitter",
+      "label": "github.com/tree-sitter/go-tree-sitter",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 0,
+      "norm_label": "github.com/tree-sitter/go-tree-sitter"
+    },
+    {
+      "id": "github_com_tree_sitter_tree_sitter_javascript_bindings_go",
+      "label": "github.com/tree-sitter/tree-sitter-javascript/bindings/go",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 0,
+      "norm_label": "github.com/tree-sitter/tree-sitter-javascript/bindings/go"
+    },
+    {
+      "id": "github_com_tree_sitter_tree_sitter_typescript_bindings_go",
+      "label": "github.com/tree-sitter/tree-sitter-typescript/bindings/go",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 0,
+      "norm_label": "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
+    },
+    {
+      "id": "github_com_dobbo_ca_graphify_go_internal_idutil",
+      "label": "github.com/dobbo-ca/graphify-go/internal/idutil",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 5,
+      "norm_label": "github.com/dobbo-ca/graphify-go/internal/idutil"
+    },
+    {
+      "id": "testing",
+      "label": "testing",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 5,
+      "norm_label": "testing"
+    },
+    {
+      "id": "github_com_tree_sitter_tree_sitter_go_bindings_go",
+      "label": "github.com/tree-sitter/tree-sitter-go/bindings/go",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 0,
+      "norm_label": "github.com/tree-sitter/tree-sitter-go/bindings/go"
+    },
+    {
+      "id": "path",
+      "label": "path",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 5,
+      "norm_label": "path"
+    },
+    {
+      "id": "util_math",
+      "label": "../util/math",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 7,
+      "norm_label": "../util/math"
+    },
+    {
+      "id": "express",
+      "label": "express",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 7,
+      "norm_label": "express"
+    },
+    {
+      "id": "golang_org_x_text_cases",
+      "label": "golang.org/x/text/cases",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 3,
+      "norm_label": "golang.org/x/text/cases"
+    },
+    {
+      "id": "github_com_dobbo_ca_graphify_go_internal_analyze",
+      "label": "github.com/dobbo-ca/graphify-go/internal/analyze",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 4,
+      "norm_label": "github.com/dobbo-ca/graphify-go/internal/analyze"
+    },
+    {
+      "id": "net",
+      "label": "net",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 3,
+      "norm_label": "net"
+    },
+    {
+      "id": "net_url",
+      "label": "net/url",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 3,
+      "norm_label": "net/url"
+    }
+  ],
+  "links": [
+    {
+      "source": "analyze_analyze_godnodes",
+      "target": "analyze_analyze_isconceptnode",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L31",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "analyze_analyze_godnodes",
+      "target": "analyze_analyze_isfilenode",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L31",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "analyze_analyze_godnodes",
+      "target": "model_model_graph_degree",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L28",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "analyze_analyze_godnodes",
+      "target": "model_model_graph_nodeids",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L27",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "analyze_analyze_importcycles",
+      "target": "analyze_analyze_rotatekey",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L135",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "analyze_analyze_importcycles",
+      "target": "model_model_graph_edges",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L108",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "analyze_analyze_isfilenode",
+      "target": "model_model_graph_degree",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L181",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "analyze_analyze_surprising",
+      "target": "analyze_analyze_isconceptnode",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L68",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "analyze_analyze_surprising",
+      "target": "analyze_analyze_isfilenode",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L68",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "analyze_analyze_surprising",
+      "target": "cluster_cluster_nodecommunity",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L55",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "analyze_analyze_surprising",
+      "target": "model_model_graph_edges",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L63",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "cluster_cluster_cluster",
+      "target": "cluster_cluster_louvain",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L28",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "cluster_cluster_cluster",
+      "target": "cluster_cluster_reindexbysize",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L43",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "cluster_cluster_cluster",
+      "target": "cluster_cluster_splitoversized",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L38",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "cluster_cluster_cluster",
+      "target": "model_model_graph_nodeids",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L28",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "cluster_cluster_cluster",
+      "target": "model_model_graph_numnodes",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L25",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "cluster_cluster_cohesion",
+      "target": "model_model_graph_neighbors",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L133",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "cluster_cluster_louvain",
+      "target": "model_model_graph_addnode",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L57",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "cluster_cluster_louvain",
+      "target": "model_model_graph_edges",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L59",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "cluster_cluster_reindexbysize",
+      "target": "cluster_cluster_less",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L103",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "cluster_cluster_scores",
+      "target": "cluster_cluster_cohesion",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L157",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "cluster_cluster_splitoversized",
+      "target": "cluster_cluster_louvain",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L86",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "fmt",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L8",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_cluster",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L14",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_detect",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L15",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_export",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L16",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_extract",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L17",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_graph",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L18",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_query",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L19",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_report",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L20",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "graphify_main_arg",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L191",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "graphify_main_cmdbuild",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L58",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "graphify_main_cmdexplain",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L117",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "graphify_main_cmdextract",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L153",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "graphify_main_cmdpath",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L136",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "graphify_main_cmdquery",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L98",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "graphify_main_githead",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L182",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "graphify_main_load",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L172",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "graphify_main_locof",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L174",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "graphify_main_main",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L25",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "graphify_main_mustarg",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L198",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "graphify_main_usage",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L206",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "os",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L9",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "os_exec",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L10",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "path_filepath",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L11",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "strings",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L12",
+      "confidence_score": 1
+    },
+    {
+      "source": "detect_detect_collectfiles",
+      "target": "detect_detect_issensitive",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/detect/detect.go",
+      "source_location": "L77",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "export_export_tojson",
+      "target": "cluster_cluster_nodecommunity",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/export/export.go",
+      "source_location": "L55",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "export_export_tojson",
+      "target": "export_export_normlabel",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/export/export.go",
+      "source_location": "L69",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "export_export_tojson",
+      "target": "model_model_graph_edges",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/export/export.go",
+      "source_location": "L72",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "export_export_tojson",
+      "target": "model_model_graph_nodeids",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/export/export.go",
+      "source_location": "L60",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "export_html_tohtml",
+      "target": "cluster_cluster_nodecommunity",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/export/html.go",
+      "source_location": "L17",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "export_html_tohtml",
+      "target": "model_model_graph_edges",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/export/html.go",
+      "source_location": "L38",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "export_html_tohtml",
+      "target": "model_model_graph_nodeids",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/export/html.go",
+      "source_location": "L30",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "export_html_tohtml",
+      "target": "security_security_sanitizelabel",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/export/html.go",
+      "source_location": "L33",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_extract_builder_def",
+      "target": "extract_extract_builder_addnode",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L142",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_extract_builder_def",
+      "target": "extract_extract_builder_contains",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L143",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_extract_file",
+      "target": "extract_golang_extractgo",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L56",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_extract_file",
+      "target": "extract_javascript_extractjs",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L58",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_extract_line",
+      "target": "extract_extract_itoa",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L89",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_extract_newbuilder",
+      "target": "extract_extract_builder_addnode",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L118",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_extract_newbuilder",
+      "target": "extract_extract_filestem",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L117",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_extract_newbuilder",
+      "target": "idutil_idutil_makeid",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L116",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_extract_test_testextractandresolve",
+      "target": "extract_extract_file",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/extract_test.go",
+      "source_location": "L11",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_extract_test_testextractandresolve",
+      "target": "extract_resolve_resolve",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/extract_test.go",
+      "source_location": "L17",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_gocalls",
+      "target": "extract_extract_builder_call",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L124",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_gocalls",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L124",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_gocalls",
+      "target": "extract_extract_walk",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L114",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_gofunc",
+      "target": "extract_extract_builder_def",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L41",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_gofunc",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L41",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_gofunc",
+      "target": "extract_golang_builder_gocalls",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L42",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_gofunc",
+      "target": "extract_golang_fieldtext",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L36",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_gofunc",
+      "target": "idutil_idutil_makeid",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L40",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_goimports",
+      "target": "extract_extract_builder_imp",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L100",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_goimports",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L100",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_goimports",
+      "target": "extract_extract_walk",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L97",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_goimports",
+      "target": "extract_golang_unquote",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L100",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_gomethod",
+      "target": "extract_extract_builder_def",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L57",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_gomethod",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L57",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_gomethod",
+      "target": "extract_golang_builder_gocalls",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L58",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_gomethod",
+      "target": "extract_golang_fieldtext",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L46",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_gomethod",
+      "target": "extract_golang_goreceivertype",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L50",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_gomethod",
+      "target": "idutil_idutil_makeid",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L51",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_gotypes",
+      "target": "extract_extract_builder_def",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L92",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_gotypes",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L92",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_gotypes",
+      "target": "extract_golang_fieldtext",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L88",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_builder_gotypes",
+      "target": "idutil_idutil_makeid",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L92",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_extractgo",
+      "target": "extract_extract_newbuilder",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L17",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_extractgo",
+      "target": "extract_extract_parseroot",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L15",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_extractgo",
+      "target": "extract_golang_builder_gofunc",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L23",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_extractgo",
+      "target": "extract_golang_builder_goimports",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L29",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_extractgo",
+      "target": "extract_golang_builder_gomethod",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L25",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_extractgo",
+      "target": "extract_golang_builder_gotypes",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L27",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_golang_goreceivertype",
+      "target": "extract_extract_walk",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L69",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jscalls",
+      "target": "extract_extract_builder_call",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L134",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jscalls",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L134",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jscalls",
+      "target": "extract_extract_walk",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L124",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsclass",
+      "target": "extract_extract_builder_addnode",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L80",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsclass",
+      "target": "extract_extract_builder_def",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L64",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsclass",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L64",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsclass",
+      "target": "extract_golang_fieldtext",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L59",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsclass",
+      "target": "extract_javascript_builder_jscalls",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L86",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsclass",
+      "target": "idutil_idutil_makeid",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L63",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsfunc",
+      "target": "extract_extract_builder_def",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L54",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsfunc",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L54",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsfunc",
+      "target": "extract_golang_fieldtext",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L49",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsfunc",
+      "target": "extract_javascript_builder_jscalls",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L55",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsfunc",
+      "target": "idutil_idutil_makeid",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L53",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsnamedtype",
+      "target": "extract_extract_builder_def",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L95",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsnamedtype",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L95",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsnamedtype",
+      "target": "extract_golang_fieldtext",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L91",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsnamedtype",
+      "target": "idutil_idutil_makeid",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L95",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsstatement",
+      "target": "extract_extract_builder_imp",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L35",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsstatement",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L35",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsstatement",
+      "target": "extract_golang_unquote",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L35",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsstatement",
+      "target": "extract_javascript_builder_jsclass",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L40",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsstatement",
+      "target": "extract_javascript_builder_jsfunc",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L38",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsstatement",
+      "target": "extract_javascript_builder_jsnamedtype",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L42",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsstatement",
+      "target": "extract_javascript_builder_jsvarfuncs",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L44",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsvarfuncs",
+      "target": "extract_extract_builder_def",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L115",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsvarfuncs",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L115",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsvarfuncs",
+      "target": "extract_golang_fieldtext",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L110",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsvarfuncs",
+      "target": "extract_javascript_builder_jscalls",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L116",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_builder_jsvarfuncs",
+      "target": "idutil_idutil_makeid",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L114",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_extractjs",
+      "target": "extract_extract_newbuilder",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L18",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_extractjs",
+      "target": "extract_extract_parseroot",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L16",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_javascript_extractjs",
+      "target": "extract_javascript_builder_jsstatement",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L21",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_resolve_resolve",
+      "target": "extract_resolve_resolverelimport",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/resolve.go",
+      "source_location": "L64",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_resolve_resolve",
+      "target": "idutil_idutil_makeid",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/resolve.go",
+      "source_location": "L66",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graph_build_build",
+      "target": "graph_build_crosslanguage",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/graph/build.go",
+      "source_location": "L67",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graph_build_build",
+      "target": "idutil_idutil_normalizeid",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/graph/build.go",
+      "source_location": "L37",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graph_build_build",
+      "target": "model_model_graph_addedge",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/graph/build.go",
+      "source_location": "L71",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graph_build_build",
+      "target": "model_model_graph_addnode",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/graph/build.go",
+      "source_location": "L30",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graph_build_build",
+      "target": "model_model_graph_nodeids",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/graph/build.go",
+      "source_location": "L36",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graph_build_build",
+      "target": "model_model_graph_numnodes",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/graph/build.go",
+      "source_location": "L35",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graph_build_build",
+      "target": "model_model_new",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/graph/build.go",
+      "source_location": "L28",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graph_build_test_testbuilddropsdanglingandcrosslangcalls",
+      "target": "graph_build_build",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/graph/build_test.go",
+      "source_location": "L22",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graph_build_test_testbuilddropsdanglingandcrosslangcalls",
+      "target": "model_model_graph_hasedge",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/graph/build_test.go",
+      "source_location": "L26",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graph_build_test_testbuilddropsdanglingandcrosslangcalls",
+      "target": "model_model_graph_numedges",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/graph/build_test.go",
+      "source_location": "L32",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graph_build_test_testbuilddropsdanglingandcrosslangcalls",
+      "target": "model_model_graph_numnodes",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/graph/build_test.go",
+      "source_location": "L23",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graph_build_test_testbuildkeepsbothdirections",
+      "target": "graph_build_build",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/graph/build_test.go",
+      "source_location": "L48",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graph_build_test_testbuildkeepsbothdirections",
+      "target": "model_model_graph_numedges",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/graph/build_test.go",
+      "source_location": "L48",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdbuild",
+      "target": "cluster_cluster_cluster",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L76",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdbuild",
+      "target": "detect_detect_collectfiles",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L59",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdbuild",
+      "target": "export_export_tojson",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L83",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdbuild",
+      "target": "export_html_tohtml",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L86",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdbuild",
+      "target": "extract_extract_file",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L68",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdbuild",
+      "target": "extract_resolve_resolve",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L75",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdbuild",
+      "target": "graph_build_build",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L75",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdbuild",
+      "target": "graphify_main_githead",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L77",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdbuild",
+      "target": "model_model_graph_numedges",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L94",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdbuild",
+      "target": "model_model_graph_numnodes",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L94",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdbuild",
+      "target": "report_report_generate",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L89",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdexplain",
+      "target": "graphify_main_load",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L118",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdexplain",
+      "target": "graphify_main_locof",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L126",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdexplain",
+      "target": "query_query_explain",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L122",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdextract",
+      "target": "extract_extract_file",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L158",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdextract",
+      "target": "extract_resolve_resolve",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L162",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdpath",
+      "target": "graphify_main_load",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L137",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdpath",
+      "target": "query_query_path",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L141",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdquery",
+      "target": "graphify_main_load",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L99",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdquery",
+      "target": "query_query_query",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L103",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_load",
+      "target": "query_query_load",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L172",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_main",
+      "target": "graphify_main_arg",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L33",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_main",
+      "target": "graphify_main_cmdbuild",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L33",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_main",
+      "target": "graphify_main_cmdexplain",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L37",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_main",
+      "target": "graphify_main_cmdextract",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L45",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_main",
+      "target": "graphify_main_cmdpath",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L42",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_main",
+      "target": "graphify_main_cmdquery",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L35",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_main",
+      "target": "graphify_main_mustarg",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L35",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_main",
+      "target": "graphify_main_usage",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L27",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "idutil_idutil_makeid",
+      "target": "idutil_idutil_clean",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/idutil/idutil.go",
+      "source_location": "L37",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "idutil_idutil_normalizeid",
+      "target": "idutil_idutil_clean",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/idutil/idutil.go",
+      "source_location": "L42",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "idutil_idutil_test_testmakeid",
+      "target": "idutil_idutil_makeid",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/idutil/idutil_test.go",
+      "source_location": "L19",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "idutil_idutil_test_testnormalizeidmatchesmakeid",
+      "target": "idutil_idutil_makeid",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/idutil/idutil_test.go",
+      "source_location": "L28",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "idutil_idutil_test_testnormalizeidmatchesmakeid",
+      "target": "idutil_idutil_normalizeid",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/idutil/idutil_test.go",
+      "source_location": "L29",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "internal_analyze_analyze_go",
+      "target": "analyze_analyze_cycle",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L99",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_analyze_analyze_go",
+      "target": "analyze_analyze_godnode",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L17",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_analyze_analyze_go",
+      "target": "analyze_analyze_godnodes",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L26",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_analyze_analyze_go",
+      "target": "analyze_analyze_importcycles",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L106",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_analyze_analyze_go",
+      "target": "analyze_analyze_isconceptnode",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L187",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_analyze_analyze_go",
+      "target": "analyze_analyze_isfilenode",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L170",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_analyze_analyze_go",
+      "target": "analyze_analyze_rotatekey",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L159",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_analyze_analyze_go",
+      "target": "analyze_analyze_surprise",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L43",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_analyze_analyze_go",
+      "target": "analyze_analyze_surprising",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L54",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_analyze_analyze_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_cluster",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L12",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_analyze_analyze_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_model",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L13",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_analyze_analyze_go",
+      "target": "path_filepath",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L8",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_analyze_analyze_go",
+      "target": "sort",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L9",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_analyze_analyze_go",
+      "target": "strings",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/analyze/analyze.go",
+      "source_location": "L10",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_cluster_cluster_go",
+      "target": "cluster_cluster_cluster",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L24",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_cluster_cluster_go",
+      "target": "cluster_cluster_cohesion",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L122",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_cluster_cluster_go",
+      "target": "cluster_cluster_less",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L112",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_cluster_cluster_go",
+      "target": "cluster_cluster_louvain",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L48",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_cluster_cluster_go",
+      "target": "cluster_cluster_nodecommunity",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L143",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_cluster_cluster_go",
+      "target": "cluster_cluster_reindexbysize",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L95",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_cluster_cluster_go",
+      "target": "cluster_cluster_scores",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L154",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_cluster_cluster_go",
+      "target": "cluster_cluster_splitoversized",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L85",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_cluster_cluster_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_model",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L14",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_cluster_cluster_go",
+      "target": "golang_org_x_exp_rand",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L10",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_cluster_cluster_go",
+      "target": "gonum_org_v1_gonum_graph_community",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L11",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_cluster_cluster_go",
+      "target": "gonum_org_v1_gonum_graph_simple",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L12",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_cluster_cluster_go",
+      "target": "sort",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/cluster/cluster.go",
+      "source_location": "L8",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_detect_detect_go",
+      "target": "detect_detect_collectfiles",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/detect/detect.go",
+      "source_location": "L57",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_detect_detect_go",
+      "target": "detect_detect_issensitive",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/detect/detect.go",
+      "source_location": "L86",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_detect_detect_go",
+      "target": "io_fs",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/detect/detect.go",
+      "source_location": "L8",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_detect_detect_go",
+      "target": "path_filepath",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/detect/detect.go",
+      "source_location": "L9",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_detect_detect_go",
+      "target": "regexp",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/detect/detect.go",
+      "source_location": "L10",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_detect_detect_go",
+      "target": "strings",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/detect/detect.go",
+      "source_location": "L11",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_export_export_go",
+      "target": "encoding_json",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/export/export.go",
+      "source_location": "L8",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_export_export_go",
+      "target": "export_export_jsongraph",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/export/export.go",
+      "source_location": "L41",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_export_export_go",
+      "target": "export_export_jsonlink",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/export/export.go",
+      "source_location": "L31",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_export_export_go",
+      "target": "export_export_jsonnode",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/export/export.go",
+      "source_location": "L21",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_export_export_go",
+      "target": "export_export_normlabel",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/export/export.go",
+      "source_location": "L93",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_export_export_go",
+      "target": "export_export_tojson",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/export/export.go",
+      "source_location": "L54",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_export_export_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_cluster",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/export/export.go",
+      "source_location": "L15",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_export_export_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_model",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/export/export.go",
+      "source_location": "L16",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_export_export_go",
+      "target": "golang_org_x_text_unicode_norm",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/export/export.go",
+      "source_location": "L13",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_export_export_go",
+      "target": "os",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/export/export.go",
+      "source_location": "L9",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_export_export_go",
+      "target": "strings",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/export/export.go",
+      "source_location": "L10",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_export_export_go",
+      "target": "unicode",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/export/export.go",
+      "source_location": "L11",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_export_html_go",
+      "target": "encoding_json",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/export/html.go",
+      "source_location": "L4",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_export_html_go",
+      "target": "export_html_tohtml",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/export/html.go",
+      "source_location": "L16",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_export_html_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_cluster",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/export/html.go",
+      "source_location": "L8",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_export_html_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_model",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/export/html.go",
+      "source_location": "L9",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_export_html_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_security",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/export/html.go",
+      "source_location": "L10",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_export_html_go",
+      "target": "os",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/export/html.go",
+      "source_location": "L5",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_export_html_go",
+      "target": "strings",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/export/html.go",
+      "source_location": "L6",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "extract_extract_builder",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L107",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "extract_extract_builder_addnode",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L122",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "extract_extract_builder_call",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L147",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "extract_extract_builder_contains",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L132",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "extract_extract_builder_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L141",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "extract_extract_builder_imp",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L154",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "extract_extract_call",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L28",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "extract_extract_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L23",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "extract_extract_file",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L48",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "extract_extract_filestem",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L80",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "extract_extract_imp",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L33",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "extract_extract_itoa",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L92",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "extract_extract_line",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L88",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "extract_extract_newbuilder",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L115",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "extract_extract_parseroot",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L70",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "extract_extract_result",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L38",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "extract_extract_walk",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L162",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_idutil",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L18",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_model",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L19",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "github_com_tree_sitter_go_tree_sitter",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L14",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "github_com_tree_sitter_tree_sitter_javascript_bindings_go",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L15",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "github_com_tree_sitter_tree_sitter_typescript_bindings_go",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L16",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "os",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L9",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "path_filepath",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L10",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "strings",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L11",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_go",
+      "target": "unsafe",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L12",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_test_go",
+      "target": "extract_extract_test_testextractandresolve",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract_test.go",
+      "source_location": "L5",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_extract_test_go",
+      "target": "testing",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/extract_test.go",
+      "source_location": "L3",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_golang_go",
+      "target": "extract_golang_builder_gocalls",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L110",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_golang_go",
+      "target": "extract_golang_builder_gofunc",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L35",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_golang_go",
+      "target": "extract_golang_builder_goimports",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L96",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_golang_go",
+      "target": "extract_golang_builder_gomethod",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L45",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_golang_go",
+      "target": "extract_golang_builder_gotypes",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L82",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_golang_go",
+      "target": "extract_golang_extractgo",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L14",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_golang_go",
+      "target": "extract_golang_fieldtext",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L134",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_golang_go",
+      "target": "extract_golang_goreceivertype",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L63",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_golang_go",
+      "target": "extract_golang_unquote",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L141",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_golang_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_idutil",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L9",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_golang_go",
+      "target": "github_com_tree_sitter_go_tree_sitter",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L6",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_golang_go",
+      "target": "github_com_tree_sitter_tree_sitter_go_bindings_go",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L7",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_golang_go",
+      "target": "strings",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/golang.go",
+      "source_location": "L4",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_javascript_go",
+      "target": "extract_javascript_builder_jscalls",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L120",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_javascript_go",
+      "target": "extract_javascript_builder_jsclass",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L58",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_javascript_go",
+      "target": "extract_javascript_builder_jsfunc",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L48",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_javascript_go",
+      "target": "extract_javascript_builder_jsnamedtype",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L90",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_javascript_go",
+      "target": "extract_javascript_builder_jsstatement",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L27",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_javascript_go",
+      "target": "extract_javascript_builder_jsvarfuncs",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L100",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_javascript_go",
+      "target": "extract_javascript_extractjs",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L15",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_javascript_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_idutil",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L8",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_javascript_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_model",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L9",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_javascript_go",
+      "target": "github_com_tree_sitter_go_tree_sitter",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L6",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_javascript_go",
+      "target": "unsafe",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/javascript.go",
+      "source_location": "L4",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_resolve_go",
+      "target": "extract_resolve_resolve",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/resolve.go",
+      "source_location": "L18",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_resolve_go",
+      "target": "extract_resolve_resolverelimport",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/resolve.go",
+      "source_location": "L88",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_resolve_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_idutil",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/resolve.go",
+      "source_location": "L7",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_resolve_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_model",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/resolve.go",
+      "source_location": "L8",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_resolve_go",
+      "target": "path",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/resolve.go",
+      "source_location": "L4",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_resolve_go",
+      "target": "path_filepath",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/resolve.go",
+      "source_location": "L5",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_proj_util_math_go",
+      "target": "util_math_add",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/proj/util/math.go",
+      "source_location": "L5",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_proj_util_math_go",
+      "target": "util_math_calc",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/proj/util/math.go",
+      "source_location": "L3",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_proj_util_math_go",
+      "target": "util_math_calc_sum",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/proj/util/math.go",
+      "source_location": "L7",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_proj_web_server_ts",
+      "target": "express",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/proj/web/server.ts",
+      "source_location": "L2",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_proj_web_server_ts",
+      "target": "util_math",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/proj/web/server.ts",
+      "source_location": "L1",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_proj_web_server_ts",
+      "target": "web_server_boot",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/proj/web/server.ts",
+      "source_location": "L10",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_proj_web_server_ts",
+      "target": "web_server_server",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/proj/web/server.ts",
+      "source_location": "L4",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_graph_build_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_idutil",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/graph/build.go",
+      "source_location": "L13",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_graph_build_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_model",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/graph/build.go",
+      "source_location": "L14",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_graph_build_go",
+      "target": "graph_build_build",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/graph/build.go",
+      "source_location": "L27",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_graph_build_go",
+      "target": "graph_build_crosslanguage",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/graph/build.go",
+      "source_location": "L76",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_graph_build_go",
+      "target": "path_filepath",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/graph/build.go",
+      "source_location": "L9",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_graph_build_go",
+      "target": "sort",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/graph/build.go",
+      "source_location": "L10",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_graph_build_go",
+      "target": "strings",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/graph/build.go",
+      "source_location": "L11",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_graph_build_test_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_model",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/graph/build_test.go",
+      "source_location": "L6",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_graph_build_test_go",
+      "target": "graph_build_test_testbuilddropsdanglingandcrosslangcalls",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/graph/build_test.go",
+      "source_location": "L9",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_graph_build_test_go",
+      "target": "graph_build_test_testbuildkeepsbothdirections",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/graph/build_test.go",
+      "source_location": "L37",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_graph_build_test_go",
+      "target": "testing",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/graph/build_test.go",
+      "source_location": "L4",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_idutil_idutil_go",
+      "target": "golang_org_x_text_cases",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/idutil/idutil.go",
+      "source_location": "L11",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_idutil_idutil_go",
+      "target": "golang_org_x_text_unicode_norm",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/idutil/idutil.go",
+      "source_location": "L12",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_idutil_idutil_go",
+      "target": "idutil_idutil_clean",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/idutil/idutil.go",
+      "source_location": "L44",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_idutil_idutil_go",
+      "target": "idutil_idutil_makeid",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/idutil/idutil.go",
+      "source_location": "L27",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_idutil_idutil_go",
+      "target": "idutil_idutil_normalizeid",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/idutil/idutil.go",
+      "source_location": "L42",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_idutil_idutil_go",
+      "target": "regexp",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/idutil/idutil.go",
+      "source_location": "L8",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_idutil_idutil_go",
+      "target": "strings",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/idutil/idutil.go",
+      "source_location": "L9",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_idutil_idutil_test_go",
+      "target": "idutil_idutil_test_testmakeid",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/idutil/idutil_test.go",
+      "source_location": "L5",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_idutil_idutil_test_go",
+      "target": "idutil_idutil_test_testnormalizeidmatchesmakeid",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/idutil/idutil_test.go",
+      "source_location": "L25",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_idutil_idutil_test_go",
+      "target": "testing",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/idutil/idutil_test.go",
+      "source_location": "L3",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_model_model_go",
+      "target": "model_model_edge",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/model/model.go",
+      "source_location": "L20",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_model_model_go",
+      "target": "model_model_extraction",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/model/model.go",
+      "source_location": "L32",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_model_model_go",
+      "target": "model_model_graph",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/model/model.go",
+      "source_location": "L40",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_model_model_go",
+      "target": "model_model_graph_addedge",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/model/model.go",
+      "source_location": "L70",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_model_model_go",
+      "target": "model_model_graph_addnode",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/model/model.go",
+      "source_location": "L58",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_model_model_go",
+      "target": "model_model_graph_degree",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/model/model.go",
+      "source_location": "L92",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_model_model_go",
+      "target": "model_model_graph_edges",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/model/model.go",
+      "source_location": "L114",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_model_model_go",
+      "target": "model_model_graph_hasedge",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/model/model.go",
+      "source_location": "L89",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_model_model_go",
+      "target": "model_model_graph_neighbors",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/model/model.go",
+      "source_location": "L95",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_model_model_go",
+      "target": "model_model_graph_nodeids",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/model/model.go",
+      "source_location": "L105",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_model_model_go",
+      "target": "model_model_graph_numedges",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/model/model.go",
+      "source_location": "L111",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_model_model_go",
+      "target": "model_model_graph_numnodes",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/model/model.go",
+      "source_location": "L108",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_model_model_go",
+      "target": "model_model_new",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/model/model.go",
+      "source_location": "L49",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_model_model_go",
+      "target": "model_model_node",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/model/model.go",
+      "source_location": "L9",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_model_model_go",
+      "target": "sort",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/model/model.go",
+      "source_location": "L6",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_go",
+      "target": "encoding_json",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L8",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_go",
+      "target": "fmt",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L9",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_security",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L15",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_go",
+      "target": "os",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L10",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_go",
+      "target": "query_query_explain",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L115",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_go",
+      "target": "query_query_explanation",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L107",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_go",
+      "target": "query_query_graph",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L19",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_go",
+      "target": "query_query_graph_resolve",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L195",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_go",
+      "target": "query_query_link",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L39",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_go",
+      "target": "query_query_load",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L48",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_go",
+      "target": "query_query_loc",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L218",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_go",
+      "target": "query_query_match",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L79",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_go",
+      "target": "query_query_neighbor",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L102",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_go",
+      "target": "query_query_node",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L28",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_go",
+      "target": "query_query_path",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L149",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_go",
+      "target": "query_query_query",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L85",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_go",
+      "target": "regexp",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L11",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_go",
+      "target": "sort",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L12",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_go",
+      "target": "strings",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L13",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_test_go",
+      "target": "os",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query_test.go",
+      "source_location": "L4",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_test_go",
+      "target": "path_filepath",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query_test.go",
+      "source_location": "L5",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_test_go",
+      "target": "query_query_test_loadsample",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query_test.go",
+      "source_location": "L22",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_test_go",
+      "target": "query_query_test_testexplainneighbors",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query_test.go",
+      "source_location": "L49",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_test_go",
+      "target": "query_query_test_testpath",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query_test.go",
+      "source_location": "L70",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_test_go",
+      "target": "query_query_test_testquerymatches",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query_test.go",
+      "source_location": "L35",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_query_query_test_go",
+      "target": "testing",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/query/query_test.go",
+      "source_location": "L6",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_report_report_go",
+      "target": "fmt",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L7",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_report_report_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_analyze",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L11",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_report_report_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_cluster",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L12",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_report_report_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_model",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L13",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_report_report_go",
+      "target": "report_report_base",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L133",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_report_report_go",
+      "target": "report_report_confidencebreakdown",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L95",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_report_report_go",
+      "target": "report_report_generate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L19",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_report_report_go",
+      "target": "report_report_reallabels",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L112",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_report_report_go",
+      "target": "report_report_short",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L140",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_report_report_go",
+      "target": "report_report_sortedkeys",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L124",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_report_report_go",
+      "target": "sort",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L8",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_report_report_go",
+      "target": "strings",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L9",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_security_security_go",
+      "target": "fmt",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/security/security.go",
+      "source_location": "L8",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_security_security_go",
+      "target": "net",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/security/security.go",
+      "source_location": "L9",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_security_security_go",
+      "target": "net_url",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/security/security.go",
+      "source_location": "L10",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_security_security_go",
+      "target": "os",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/security/security.go",
+      "source_location": "L11",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_security_security_go",
+      "target": "path_filepath",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/security/security.go",
+      "source_location": "L12",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_security_security_go",
+      "target": "regexp",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/security/security.go",
+      "source_location": "L13",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_security_security_go",
+      "target": "security_security_checkgraphfilesize",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/security/security.go",
+      "source_location": "L100",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_security_security_go",
+      "target": "security_security_isblockedip",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/security/security.go",
+      "source_location": "L61",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_security_security_go",
+      "target": "security_security_mustcidr",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/security/security.go",
+      "source_location": "L66",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_security_security_go",
+      "target": "security_security_sanitizelabel",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/security/security.go",
+      "source_location": "L115",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_security_security_go",
+      "target": "security_security_validategraphpath",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/security/security.go",
+      "source_location": "L77",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_security_security_go",
+      "target": "security_security_validateurl",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/security/security.go",
+      "source_location": "L31",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_security_security_go",
+      "target": "strings",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/security/security.go",
+      "source_location": "L14",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_security_security_test_go",
+      "target": "os",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/security/security_test.go",
+      "source_location": "L4",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_security_security_test_go",
+      "target": "path_filepath",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/security/security_test.go",
+      "source_location": "L5",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_security_security_test_go",
+      "target": "security_security_test_testsanitizelabel",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/security/security_test.go",
+      "source_location": "L38",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_security_security_test_go",
+      "target": "security_security_test_testvalidategraphpathcontainment",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/security/security_test.go",
+      "source_location": "L24",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_security_security_test_go",
+      "target": "security_security_test_testvalidateurlblocksloopback",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/security/security_test.go",
+      "source_location": "L17",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_security_security_test_go",
+      "target": "security_security_test_testvalidateurlscheme",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/security/security_test.go",
+      "source_location": "L9",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_security_security_test_go",
+      "target": "testing",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/security/security_test.go",
+      "source_location": "L6",
+      "confidence_score": 1
+    },
+    {
+      "source": "query_query_explain",
+      "target": "query_query_graph_resolve",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L116",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "query_query_explain",
+      "target": "query_query_loc",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L134",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "query_query_load",
+      "target": "security_security_checkgraphfilesize",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L49",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "query_query_path",
+      "target": "query_query_graph_resolve",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L150",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "query_query_query",
+      "target": "query_query_loc",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/query/query.go",
+      "source_location": "L94",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "query_query_test_loadsample",
+      "target": "query_query_load",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/query/query_test.go",
+      "source_location": "L28",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "query_query_test_testexplainneighbors",
+      "target": "query_query_explain",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/query/query_test.go",
+      "source_location": "L51",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "query_query_test_testexplainneighbors",
+      "target": "query_query_test_loadsample",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/query/query_test.go",
+      "source_location": "L50",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "query_query_test_testpath",
+      "target": "query_query_path",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/query/query_test.go",
+      "source_location": "L72",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "query_query_test_testpath",
+      "target": "query_query_test_loadsample",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/query/query_test.go",
+      "source_location": "L71",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "query_query_test_testquerymatches",
+      "target": "query_query_query",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/query/query_test.go",
+      "source_location": "L37",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "query_query_test_testquerymatches",
+      "target": "query_query_test_loadsample",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/query/query_test.go",
+      "source_location": "L36",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "report_report_confidencebreakdown",
+      "target": "model_model_graph_edges",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L98",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "report_report_generate",
+      "target": "analyze_analyze_godnodes",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L21",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "report_report_generate",
+      "target": "analyze_analyze_importcycles",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L23",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "report_report_generate",
+      "target": "analyze_analyze_surprising",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L22",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "report_report_generate",
+      "target": "cluster_cluster_scores",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L20",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "report_report_generate",
+      "target": "model_model_graph_numedges",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L31",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "report_report_generate",
+      "target": "model_model_graph_numnodes",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L31",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "report_report_generate",
+      "target": "report_report_confidencebreakdown",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L32",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "report_report_generate",
+      "target": "report_report_reallabels",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L78",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "report_report_generate",
+      "target": "report_report_short",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L36",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "report_report_generate",
+      "target": "report_report_sortedkeys",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L76",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "report_report_reallabels",
+      "target": "report_report_base",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/report/report.go",
+      "source_location": "L116",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "security_security_test_testsanitizelabel",
+      "target": "security_security_sanitizelabel",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/security/security_test.go",
+      "source_location": "L39",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "security_security_test_testvalidategraphpathcontainment",
+      "target": "security_security_validategraphpath",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/security/security_test.go",
+      "source_location": "L29",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "security_security_test_testvalidateurlblocksloopback",
+      "target": "security_security_validateurl",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/security/security_test.go",
+      "source_location": "L19",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "security_security_test_testvalidateurlscheme",
+      "target": "security_security_validateurl",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/security/security_test.go",
+      "source_location": "L11",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "security_security_validateurl",
+      "target": "security_security_isblockedip",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/security/security.go",
+      "source_location": "L51",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "util_math_calc_sum",
+      "target": "util_math_add",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/testdata/proj/util/math.go",
+      "source_location": "L9",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "web_server_boot",
+      "target": "web_server_server_start",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/testdata/proj/web/server.ts",
+      "source_location": "L12",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "web_server_server",
+      "target": "web_server_server_start",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/proj/web/server.ts",
+      "source_location": "L5",
+      "confidence_score": 1
+    }
+  ],
+  "hyperedges": [],
+  "built_at_commit": "7eb4a993d95deafb7132058f3920673b68933cc2"
+}
