@@ -9,7 +9,7 @@
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
       "source_location": "L1",
-      "community": 2,
+      "community": 5,
       "norm_label": "main.go"
     },
     {
@@ -18,7 +18,7 @@
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
       "source_location": "L32",
-      "community": 2,
+      "community": 5,
       "norm_label": "main()"
     },
     {
@@ -27,7 +27,7 @@
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
       "source_location": "L68",
-      "community": 1,
+      "community": 0,
       "norm_label": "cmdbuild()"
     },
     {
@@ -36,7 +36,7 @@
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
       "source_location": "L108",
-      "community": 2,
+      "community": 5,
       "norm_label": "cmdquery()"
     },
     {
@@ -45,7 +45,7 @@
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
       "source_location": "L127",
-      "community": 2,
+      "community": 5,
       "norm_label": "cmdexplain()"
     },
     {
@@ -54,7 +54,7 @@
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
       "source_location": "L146",
-      "community": 2,
+      "community": 5,
       "norm_label": "cmdpath()"
     },
     {
@@ -63,7 +63,7 @@
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
       "source_location": "L163",
-      "community": 4,
+      "community": 6,
       "norm_label": "cmdextract()"
     },
     {
@@ -72,7 +72,7 @@
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
       "source_location": "L182",
-      "community": 2,
+      "community": 5,
       "norm_label": "load()"
     },
     {
@@ -81,7 +81,7 @@
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
       "source_location": "L184",
-      "community": 2,
+      "community": 5,
       "norm_label": "locof()"
     },
     {
@@ -90,7 +90,7 @@
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
       "source_location": "L192",
-      "community": 2,
+      "community": 0,
       "norm_label": "githead()"
     },
     {
@@ -99,7 +99,7 @@
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
       "source_location": "L201",
-      "community": 2,
+      "community": 5,
       "norm_label": "arg()"
     },
     {
@@ -108,7 +108,7 @@
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
       "source_location": "L208",
-      "community": 2,
+      "community": 5,
       "norm_label": "mustarg()"
     },
     {
@@ -117,7 +117,7 @@
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
       "source_location": "L216",
-      "community": 2,
+      "community": 5,
       "norm_label": "usage()"
     },
     {
@@ -126,7 +126,7 @@
       "file_type": "code",
       "source_file": "internal/analyze/analyze.go",
       "source_location": "L1",
-      "community": 3,
+      "community": 2,
       "norm_label": "analyze.go"
     },
     {
@@ -135,7 +135,7 @@
       "file_type": "code",
       "source_file": "internal/analyze/analyze.go",
       "source_location": "L17",
-      "community": 3,
+      "community": 2,
       "norm_label": "godnode"
     },
     {
@@ -144,7 +144,7 @@
       "file_type": "code",
       "source_file": "internal/analyze/analyze.go",
       "source_location": "L26",
-      "community": 3,
+      "community": 2,
       "norm_label": "godnodes()"
     },
     {
@@ -153,7 +153,7 @@
       "file_type": "code",
       "source_file": "internal/analyze/analyze.go",
       "source_location": "L43",
-      "community": 3,
+      "community": 2,
       "norm_label": "surprise"
     },
     {
@@ -162,7 +162,7 @@
       "file_type": "code",
       "source_file": "internal/analyze/analyze.go",
       "source_location": "L54",
-      "community": 3,
+      "community": 2,
       "norm_label": "surprising()"
     },
     {
@@ -171,7 +171,7 @@
       "file_type": "code",
       "source_file": "internal/analyze/analyze.go",
       "source_location": "L99",
-      "community": 3,
+      "community": 2,
       "norm_label": "cycle"
     },
     {
@@ -180,7 +180,7 @@
       "file_type": "code",
       "source_file": "internal/analyze/analyze.go",
       "source_location": "L106",
-      "community": 3,
+      "community": 2,
       "norm_label": "importcycles()"
     },
     {
@@ -189,7 +189,7 @@
       "file_type": "code",
       "source_file": "internal/analyze/analyze.go",
       "source_location": "L159",
-      "community": 3,
+      "community": 2,
       "norm_label": "rotatekey()"
     },
     {
@@ -198,7 +198,7 @@
       "file_type": "code",
       "source_file": "internal/analyze/analyze.go",
       "source_location": "L170",
-      "community": 3,
+      "community": 2,
       "norm_label": "isfilenode()"
     },
     {
@@ -207,7 +207,7 @@
       "file_type": "code",
       "source_file": "internal/analyze/analyze.go",
       "source_location": "L187",
-      "community": 3,
+      "community": 2,
       "norm_label": "isconceptnode()"
     },
     {
@@ -216,7 +216,7 @@
       "file_type": "code",
       "source_file": "internal/cluster/cluster.go",
       "source_location": "L1",
-      "community": 1,
+      "community": 0,
       "norm_label": "cluster.go"
     },
     {
@@ -225,7 +225,7 @@
       "file_type": "code",
       "source_file": "internal/cluster/cluster.go",
       "source_location": "L24",
-      "community": 1,
+      "community": 0,
       "norm_label": "cluster()"
     },
     {
@@ -234,7 +234,7 @@
       "file_type": "code",
       "source_file": "internal/cluster/cluster.go",
       "source_location": "L48",
-      "community": 1,
+      "community": 0,
       "norm_label": "louvain()"
     },
     {
@@ -243,7 +243,7 @@
       "file_type": "code",
       "source_file": "internal/cluster/cluster.go",
       "source_location": "L85",
-      "community": 1,
+      "community": 0,
       "norm_label": "splitoversized()"
     },
     {
@@ -252,7 +252,7 @@
       "file_type": "code",
       "source_file": "internal/cluster/cluster.go",
       "source_location": "L95",
-      "community": 1,
+      "community": 0,
       "norm_label": "reindexbysize()"
     },
     {
@@ -261,7 +261,7 @@
       "file_type": "code",
       "source_file": "internal/cluster/cluster.go",
       "source_location": "L112",
-      "community": 1,
+      "community": 0,
       "norm_label": "less()"
     },
     {
@@ -270,7 +270,7 @@
       "file_type": "code",
       "source_file": "internal/cluster/cluster.go",
       "source_location": "L122",
-      "community": 1,
+      "community": 0,
       "norm_label": "cohesion()"
     },
     {
@@ -279,7 +279,7 @@
       "file_type": "code",
       "source_file": "internal/cluster/cluster.go",
       "source_location": "L143",
-      "community": 1,
+      "community": 2,
       "norm_label": "nodecommunity()"
     },
     {
@@ -288,7 +288,7 @@
       "file_type": "code",
       "source_file": "internal/cluster/cluster.go",
       "source_location": "L154",
-      "community": 1,
+      "community": 0,
       "norm_label": "scores()"
     },
     {
@@ -297,7 +297,7 @@
       "file_type": "code",
       "source_file": "internal/detect/detect.go",
       "source_location": "L1",
-      "community": 7,
+      "community": 3,
       "norm_label": "detect.go"
     },
     {
@@ -305,8 +305,8 @@
       "label": "CollectFiles()",
       "file_type": "code",
       "source_file": "internal/detect/detect.go",
-      "source_location": "L57",
-      "community": 7,
+      "source_location": "L60",
+      "community": 3,
       "norm_label": "collectfiles()"
     },
     {
@@ -314,8 +314,8 @@
       "label": "isSensitive()",
       "file_type": "code",
       "source_file": "internal/detect/detect.go",
-      "source_location": "L86",
-      "community": 7,
+      "source_location": "L89",
+      "community": 3,
       "norm_label": "issensitive()"
     },
     {
@@ -324,7 +324,7 @@
       "file_type": "code",
       "source_file": "internal/export/export.go",
       "source_location": "L1",
-      "community": 5,
+      "community": 0,
       "norm_label": "export.go"
     },
     {
@@ -333,7 +333,7 @@
       "file_type": "code",
       "source_file": "internal/export/export.go",
       "source_location": "L21",
-      "community": 5,
+      "community": 0,
       "norm_label": "jsonnode"
     },
     {
@@ -342,7 +342,7 @@
       "file_type": "code",
       "source_file": "internal/export/export.go",
       "source_location": "L31",
-      "community": 5,
+      "community": 0,
       "norm_label": "jsonlink"
     },
     {
@@ -351,7 +351,7 @@
       "file_type": "code",
       "source_file": "internal/export/export.go",
       "source_location": "L41",
-      "community": 5,
+      "community": 0,
       "norm_label": "jsongraph"
     },
     {
@@ -360,7 +360,7 @@
       "file_type": "code",
       "source_file": "internal/export/export.go",
       "source_location": "L54",
-      "community": 1,
+      "community": 0,
       "norm_label": "tojson()"
     },
     {
@@ -369,7 +369,7 @@
       "file_type": "code",
       "source_file": "internal/export/export.go",
       "source_location": "L93",
-      "community": 5,
+      "community": 0,
       "norm_label": "normlabel()"
     },
     {
@@ -378,7 +378,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L1",
-      "community": 5,
+      "community": 7,
       "norm_label": "html.go"
     },
     {
@@ -387,7 +387,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L31",
-      "community": 5,
+      "community": 7,
       "norm_label": "vnode"
     },
     {
@@ -396,7 +396,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L41",
-      "community": 5,
+      "community": 7,
       "norm_label": "vfont"
     },
     {
@@ -405,7 +405,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L46",
-      "community": 5,
+      "community": 7,
       "norm_label": "vedge"
     },
     {
@@ -414,7 +414,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L52",
-      "community": 5,
+      "community": 7,
       "norm_label": "legendrow"
     },
     {
@@ -423,7 +423,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L61",
-      "community": 1,
+      "community": 0,
       "norm_label": "tohtml()"
     },
     {
@@ -432,7 +432,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L92",
-      "community": 1,
+      "community": 7,
       "norm_label": "buildnodelevel()"
     },
     {
@@ -441,7 +441,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L125",
-      "community": 1,
+      "community": 7,
       "norm_label": "buildmeta()"
     },
     {
@@ -450,7 +450,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L174",
-      "community": 1,
+      "community": 7,
       "norm_label": "colorfor()"
     },
     {
@@ -459,7 +459,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L181",
-      "community": 1,
+      "community": 7,
       "norm_label": "legendrows()"
     },
     {
@@ -468,7 +468,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L195",
-      "community": 1,
+      "community": 7,
       "norm_label": "legendhtml()"
     },
     {
@@ -477,7 +477,7 @@
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
       "source_location": "L1",
-      "community": 0,
+      "community": 1,
       "norm_label": "extract.go"
     },
     {
@@ -486,7 +486,7 @@
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
       "source_location": "L23",
-      "community": 0,
+      "community": 1,
       "norm_label": "def"
     },
     {
@@ -495,7 +495,7 @@
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
       "source_location": "L28",
-      "community": 0,
+      "community": 1,
       "norm_label": "call"
     },
     {
@@ -504,7 +504,7 @@
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
       "source_location": "L33",
-      "community": 0,
+      "community": 1,
       "norm_label": "imp"
     },
     {
@@ -513,7 +513,7 @@
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
       "source_location": "L38",
-      "community": 0,
+      "community": 1,
       "norm_label": "result"
     },
     {
@@ -522,7 +522,7 @@
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
       "source_location": "L48",
-      "community": 4,
+      "community": 6,
       "norm_label": "file()"
     },
     {
@@ -530,8 +530,8 @@
       "label": "parseRoot()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L70",
-      "community": 0,
+      "source_location": "L72",
+      "community": 1,
       "norm_label": "parseroot()"
     },
     {
@@ -539,8 +539,8 @@
       "label": "fileStem()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L80",
-      "community": 0,
+      "source_location": "L82",
+      "community": 1,
       "norm_label": "filestem()"
     },
     {
@@ -548,8 +548,8 @@
       "label": "line()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L88",
-      "community": 0,
+      "source_location": "L90",
+      "community": 1,
       "norm_label": "line()"
     },
     {
@@ -557,8 +557,8 @@
       "label": "itoa()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L92",
-      "community": 0,
+      "source_location": "L94",
+      "community": 1,
       "norm_label": "itoa()"
     },
     {
@@ -566,8 +566,8 @@
       "label": "builder",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L107",
-      "community": 0,
+      "source_location": "L109",
+      "community": 1,
       "norm_label": "builder"
     },
     {
@@ -575,8 +575,8 @@
       "label": "newBuilder()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L115",
-      "community": 0,
+      "source_location": "L117",
+      "community": 1,
       "norm_label": "newbuilder()"
     },
     {
@@ -584,8 +584,8 @@
       "label": "builder.addNode()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L122",
-      "community": 0,
+      "source_location": "L124",
+      "community": 1,
       "norm_label": "builder.addnode()"
     },
     {
@@ -593,8 +593,8 @@
       "label": "builder.contains()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L132",
-      "community": 0,
+      "source_location": "L134",
+      "community": 1,
       "norm_label": "builder.contains()"
     },
     {
@@ -602,8 +602,8 @@
       "label": "builder.def()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L141",
-      "community": 0,
+      "source_location": "L143",
+      "community": 1,
       "norm_label": "builder.def()"
     },
     {
@@ -611,8 +611,8 @@
       "label": "builder.call()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L147",
-      "community": 0,
+      "source_location": "L149",
+      "community": 1,
       "norm_label": "builder.call()"
     },
     {
@@ -620,8 +620,8 @@
       "label": "builder.imp()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L154",
-      "community": 0,
+      "source_location": "L156",
+      "community": 1,
       "norm_label": "builder.imp()"
     },
     {
@@ -629,8 +629,8 @@
       "label": "walk()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L162",
-      "community": 0,
+      "source_location": "L164",
+      "community": 1,
       "norm_label": "walk()"
     },
     {
@@ -639,7 +639,7 @@
       "file_type": "code",
       "source_file": "internal/extract/extract_test.go",
       "source_location": "L1",
-      "community": 4,
+      "community": 6,
       "norm_label": "extract_test.go"
     },
     {
@@ -648,7 +648,7 @@
       "file_type": "code",
       "source_file": "internal/extract/extract_test.go",
       "source_location": "L5",
-      "community": 4,
+      "community": 6,
       "norm_label": "testextractandresolve()"
     },
     {
@@ -657,7 +657,7 @@
       "file_type": "code",
       "source_file": "internal/extract/golang.go",
       "source_location": "L1",
-      "community": 0,
+      "community": 1,
       "norm_label": "golang.go"
     },
     {
@@ -666,7 +666,7 @@
       "file_type": "code",
       "source_file": "internal/extract/golang.go",
       "source_location": "L14",
-      "community": 0,
+      "community": 1,
       "norm_label": "extractgo()"
     },
     {
@@ -675,7 +675,7 @@
       "file_type": "code",
       "source_file": "internal/extract/golang.go",
       "source_location": "L35",
-      "community": 0,
+      "community": 1,
       "norm_label": "builder.gofunc()"
     },
     {
@@ -684,7 +684,7 @@
       "file_type": "code",
       "source_file": "internal/extract/golang.go",
       "source_location": "L45",
-      "community": 0,
+      "community": 1,
       "norm_label": "builder.gomethod()"
     },
     {
@@ -693,7 +693,7 @@
       "file_type": "code",
       "source_file": "internal/extract/golang.go",
       "source_location": "L63",
-      "community": 0,
+      "community": 1,
       "norm_label": "goreceivertype()"
     },
     {
@@ -702,7 +702,7 @@
       "file_type": "code",
       "source_file": "internal/extract/golang.go",
       "source_location": "L82",
-      "community": 0,
+      "community": 1,
       "norm_label": "builder.gotypes()"
     },
     {
@@ -711,7 +711,7 @@
       "file_type": "code",
       "source_file": "internal/extract/golang.go",
       "source_location": "L96",
-      "community": 0,
+      "community": 1,
       "norm_label": "builder.goimports()"
     },
     {
@@ -720,7 +720,7 @@
       "file_type": "code",
       "source_file": "internal/extract/golang.go",
       "source_location": "L110",
-      "community": 0,
+      "community": 1,
       "norm_label": "builder.gocalls()"
     },
     {
@@ -729,7 +729,7 @@
       "file_type": "code",
       "source_file": "internal/extract/golang.go",
       "source_location": "L134",
-      "community": 0,
+      "community": 1,
       "norm_label": "fieldtext()"
     },
     {
@@ -738,7 +738,7 @@
       "file_type": "code",
       "source_file": "internal/extract/golang.go",
       "source_location": "L141",
-      "community": 0,
+      "community": 1,
       "norm_label": "unquote()"
     },
     {
@@ -747,7 +747,7 @@
       "file_type": "code",
       "source_file": "internal/extract/javascript.go",
       "source_location": "L1",
-      "community": 0,
+      "community": 1,
       "norm_label": "javascript.go"
     },
     {
@@ -756,7 +756,7 @@
       "file_type": "code",
       "source_file": "internal/extract/javascript.go",
       "source_location": "L15",
-      "community": 0,
+      "community": 1,
       "norm_label": "extractjs()"
     },
     {
@@ -765,7 +765,7 @@
       "file_type": "code",
       "source_file": "internal/extract/javascript.go",
       "source_location": "L27",
-      "community": 0,
+      "community": 1,
       "norm_label": "builder.jsstatement()"
     },
     {
@@ -774,7 +774,7 @@
       "file_type": "code",
       "source_file": "internal/extract/javascript.go",
       "source_location": "L48",
-      "community": 0,
+      "community": 1,
       "norm_label": "builder.jsfunc()"
     },
     {
@@ -783,7 +783,7 @@
       "file_type": "code",
       "source_file": "internal/extract/javascript.go",
       "source_location": "L58",
-      "community": 0,
+      "community": 1,
       "norm_label": "builder.jsclass()"
     },
     {
@@ -792,7 +792,7 @@
       "file_type": "code",
       "source_file": "internal/extract/javascript.go",
       "source_location": "L90",
-      "community": 0,
+      "community": 1,
       "norm_label": "builder.jsnamedtype()"
     },
     {
@@ -801,7 +801,7 @@
       "file_type": "code",
       "source_file": "internal/extract/javascript.go",
       "source_location": "L100",
-      "community": 0,
+      "community": 1,
       "norm_label": "builder.jsvarfuncs()"
     },
     {
@@ -810,7 +810,7 @@
       "file_type": "code",
       "source_file": "internal/extract/javascript.go",
       "source_location": "L120",
-      "community": 0,
+      "community": 1,
       "norm_label": "builder.jscalls()"
     },
     {
@@ -819,7 +819,7 @@
       "file_type": "code",
       "source_file": "internal/extract/resolve.go",
       "source_location": "L1",
-      "community": 4,
+      "community": 3,
       "norm_label": "resolve.go"
     },
     {
@@ -828,7 +828,7 @@
       "file_type": "code",
       "source_file": "internal/extract/resolve.go",
       "source_location": "L18",
-      "community": 4,
+      "community": 6,
       "norm_label": "resolve()"
     },
     {
@@ -837,8 +837,98 @@
       "file_type": "code",
       "source_file": "internal/extract/resolve.go",
       "source_location": "L88",
-      "community": 4,
+      "community": 6,
       "norm_label": "resolverelimport()"
+    },
+    {
+      "id": "internal_extract_terraform_go",
+      "label": "terraform.go",
+      "file_type": "code",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L1",
+      "community": 8,
+      "norm_label": "terraform.go"
+    },
+    {
+      "id": "extract_terraform_extractterraform",
+      "label": "extractTerraform()",
+      "file_type": "code",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L23",
+      "community": 8,
+      "norm_label": "extractterraform()"
+    },
+    {
+      "id": "extract_terraform_tfblock",
+      "label": "tfBlock()",
+      "file_type": "code",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L136",
+      "community": 8,
+      "norm_label": "tfblock()"
+    },
+    {
+      "id": "extract_terraform_tfrefaddress",
+      "label": "tfRefAddress()",
+      "file_type": "code",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L155",
+      "community": 8,
+      "norm_label": "tfrefaddress()"
+    },
+    {
+      "id": "extract_terraform_firstident",
+      "label": "firstIdent()",
+      "file_type": "code",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L198",
+      "community": 8,
+      "norm_label": "firstident()"
+    },
+    {
+      "id": "extract_terraform_tfchild",
+      "label": "tfChild()",
+      "file_type": "code",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L208",
+      "community": 8,
+      "norm_label": "tfchild()"
+    },
+    {
+      "id": "extract_terraform_tfchildnode",
+      "label": "tfChildNode()",
+      "file_type": "code",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L215",
+      "community": 8,
+      "norm_label": "tfchildnode()"
+    },
+    {
+      "id": "extract_terraform_dirscope",
+      "label": "dirScope()",
+      "file_type": "code",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L225",
+      "community": 8,
+      "norm_label": "dirscope()"
+    },
+    {
+      "id": "internal_extract_terraform_test_go",
+      "label": "terraform_test.go",
+      "file_type": "code",
+      "source_file": "internal/extract/terraform_test.go",
+      "source_location": "L1",
+      "community": 6,
+      "norm_label": "terraform_test.go"
+    },
+    {
+      "id": "extract_terraform_test_testextractterraform",
+      "label": "TestExtractTerraform()",
+      "file_type": "code",
+      "source_file": "internal/extract/terraform_test.go",
+      "source_location": "L5",
+      "community": 6,
+      "norm_label": "testextractterraform()"
     },
     {
       "id": "internal_extract_testdata_proj_util_math_go",
@@ -846,7 +936,7 @@
       "file_type": "code",
       "source_file": "internal/extract/testdata/proj/util/math.go",
       "source_location": "L1",
-      "community": 9,
+      "community": 11,
       "norm_label": "math.go"
     },
     {
@@ -855,7 +945,7 @@
       "file_type": "code",
       "source_file": "internal/extract/testdata/proj/util/math.go",
       "source_location": "L3",
-      "community": 9,
+      "community": 11,
       "norm_label": "calc"
     },
     {
@@ -864,7 +954,7 @@
       "file_type": "code",
       "source_file": "internal/extract/testdata/proj/util/math.go",
       "source_location": "L5",
-      "community": 9,
+      "community": 11,
       "norm_label": "add()"
     },
     {
@@ -873,7 +963,7 @@
       "file_type": "code",
       "source_file": "internal/extract/testdata/proj/util/math.go",
       "source_location": "L7",
-      "community": 9,
+      "community": 11,
       "norm_label": "calc.sum()"
     },
     {
@@ -882,7 +972,7 @@
       "file_type": "code",
       "source_file": "internal/extract/testdata/proj/web/server.ts",
       "source_location": "L1",
-      "community": 8,
+      "community": 10,
       "norm_label": "server.ts"
     },
     {
@@ -891,7 +981,7 @@
       "file_type": "code",
       "source_file": "internal/extract/testdata/proj/web/server.ts",
       "source_location": "L4",
-      "community": 8,
+      "community": 10,
       "norm_label": "server"
     },
     {
@@ -900,7 +990,7 @@
       "file_type": "code",
       "source_file": "internal/extract/testdata/proj/web/server.ts",
       "source_location": "L5",
-      "community": 8,
+      "community": 10,
       "norm_label": "server.start()"
     },
     {
@@ -909,8 +999,71 @@
       "file_type": "code",
       "source_file": "internal/extract/testdata/proj/web/server.ts",
       "source_location": "L10",
-      "community": 8,
+      "community": 10,
       "norm_label": "boot()"
+    },
+    {
+      "id": "internal_extract_testdata_tf_main_tf",
+      "label": "main.tf",
+      "file_type": "code",
+      "source_file": "internal/extract/testdata/tf/main.tf",
+      "source_location": "L1",
+      "community": 9,
+      "norm_label": "main.tf"
+    },
+    {
+      "id": "tf_var_region",
+      "label": "var.region",
+      "file_type": "code",
+      "source_file": "internal/extract/testdata/tf/main.tf",
+      "source_location": "L1",
+      "community": 9,
+      "norm_label": "var.region"
+    },
+    {
+      "id": "tf_data_aws_ami_ubuntu",
+      "label": "data.aws_ami.ubuntu",
+      "file_type": "code",
+      "source_file": "internal/extract/testdata/tf/main.tf",
+      "source_location": "L3",
+      "community": 9,
+      "norm_label": "data.aws_ami.ubuntu"
+    },
+    {
+      "id": "tf_aws_vpc_main",
+      "label": "aws_vpc.main",
+      "file_type": "code",
+      "source_file": "internal/extract/testdata/tf/main.tf",
+      "source_location": "L5",
+      "community": 9,
+      "norm_label": "aws_vpc.main"
+    },
+    {
+      "id": "tf_aws_instance_web",
+      "label": "aws_instance.web",
+      "file_type": "code",
+      "source_file": "internal/extract/testdata/tf/main.tf",
+      "source_location": "L7",
+      "community": 9,
+      "norm_label": "aws_instance.web"
+    },
+    {
+      "id": "internal_extract_testdata_tf_outputs_tf",
+      "label": "outputs.tf",
+      "file_type": "code",
+      "source_file": "internal/extract/testdata/tf/outputs.tf",
+      "source_location": "L1",
+      "community": 9,
+      "norm_label": "outputs.tf"
+    },
+    {
+      "id": "tf_output_instance_id",
+      "label": "output.instance_id",
+      "file_type": "code",
+      "source_file": "internal/extract/testdata/tf/outputs.tf",
+      "source_location": "L1",
+      "community": 9,
+      "norm_label": "output.instance_id"
     },
     {
       "id": "internal_graph_build_go",
@@ -918,7 +1071,7 @@
       "file_type": "code",
       "source_file": "internal/graph/build.go",
       "source_location": "L1",
-      "community": 4,
+      "community": 0,
       "norm_label": "build.go"
     },
     {
@@ -927,7 +1080,7 @@
       "file_type": "code",
       "source_file": "internal/graph/build.go",
       "source_location": "L27",
-      "community": 1,
+      "community": 0,
       "norm_label": "build()"
     },
     {
@@ -936,7 +1089,7 @@
       "file_type": "code",
       "source_file": "internal/graph/build.go",
       "source_location": "L76",
-      "community": 4,
+      "community": 0,
       "norm_label": "crosslanguage()"
     },
     {
@@ -945,7 +1098,7 @@
       "file_type": "code",
       "source_file": "internal/graph/build_test.go",
       "source_location": "L1",
-      "community": 4,
+      "community": 0,
       "norm_label": "build_test.go"
     },
     {
@@ -954,7 +1107,7 @@
       "file_type": "code",
       "source_file": "internal/graph/build_test.go",
       "source_location": "L9",
-      "community": 1,
+      "community": 0,
       "norm_label": "testbuilddropsdanglingandcrosslangcalls()"
     },
     {
@@ -963,7 +1116,7 @@
       "file_type": "code",
       "source_file": "internal/graph/build_test.go",
       "source_location": "L37",
-      "community": 1,
+      "community": 0,
       "norm_label": "testbuildkeepsbothdirections()"
     },
     {
@@ -972,7 +1125,7 @@
       "file_type": "code",
       "source_file": "internal/idutil/idutil.go",
       "source_location": "L1",
-      "community": 7,
+      "community": 6,
       "norm_label": "idutil.go"
     },
     {
@@ -981,7 +1134,7 @@
       "file_type": "code",
       "source_file": "internal/idutil/idutil.go",
       "source_location": "L27",
-      "community": 0,
+      "community": 1,
       "norm_label": "makeid()"
     },
     {
@@ -990,7 +1143,7 @@
       "file_type": "code",
       "source_file": "internal/idutil/idutil.go",
       "source_location": "L42",
-      "community": 7,
+      "community": 6,
       "norm_label": "normalizeid()"
     },
     {
@@ -999,7 +1152,7 @@
       "file_type": "code",
       "source_file": "internal/idutil/idutil.go",
       "source_location": "L44",
-      "community": 7,
+      "community": 6,
       "norm_label": "clean()"
     },
     {
@@ -1008,7 +1161,7 @@
       "file_type": "code",
       "source_file": "internal/idutil/idutil_test.go",
       "source_location": "L1",
-      "community": 7,
+      "community": 6,
       "norm_label": "idutil_test.go"
     },
     {
@@ -1017,7 +1170,7 @@
       "file_type": "code",
       "source_file": "internal/idutil/idutil_test.go",
       "source_location": "L5",
-      "community": 7,
+      "community": 6,
       "norm_label": "testmakeid()"
     },
     {
@@ -1026,7 +1179,7 @@
       "file_type": "code",
       "source_file": "internal/idutil/idutil_test.go",
       "source_location": "L25",
-      "community": 7,
+      "community": 6,
       "norm_label": "testnormalizeidmatchesmakeid()"
     },
     {
@@ -1035,7 +1188,7 @@
       "file_type": "code",
       "source_file": "internal/model/model.go",
       "source_location": "L1",
-      "community": 1,
+      "community": 0,
       "norm_label": "model.go"
     },
     {
@@ -1044,7 +1197,7 @@
       "file_type": "code",
       "source_file": "internal/model/model.go",
       "source_location": "L9",
-      "community": 1,
+      "community": 0,
       "norm_label": "node"
     },
     {
@@ -1053,7 +1206,7 @@
       "file_type": "code",
       "source_file": "internal/model/model.go",
       "source_location": "L20",
-      "community": 1,
+      "community": 0,
       "norm_label": "edge"
     },
     {
@@ -1062,7 +1215,7 @@
       "file_type": "code",
       "source_file": "internal/model/model.go",
       "source_location": "L32",
-      "community": 1,
+      "community": 0,
       "norm_label": "extraction"
     },
     {
@@ -1071,7 +1224,7 @@
       "file_type": "code",
       "source_file": "internal/model/model.go",
       "source_location": "L40",
-      "community": 1,
+      "community": 0,
       "norm_label": "graph"
     },
     {
@@ -1080,7 +1233,7 @@
       "file_type": "code",
       "source_file": "internal/model/model.go",
       "source_location": "L49",
-      "community": 1,
+      "community": 0,
       "norm_label": "new()"
     },
     {
@@ -1089,7 +1242,7 @@
       "file_type": "code",
       "source_file": "internal/model/model.go",
       "source_location": "L58",
-      "community": 1,
+      "community": 0,
       "norm_label": "graph.addnode()"
     },
     {
@@ -1098,7 +1251,7 @@
       "file_type": "code",
       "source_file": "internal/model/model.go",
       "source_location": "L70",
-      "community": 1,
+      "community": 0,
       "norm_label": "graph.addedge()"
     },
     {
@@ -1107,7 +1260,7 @@
       "file_type": "code",
       "source_file": "internal/model/model.go",
       "source_location": "L89",
-      "community": 1,
+      "community": 0,
       "norm_label": "graph.hasedge()"
     },
     {
@@ -1116,7 +1269,7 @@
       "file_type": "code",
       "source_file": "internal/model/model.go",
       "source_location": "L92",
-      "community": 3,
+      "community": 2,
       "norm_label": "graph.degree()"
     },
     {
@@ -1125,7 +1278,7 @@
       "file_type": "code",
       "source_file": "internal/model/model.go",
       "source_location": "L95",
-      "community": 1,
+      "community": 0,
       "norm_label": "graph.neighbors()"
     },
     {
@@ -1134,7 +1287,7 @@
       "file_type": "code",
       "source_file": "internal/model/model.go",
       "source_location": "L105",
-      "community": 1,
+      "community": 0,
       "norm_label": "graph.nodeids()"
     },
     {
@@ -1143,7 +1296,7 @@
       "file_type": "code",
       "source_file": "internal/model/model.go",
       "source_location": "L108",
-      "community": 1,
+      "community": 0,
       "norm_label": "graph.numnodes()"
     },
     {
@@ -1152,7 +1305,7 @@
       "file_type": "code",
       "source_file": "internal/model/model.go",
       "source_location": "L111",
-      "community": 1,
+      "community": 0,
       "norm_label": "graph.numedges()"
     },
     {
@@ -1161,7 +1314,7 @@
       "file_type": "code",
       "source_file": "internal/model/model.go",
       "source_location": "L114",
-      "community": 1,
+      "community": 2,
       "norm_label": "graph.edges()"
     },
     {
@@ -1170,7 +1323,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L1",
-      "community": 2,
+      "community": 4,
       "norm_label": "query.go"
     },
     {
@@ -1179,7 +1332,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L19",
-      "community": 2,
+      "community": 4,
       "norm_label": "graph"
     },
     {
@@ -1188,7 +1341,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L28",
-      "community": 2,
+      "community": 4,
       "norm_label": "node"
     },
     {
@@ -1197,7 +1350,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L39",
-      "community": 2,
+      "community": 4,
       "norm_label": "link"
     },
     {
@@ -1206,7 +1359,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L48",
-      "community": 2,
+      "community": 4,
       "norm_label": "load()"
     },
     {
@@ -1215,7 +1368,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L79",
-      "community": 2,
+      "community": 4,
       "norm_label": "match"
     },
     {
@@ -1224,7 +1377,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L85",
-      "community": 2,
+      "community": 4,
       "norm_label": "query()"
     },
     {
@@ -1233,7 +1386,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L102",
-      "community": 2,
+      "community": 4,
       "norm_label": "neighbor"
     },
     {
@@ -1242,7 +1395,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L107",
-      "community": 2,
+      "community": 4,
       "norm_label": "explanation"
     },
     {
@@ -1251,7 +1404,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L115",
-      "community": 2,
+      "community": 4,
       "norm_label": "explain()"
     },
     {
@@ -1260,7 +1413,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L149",
-      "community": 2,
+      "community": 4,
       "norm_label": "path()"
     },
     {
@@ -1269,7 +1422,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L195",
-      "community": 2,
+      "community": 4,
       "norm_label": "graph.resolve()"
     },
     {
@@ -1278,7 +1431,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L218",
-      "community": 2,
+      "community": 4,
       "norm_label": "loc()"
     },
     {
@@ -1287,7 +1440,7 @@
       "file_type": "code",
       "source_file": "internal/query/query_test.go",
       "source_location": "L1",
-      "community": 2,
+      "community": 4,
       "norm_label": "query_test.go"
     },
     {
@@ -1296,7 +1449,7 @@
       "file_type": "code",
       "source_file": "internal/query/query_test.go",
       "source_location": "L22",
-      "community": 2,
+      "community": 4,
       "norm_label": "loadsample()"
     },
     {
@@ -1305,7 +1458,7 @@
       "file_type": "code",
       "source_file": "internal/query/query_test.go",
       "source_location": "L35",
-      "community": 2,
+      "community": 4,
       "norm_label": "testquerymatches()"
     },
     {
@@ -1314,7 +1467,7 @@
       "file_type": "code",
       "source_file": "internal/query/query_test.go",
       "source_location": "L49",
-      "community": 2,
+      "community": 4,
       "norm_label": "testexplainneighbors()"
     },
     {
@@ -1323,7 +1476,7 @@
       "file_type": "code",
       "source_file": "internal/query/query_test.go",
       "source_location": "L70",
-      "community": 2,
+      "community": 4,
       "norm_label": "testpath()"
     },
     {
@@ -1332,7 +1485,7 @@
       "file_type": "code",
       "source_file": "internal/report/report.go",
       "source_location": "L1",
-      "community": 3,
+      "community": 2,
       "norm_label": "report.go"
     },
     {
@@ -1341,7 +1494,7 @@
       "file_type": "code",
       "source_file": "internal/report/report.go",
       "source_location": "L19",
-      "community": 3,
+      "community": 2,
       "norm_label": "generate()"
     },
     {
@@ -1350,7 +1503,7 @@
       "file_type": "code",
       "source_file": "internal/report/report.go",
       "source_location": "L95",
-      "community": 3,
+      "community": 2,
       "norm_label": "confidencebreakdown()"
     },
     {
@@ -1359,7 +1512,7 @@
       "file_type": "code",
       "source_file": "internal/report/report.go",
       "source_location": "L112",
-      "community": 3,
+      "community": 2,
       "norm_label": "reallabels()"
     },
     {
@@ -1368,7 +1521,7 @@
       "file_type": "code",
       "source_file": "internal/report/report.go",
       "source_location": "L124",
-      "community": 3,
+      "community": 2,
       "norm_label": "sortedkeys()"
     },
     {
@@ -1377,7 +1530,7 @@
       "file_type": "code",
       "source_file": "internal/report/report.go",
       "source_location": "L133",
-      "community": 3,
+      "community": 2,
       "norm_label": "base()"
     },
     {
@@ -1386,7 +1539,7 @@
       "file_type": "code",
       "source_file": "internal/report/report.go",
       "source_location": "L140",
-      "community": 3,
+      "community": 2,
       "norm_label": "short()"
     },
     {
@@ -1395,7 +1548,7 @@
       "file_type": "code",
       "source_file": "internal/security/security.go",
       "source_location": "L1",
-      "community": 6,
+      "community": 3,
       "norm_label": "security.go"
     },
     {
@@ -1404,7 +1557,7 @@
       "file_type": "code",
       "source_file": "internal/security/security.go",
       "source_location": "L31",
-      "community": 6,
+      "community": 3,
       "norm_label": "validateurl()"
     },
     {
@@ -1413,7 +1566,7 @@
       "file_type": "code",
       "source_file": "internal/security/security.go",
       "source_location": "L61",
-      "community": 6,
+      "community": 3,
       "norm_label": "isblockedip()"
     },
     {
@@ -1422,7 +1575,7 @@
       "file_type": "code",
       "source_file": "internal/security/security.go",
       "source_location": "L66",
-      "community": 6,
+      "community": 3,
       "norm_label": "mustcidr()"
     },
     {
@@ -1431,7 +1584,7 @@
       "file_type": "code",
       "source_file": "internal/security/security.go",
       "source_location": "L77",
-      "community": 6,
+      "community": 3,
       "norm_label": "validategraphpath()"
     },
     {
@@ -1440,7 +1593,7 @@
       "file_type": "code",
       "source_file": "internal/security/security.go",
       "source_location": "L100",
-      "community": 2,
+      "community": 4,
       "norm_label": "checkgraphfilesize()"
     },
     {
@@ -1449,7 +1602,7 @@
       "file_type": "code",
       "source_file": "internal/security/security.go",
       "source_location": "L115",
-      "community": 6,
+      "community": 7,
       "norm_label": "sanitizelabel()"
     },
     {
@@ -1458,7 +1611,7 @@
       "file_type": "code",
       "source_file": "internal/security/security_test.go",
       "source_location": "L1",
-      "community": 6,
+      "community": 3,
       "norm_label": "security_test.go"
     },
     {
@@ -1467,7 +1620,7 @@
       "file_type": "code",
       "source_file": "internal/security/security_test.go",
       "source_location": "L9",
-      "community": 6,
+      "community": 3,
       "norm_label": "testvalidateurlscheme()"
     },
     {
@@ -1476,7 +1629,7 @@
       "file_type": "code",
       "source_file": "internal/security/security_test.go",
       "source_location": "L17",
-      "community": 6,
+      "community": 3,
       "norm_label": "testvalidateurlblocksloopback()"
     },
     {
@@ -1485,7 +1638,7 @@
       "file_type": "code",
       "source_file": "internal/security/security_test.go",
       "source_location": "L24",
-      "community": 6,
+      "community": 3,
       "norm_label": "testvalidategraphpathcontainment()"
     },
     {
@@ -1494,7 +1647,7 @@
       "file_type": "code",
       "source_file": "internal/security/security_test.go",
       "source_location": "L38",
-      "community": 6,
+      "community": 7,
       "norm_label": "testsanitizelabel()"
     },
     {
@@ -1502,7 +1655,7 @@
       "label": "fmt",
       "file_type": "concept",
       "source_file": "",
-      "community": 6,
+      "community": 2,
       "norm_label": "fmt"
     },
     {
@@ -1510,7 +1663,7 @@
       "label": "os",
       "file_type": "concept",
       "source_file": "",
-      "community": 6,
+      "community": 3,
       "norm_label": "os"
     },
     {
@@ -1518,7 +1671,7 @@
       "label": "os/exec",
       "file_type": "concept",
       "source_file": "",
-      "community": 2,
+      "community": 5,
       "norm_label": "os/exec"
     },
     {
@@ -1526,7 +1679,7 @@
       "label": "path/filepath",
       "file_type": "concept",
       "source_file": "",
-      "community": 4,
+      "community": 3,
       "norm_label": "path/filepath"
     },
     {
@@ -1534,7 +1687,7 @@
       "label": "strings",
       "file_type": "concept",
       "source_file": "",
-      "community": 7,
+      "community": 3,
       "norm_label": "strings"
     },
     {
@@ -1542,7 +1695,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/cluster",
       "file_type": "concept",
       "source_file": "",
-      "community": 5,
+      "community": 2,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/cluster"
     },
     {
@@ -1550,7 +1703,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/detect",
       "file_type": "concept",
       "source_file": "",
-      "community": 2,
+      "community": 5,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/detect"
     },
     {
@@ -1558,7 +1711,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/export",
       "file_type": "concept",
       "source_file": "",
-      "community": 2,
+      "community": 5,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/export"
     },
     {
@@ -1566,7 +1719,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/extract",
       "file_type": "concept",
       "source_file": "",
-      "community": 2,
+      "community": 5,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/extract"
     },
     {
@@ -1574,7 +1727,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/graph",
       "file_type": "concept",
       "source_file": "",
-      "community": 2,
+      "community": 5,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/graph"
     },
     {
@@ -1582,7 +1735,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/query",
       "file_type": "concept",
       "source_file": "",
-      "community": 2,
+      "community": 5,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/query"
     },
     {
@@ -1590,7 +1743,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/report",
       "file_type": "concept",
       "source_file": "",
-      "community": 2,
+      "community": 5,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/report"
     },
     {
@@ -1598,7 +1751,7 @@
       "label": "sort",
       "file_type": "concept",
       "source_file": "",
-      "community": 4,
+      "community": 0,
       "norm_label": "sort"
     },
     {
@@ -1606,7 +1759,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/model",
       "file_type": "concept",
       "source_file": "",
-      "community": 4,
+      "community": 0,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/model"
     },
     {
@@ -1614,7 +1767,7 @@
       "label": "golang.org/x/exp/rand",
       "file_type": "concept",
       "source_file": "",
-      "community": 1,
+      "community": 0,
       "norm_label": "golang.org/x/exp/rand"
     },
     {
@@ -1622,7 +1775,7 @@
       "label": "gonum.org/v1/gonum/graph/community",
       "file_type": "concept",
       "source_file": "",
-      "community": 1,
+      "community": 0,
       "norm_label": "gonum.org/v1/gonum/graph/community"
     },
     {
@@ -1630,7 +1783,7 @@
       "label": "gonum.org/v1/gonum/graph/simple",
       "file_type": "concept",
       "source_file": "",
-      "community": 1,
+      "community": 0,
       "norm_label": "gonum.org/v1/gonum/graph/simple"
     },
     {
@@ -1638,7 +1791,7 @@
       "label": "io/fs",
       "file_type": "concept",
       "source_file": "",
-      "community": 7,
+      "community": 3,
       "norm_label": "io/fs"
     },
     {
@@ -1646,7 +1799,7 @@
       "label": "regexp",
       "file_type": "concept",
       "source_file": "",
-      "community": 7,
+      "community": 3,
       "norm_label": "regexp"
     },
     {
@@ -1654,7 +1807,7 @@
       "label": "encoding/json",
       "file_type": "concept",
       "source_file": "",
-      "community": 5,
+      "community": 7,
       "norm_label": "encoding/json"
     },
     {
@@ -1662,7 +1815,7 @@
       "label": "unicode",
       "file_type": "concept",
       "source_file": "",
-      "community": 5,
+      "community": 0,
       "norm_label": "unicode"
     },
     {
@@ -1670,7 +1823,7 @@
       "label": "golang.org/x/text/unicode/norm",
       "file_type": "concept",
       "source_file": "",
-      "community": 7,
+      "community": 6,
       "norm_label": "golang.org/x/text/unicode/norm"
     },
     {
@@ -1678,7 +1831,7 @@
       "label": "math",
       "file_type": "concept",
       "source_file": "",
-      "community": 5,
+      "community": 7,
       "norm_label": "math"
     },
     {
@@ -1686,7 +1839,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/security",
       "file_type": "concept",
       "source_file": "",
-      "community": 5,
+      "community": 7,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/security"
     },
     {
@@ -1694,7 +1847,7 @@
       "label": "unsafe",
       "file_type": "concept",
       "source_file": "",
-      "community": 0,
+      "community": 1,
       "norm_label": "unsafe"
     },
     {
@@ -1702,7 +1855,7 @@
       "label": "github.com/tree-sitter/go-tree-sitter",
       "file_type": "concept",
       "source_file": "",
-      "community": 0,
+      "community": 1,
       "norm_label": "github.com/tree-sitter/go-tree-sitter"
     },
     {
@@ -1710,7 +1863,7 @@
       "label": "github.com/tree-sitter/tree-sitter-javascript/bindings/go",
       "file_type": "concept",
       "source_file": "",
-      "community": 0,
+      "community": 1,
       "norm_label": "github.com/tree-sitter/tree-sitter-javascript/bindings/go"
     },
     {
@@ -1718,7 +1871,7 @@
       "label": "github.com/tree-sitter/tree-sitter-typescript/bindings/go",
       "file_type": "concept",
       "source_file": "",
-      "community": 0,
+      "community": 1,
       "norm_label": "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
     },
     {
@@ -1726,7 +1879,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/idutil",
       "file_type": "concept",
       "source_file": "",
-      "community": 4,
+      "community": 3,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/idutil"
     },
     {
@@ -1734,7 +1887,7 @@
       "label": "testing",
       "file_type": "concept",
       "source_file": "",
-      "community": 4,
+      "community": 6,
       "norm_label": "testing"
     },
     {
@@ -1742,7 +1895,7 @@
       "label": "github.com/tree-sitter/tree-sitter-go/bindings/go",
       "file_type": "concept",
       "source_file": "",
-      "community": 0,
+      "community": 1,
       "norm_label": "github.com/tree-sitter/tree-sitter-go/bindings/go"
     },
     {
@@ -1750,15 +1903,23 @@
       "label": "path",
       "file_type": "concept",
       "source_file": "",
-      "community": 4,
+      "community": 3,
       "norm_label": "path"
+    },
+    {
+      "id": "github_com_tree_sitter_grammars_tree_sitter_hcl_bindings_go",
+      "label": "github.com/tree-sitter-grammars/tree-sitter-hcl/bindings/go",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 8,
+      "norm_label": "github.com/tree-sitter-grammars/tree-sitter-hcl/bindings/go"
     },
     {
       "id": "util_math",
       "label": "../util/math",
       "file_type": "concept",
       "source_file": "",
-      "community": 8,
+      "community": 10,
       "norm_label": "../util/math"
     },
     {
@@ -1766,7 +1927,7 @@
       "label": "express",
       "file_type": "concept",
       "source_file": "",
-      "community": 8,
+      "community": 10,
       "norm_label": "express"
     },
     {
@@ -1774,7 +1935,7 @@
       "label": "golang.org/x/text/cases",
       "file_type": "concept",
       "source_file": "",
-      "community": 7,
+      "community": 6,
       "norm_label": "golang.org/x/text/cases"
     },
     {
@@ -1782,7 +1943,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/analyze",
       "file_type": "concept",
       "source_file": "",
-      "community": 3,
+      "community": 2,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/analyze"
     },
     {
@@ -1790,7 +1951,7 @@
       "label": "net",
       "file_type": "concept",
       "source_file": "",
-      "community": 6,
+      "community": 3,
       "norm_label": "net"
     },
     {
@@ -1798,7 +1959,7 @@
       "label": "net/url",
       "file_type": "concept",
       "source_file": "",
-      "community": 6,
+      "community": 3,
       "norm_label": "net/url"
     }
   ],
@@ -2223,7 +2384,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/detect/detect.go",
-      "source_location": "L77",
+      "source_location": "L80",
       "confidence_score": 0.5
     },
     {
@@ -2403,7 +2564,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L142",
+      "source_location": "L144",
       "confidence_score": 0.5
     },
     {
@@ -2412,7 +2573,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L143",
+      "source_location": "L145",
       "confidence_score": 0.5
     },
     {
@@ -2434,12 +2595,21 @@
       "confidence_score": 0.5
     },
     {
+      "source": "extract_extract_file",
+      "target": "extract_terraform_extractterraform",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L64",
+      "confidence_score": 0.5
+    },
+    {
       "source": "extract_extract_line",
       "target": "extract_extract_itoa",
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L89",
+      "source_location": "L91",
       "confidence_score": 0.5
     },
     {
@@ -2448,7 +2618,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L118",
+      "source_location": "L120",
       "confidence_score": 0.5
     },
     {
@@ -2457,7 +2627,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L117",
+      "source_location": "L119",
       "confidence_score": 0.5
     },
     {
@@ -2466,7 +2636,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L116",
+      "source_location": "L118",
       "confidence_score": 0.5
     },
     {
@@ -3061,6 +3231,132 @@
       "confidence": "INFERRED",
       "source_file": "internal/extract/resolve.go",
       "source_location": "L66",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_terraform_extractterraform",
+      "target": "extract_extract_builder_def",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L92",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_terraform_extractterraform",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L68",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_terraform_extractterraform",
+      "target": "extract_extract_parseroot",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L24",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_terraform_extractterraform",
+      "target": "extract_extract_walk",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L51",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_terraform_extractterraform",
+      "target": "extract_terraform_dirscope",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L27",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_terraform_extractterraform",
+      "target": "extract_terraform_tfblock",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L87",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_terraform_extractterraform",
+      "target": "extract_terraform_tfchild",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L56",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_terraform_extractterraform",
+      "target": "extract_terraform_tfchildnode",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L78",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_terraform_extractterraform",
+      "target": "extract_terraform_tfrefaddress",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L63",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_terraform_extractterraform",
+      "target": "idutil_idutil_makeid",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L28",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_terraform_test_testextractterraform",
+      "target": "extract_extract_file",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/terraform_test.go",
+      "source_location": "L11",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_terraform_test_testextractterraform",
+      "target": "extract_resolve_resolve",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/terraform_test.go",
+      "source_location": "L17",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_terraform_tfchild",
+      "target": "extract_terraform_tfchildnode",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L209",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_terraform_tfrefaddress",
+      "target": "extract_terraform_firstident",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L156",
       "confidence_score": 0.5
     },
     {
@@ -3735,7 +4031,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/detect/detect.go",
-      "source_location": "L57",
+      "source_location": "L60",
       "confidence_score": 1
     },
     {
@@ -3744,7 +4040,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/detect/detect.go",
-      "source_location": "L86",
+      "source_location": "L89",
       "confidence_score": 1
     },
     {
@@ -4068,7 +4364,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L107",
+      "source_location": "L109",
       "confidence_score": 1
     },
     {
@@ -4077,7 +4373,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L122",
+      "source_location": "L124",
       "confidence_score": 1
     },
     {
@@ -4086,7 +4382,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L147",
+      "source_location": "L149",
       "confidence_score": 1
     },
     {
@@ -4095,7 +4391,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L132",
+      "source_location": "L134",
       "confidence_score": 1
     },
     {
@@ -4104,7 +4400,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L141",
+      "source_location": "L143",
       "confidence_score": 1
     },
     {
@@ -4113,7 +4409,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L154",
+      "source_location": "L156",
       "confidence_score": 1
     },
     {
@@ -4149,7 +4445,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L80",
+      "source_location": "L82",
       "confidence_score": 1
     },
     {
@@ -4167,7 +4463,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L92",
+      "source_location": "L94",
       "confidence_score": 1
     },
     {
@@ -4176,7 +4472,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L88",
+      "source_location": "L90",
       "confidence_score": 1
     },
     {
@@ -4185,7 +4481,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L115",
+      "source_location": "L117",
       "confidence_score": 1
     },
     {
@@ -4194,7 +4490,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L70",
+      "source_location": "L72",
       "confidence_score": 1
     },
     {
@@ -4212,7 +4508,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L162",
+      "source_location": "L164",
       "confidence_score": 1
     },
     {
@@ -4585,6 +4881,141 @@
       "confidence_score": 1
     },
     {
+      "source": "internal_extract_terraform_go",
+      "target": "extract_terraform_dirscope",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L225",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_terraform_go",
+      "target": "extract_terraform_extractterraform",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L23",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_terraform_go",
+      "target": "extract_terraform_firstident",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L198",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_terraform_go",
+      "target": "extract_terraform_tfblock",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L136",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_terraform_go",
+      "target": "extract_terraform_tfchild",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L208",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_terraform_go",
+      "target": "extract_terraform_tfchildnode",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L215",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_terraform_go",
+      "target": "extract_terraform_tfrefaddress",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L155",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_terraform_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_idutil",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L10",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_terraform_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_model",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L11",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_terraform_go",
+      "target": "github_com_tree_sitter_go_tree_sitter",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L8",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_terraform_go",
+      "target": "github_com_tree_sitter_grammars_tree_sitter_hcl_bindings_go",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L7",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_terraform_go",
+      "target": "path_filepath",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L4",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_terraform_go",
+      "target": "strings",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/terraform.go",
+      "source_location": "L5",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_terraform_test_go",
+      "target": "extract_terraform_test_testextractterraform",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/terraform_test.go",
+      "source_location": "L5",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_terraform_test_go",
+      "target": "testing",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/terraform_test.go",
+      "source_location": "L3",
+      "confidence_score": 1
+    },
+    {
       "source": "internal_extract_testdata_proj_util_math_go",
       "target": "util_math_add",
       "relation": "contains",
@@ -4645,6 +5076,51 @@
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/testdata/proj/web/server.ts",
       "source_location": "L4",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_tf_main_tf",
+      "target": "tf_aws_instance_web",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/tf/main.tf",
+      "source_location": "L7",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_tf_main_tf",
+      "target": "tf_aws_vpc_main",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/tf/main.tf",
+      "source_location": "L5",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_tf_main_tf",
+      "target": "tf_data_aws_ami_ubuntu",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/tf/main.tf",
+      "source_location": "L3",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_tf_main_tf",
+      "target": "tf_var_region",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/tf/main.tf",
+      "source_location": "L1",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_tf_outputs_tf",
+      "target": "tf_output_instance_id",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/tf/outputs.tf",
+      "source_location": "L1",
       "confidence_score": 1
     },
     {
@@ -5755,6 +6231,51 @@
       "confidence_score": 0.5
     },
     {
+      "source": "tf_aws_instance_web",
+      "target": "tf_aws_vpc_main",
+      "relation": "depends_on",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/tf/main.tf",
+      "source_location": "L11",
+      "confidence_score": 1
+    },
+    {
+      "source": "tf_aws_instance_web",
+      "target": "tf_aws_vpc_main",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/tf/main.tf",
+      "source_location": "L9",
+      "confidence_score": 1
+    },
+    {
+      "source": "tf_aws_instance_web",
+      "target": "tf_data_aws_ami_ubuntu",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/tf/main.tf",
+      "source_location": "L8",
+      "confidence_score": 1
+    },
+    {
+      "source": "tf_aws_instance_web",
+      "target": "tf_var_region",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/tf/main.tf",
+      "source_location": "L10",
+      "confidence_score": 1
+    },
+    {
+      "source": "tf_output_instance_id",
+      "target": "tf_aws_instance_web",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/tf/outputs.tf",
+      "source_location": "L1",
+      "confidence_score": 1
+    },
+    {
       "source": "util_math_calc_sum",
       "target": "util_math_add",
       "relation": "calls",
@@ -5783,5 +6304,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "f913680b0b1ca7607ea7dd57c72348f071a86873"
+  "built_at_commit": "1d387d950efaec305d3df8eed6a93cb4579927d2"
 }
