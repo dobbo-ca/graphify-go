@@ -10,12 +10,13 @@ import (
 
 type xy struct{ X, Y float64 }
 
-// Force-model constants mirror the vis forceAtlas2Based config that produced the
-// in-browser layout this replaced (gravitationalConstant -60, springLength 120,
-// springConstant 0.08, centralGravity 0.005, damping 0.4).
+// Force-model constants derive from the vis forceAtlas2Based config that produced
+// the in-browser layout this replaced (springLength 120, springConstant 0.08,
+// gravitationalConstant -60, centralGravity 0.005, damping 0.4), tuned a little
+// tighter (shorter edges, lighter repulsion) for a more compact result.
 const (
-	repK      = 60.0  // repulsion strength
-	springLen = 120.0 // ideal edge length
+	repK      = 42.0  // repulsion strength
+	springLen = 92.0  // ideal edge length
 	springK   = 0.08  // spring stiffness
 	centralG  = 0.02  // pull toward centre (contains stragglers)
 	damping   = 0.4   // velocity lost per step
