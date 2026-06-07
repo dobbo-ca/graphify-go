@@ -39,9 +39,9 @@ Roughly priority order.
 
 ### Language coverage
 - [x] **Terraform / HCL extractor** (done — higher priority than Python/Rust).
-- [ ] **Python extractor** (next, per original scope). Tree-sitter Python binding available.
-- [ ] **Rust extractor**. Tree-sitter Rust binding available.
-- [ ] Wire each into `detect.SupportedExtensions`, `extract.File` dispatch, and `langFamily` in `internal/graph/build.go`.
+- [x] **Python extractor** (functions, classes + methods, imports, calls). Tree-sitter Python `v0.25.0`.
+- [x] **Rust extractor** (functions, struct/enum/union/trait/type, impl methods, `use` imports, call + macro edges; descends into `mod`). Tree-sitter Rust `v0.24.2`.
+- [x] Wired each into `detect.SupportedExtensions`, `extract.File` dispatch (`langFamily` already had `.py`/`.rs`).
 
 ### Performance (original goal stage 3 — partly outstanding)
 - [ ] **Parallelize extraction.** `cmdBuild` extracts files sequentially; fan out across a worker pool (files are independent; `Resolve` already runs once afterward). Biggest easy win on large repos.
