@@ -31,7 +31,7 @@ simplest possible implementation, security-first, find performance wins.
 - [x] CI: `ci.yml` (build/vet/test) + `graph.yml` (regenerate + commit graph on merge to main).
 - [x] Claude skill (`skills/graphify/SKILL.md`) + "use the graph, not grep" block in `CLAUDE.md`.
 - [x] Release + Homebrew: `release.yml` (Uplift → cgo build on native macOS/Linux runners → GitHub release → repository_dispatch to `dobbo-ca/homebrew-taps`), `.cliff.toml`, `graphify version`. Formula template added to homebrew-taps.
-- [x] HTML viewer: aggregated community meta-graph for large graphs; degree-sized node view with `avoidOverlap` for small graphs; off-screen-solve-then-freeze (no spin); legend with show/hide; click-to-isolate-community.
+- [x] HTML viewer: node-level by default (matching the Python original) up to 5000 nodes — degree-sized nodes, live search, click-to-inspect panel with relation-grouped clickable neighbours, confidence-styled edges, community legend show/hide, neighbourhood highlight; off-screen-solve-then-freeze (no spin). Past 5000 nodes it degrades to a directory-named community overview that drills into a community's node-level subgraph (where Python errors out instead). See `docs/viewer-gaps.md`.
 
 ## Follow-ups
 
@@ -53,8 +53,8 @@ Roughly priority order.
 - [ ] Improve cross-file call resolution precision (current rule: same-file def, else unique global by name — ambiguous names are skipped).
 
 ### Viewer
-- [ ] Drill-down from a community circle (meta view) to that community's node-level subgraph.
-- [ ] Tune `metaThreshold` (currently 500) if the macro view kicks in too early/late.
+- [x] Drill-down from a community circle (meta view) to that community's node-level subgraph.
+- [x] Tune `metaThreshold` — raised 500 → 5000 to match the Python original's `MAX_NODES_FOR_VIZ`, so node-level is the default for real repos and the meta overview is only a >5000 fallback.
 
 ### Operational (release pipeline)
 - [ ] Confirm the GH App (`GH_PUB_APP_CLIENT_ID` / `GH_PUB_APP_PEM`) is installed on **graphify-go** and **homebrew-taps** and visible to graphify-go (needs org admin). Without it, `release.yml` and the tap dispatch can't run.

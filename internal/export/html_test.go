@@ -31,8 +31,12 @@ func TestToHTMLNodeLevelHooks(t *testing.T) {
 		`"Calls"`,             // outgoing relation group
 		`"Called by"`,         // incoming relation group
 		`"dashes":true`,       // INFERRED edge rendered dashed
-		`const META=false`,    // node-level view, not the meta aggregate
+		`const META=false`,                  // node-level view, not the meta aggregate
 		"3 nodes · 2 edges · 2 communities", // stats line
+		`smooth:{type:"continuous"`,         // small graph keeps curved edges
+		`iterations:300`,                    // and the full stabilization budget
+		`"x":`,                              // precomputed layout coordinates baked in
+		`function applyView`,                // physics-off render path
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("HTML missing %q", want)
@@ -80,7 +84,9 @@ func TestToHTMLMetaDrilldown(t *testing.T) {
 		`id="back"`,              // back-to-overview control
 		`"pkg/alpha"`,            // community named by dominant directory (legend + meta label + NAME map)
 		`"pkg/beta"`,
-		`"from":"n0"`, // node-level (SUB) edges emitted for the drill-down
+		`"from":"n0"`,    // node-level (SUB) edges emitted for the drill-down
+		`smooth:false`,   // big graph drops curved edges for speed
+		`iterations:150`, // and trims the stabilization budget
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("HTML missing %q", want)
