@@ -25,6 +25,8 @@ jobs:
         with:
           app-id: ${{ vars.GH_PUB_APP_CLIENT_ID }}
           private-key: ${{ secrets.GH_PUB_APP_PEM }}
+          owner: dobbo-ca
+          repositories: graphify-go
 
       - name: Checkout
         uses: actions/checkout@v4
