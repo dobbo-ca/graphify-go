@@ -44,7 +44,7 @@ Roughly priority order.
 - [ ] Wire each into `detect.SupportedExtensions`, `extract.File` dispatch, and `langFamily` in `internal/graph/build.go`.
 
 ### Performance (original goal stage 3 — partly outstanding)
-- [ ] **Parallelize extraction.** `cmdBuild` extracts files sequentially; fan out across a worker pool (files are independent; `Resolve` already runs once afterward). Biggest easy win on large repos.
+- [x] **Parallelize extraction.** `cmdBuild` fans out `extract.File` across a `runtime.NumCPU()` worker pool (`extractAll`); fixed result slots preserve file order so graph output stays byte-identical to the sequential path.
 - [ ] **Incremental rebuild** (`graphify update`): re-extract only changed files and merge into the existing `graph.json`, instead of a full rebuild. The original has `build_merge` + a file watcher.
 
 ### Correctness / coverage

@@ -9,7 +9,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/dobbo-ca/graphify-go/internal/cluster"
 	"github.com/dobbo-ca/graphify-go/internal/detect"
@@ -65,6 +67,53 @@ func main() {
 	}
 }
 
+// extractAll extracts every file concurrently using a worker pool. Files are
+// independent, so this is the biggest easy win on large repos; Resolve still
+// runs once afterward. Each worker writes its result into a fixed slot, so the
+// returned slice preserves files order and the graph output stays deterministic.
+// Files that fail to extract are skipped with a warning, as in the sequential path.
+func extractAll(root string, files []string) []extract.Result {
+	type slot struct {
+		res extract.Result
+		ok  bool
+	}
+	slots := make([]slot, len(files))
+
+	workers := runtime.NumCPU()
+	if workers > len(files) {
+		workers = len(files)
+	}
+	idx := make(chan int)
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range idx {
+				r, err := extract.File(root, files[i])
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "  warning: skipped %s (%v)\n", files[i], err)
+					continue
+				}
+				slots[i] = slot{res: r, ok: true}
+			}
+		}()
+	}
+	for i := range files {
+		idx <- i
+	}
+	close(idx)
+	wg.Wait()
+
+	results := make([]extract.Result, 0, len(files))
+	for _, s := range slots {
+		if s.ok {
+			results = append(results, s.res)
+		}
+	}
+	return results
+}
+
 func cmdBuild(root string) error {
 	files, err := detect.CollectFiles(root)
 	if err != nil {
@@ -73,15 +122,7 @@ func cmdBuild(root string) error {
 	if len(files) == 0 {
 		return fmt.Errorf("no supported source files found under %s", root)
 	}
-	results := make([]extract.Result, 0, len(files))
-	for _, f := range files {
-		r, err := extract.File(root, f)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "  warning: skipped %s (%v)\n", f, err)
-			continue
-		}
-		results = append(results, r)
-	}
+	results := extractAll(root, files)
 	g := graph.Build(extract.Resolve(results, files))
 	communities := cluster.Cluster(g)
 	commit := gitHead(root)
