@@ -532,7 +532,20 @@ function applyView(nodes,edges){
  const fixed=nodes.length>0 && nodes[0].x!==undefined;
  net.setOptions({physics:{enabled:!fixed}});
  net.setData({nodes:curNodes,edges:curEdges});
- if(fixed){net.fit();runPending();}
+ if(fixed){coreFit(nodes);runPending();}
+}
+
+// coreFit zooms to the dense core, ignoring a few far-flung peripheral/isolated
+// nodes that would otherwise stretch the bounding box and shrink the graph to a
+// dot. Fits to everything within the 97th percentile of distance-from-centroid.
+function coreFit(nodes){
+ const pts=nodes.filter(n=>n.x!==undefined);
+ if(pts.length<12){net.fit();return;}
+ let cx=0,cy=0; pts.forEach(n=>{cx+=n.x;cy+=n.y;}); cx/=pts.length; cy/=pts.length;
+ const d=pts.map(n=>Math.hypot(n.x-cx,n.y-cy)).sort((a,b)=>a-b);
+ const r=d[Math.floor(d.length*0.97)]*1.05;
+ const ids=pts.filter(n=>Math.hypot(n.x-cx,n.y-cy)<=r).map(n=>n.id);
+ net.fit({nodes:ids.length?ids:pts.map(n=>n.id)});
 }
 function openCommunity(cid,focusId){
  const ns=SUB.filter(n=>n.comm===cid), ids=new Set(ns.map(n=>n.id));

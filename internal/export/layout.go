@@ -37,8 +37,10 @@ func layoutPositions(g *model.Graph, nc map[string]int) map[string]xy {
 	}
 
 	// side sizes the drawing area so node density stays constant; k is the ideal
-	// edge length (the classic FR k = sqrt(area/n)).
-	side := 60.0 * math.Sqrt(float64(n))
+	// edge length (the classic FR k = sqrt(area/n)). The constant sets the
+	// spacing: it's kept well above the rendered node radius (max ~40) so settled
+	// nodes don't overlap — the job vis's avoidOverlap did in the live layout.
+	side := 180.0 * math.Sqrt(float64(n))
 	k := side / math.Sqrt(float64(n))
 
 	// Stable community indices for seeding (one ring position per community).
