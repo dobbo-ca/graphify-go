@@ -10,17 +10,31 @@ import (
 
 type xy struct{ X, Y float64 }
 
+// Force-model constants mirror the vis forceAtlas2Based config that produced the
+// in-browser layout this replaced (gravitationalConstant -60, springLength 120,
+// springConstant 0.08, centralGravity 0.005, damping 0.4).
+const (
+	repK      = 60.0  // repulsion strength
+	springLen = 120.0 // ideal edge length
+	springK   = 0.08  // spring stiffness
+	centralG  = 0.02  // pull toward centre (contains stragglers)
+	damping   = 0.4   // velocity lost per step
+	dt        = 0.5   // integration timestep
+	maxStep   = 120.0 // cap per-step movement for stability
+	bhTheta   = 0.9   // Barnes-Hut opening angle (larger = faster, coarser)
+)
+
 // layoutPositions computes a deterministic force-directed layout at build time.
 // Baking coordinates into graph.html lets the browser render with physics off —
-// the layout is solved once here instead of on every page open, which is what
-// made large graphs slow to load.
+// solved once here instead of on every page open, which is what made large
+// graphs slow to load.
 //
-// The force model mirrors vis's forceAtlas2Based (the in-browser layout this
-// replaced): linear spring attraction + degree-weighted repulsion + weak central
-// gravity, integrated with velocity and damping. That spreads dense regions and
-// gives hubs room, instead of Fruchterman-Reingold's d^2 attraction which packs
-// connected nodes into a tight ball. Deterministic (fixed seed) so the committed
-// graph.html is stable; communities seed the start so it settles quickly.
+// The force model mirrors vis's forceAtlas2Based (linear spring attraction +
+// degree-weighted repulsion + central gravity), so dense regions spread and hubs
+// get room instead of collapsing into a ball. Repulsion uses a Barnes-Hut
+// quadtree (O(n log n)) so even ~5000-node graphs get hundreds of iterations and
+// actually expand. A final radial clamp keeps disconnected stragglers from
+// flying off. Deterministic (fixed seed) so the committed graph.html is stable.
 func layoutPositions(g *model.Graph, nc map[string]int) map[string]xy {
 	ids := g.NodeIDs()
 	n := len(ids)
@@ -33,19 +47,6 @@ func layoutPositions(g *model.Graph, nc map[string]int) map[string]xy {
 		return out
 	}
 	rng := rand.New(rand.NewSource(1)) // deterministic layout
-
-	// Constants mirror the vis forceAtlas2Based config that produced the layout
-	// this replaced (gravitationalConstant -60, springLength 120, springConstant
-	// 0.08, centralGravity 0.005, damping 0.4).
-	const (
-		repK      = 60.0  // repulsion strength
-		springLen = 120.0 // ideal edge length
-		springK   = 0.08  // spring stiffness
-		centralG  = 0.005 // pull toward centre (contains stragglers)
-		damping   = 0.4   // velocity lost per step
-		dt        = 0.5   // integration timestep
-		maxStep   = 120.0 // cap per-step movement for stability
-	)
 
 	idx := make(map[string]int, n)
 	mass := make([]float64, n)
@@ -87,28 +88,16 @@ func layoutPositions(g *model.Graph, nc map[string]int) map[string]xy {
 	Vy := make([]float64, n)
 	Fx := make([]float64, n)
 	Fy := make([]float64, n)
-	iters := frIterations(n)
-	for it := 0; it < iters; it++ {
+	for it := 0; it < layoutIters(n); it++ {
 		for i := range Fx {
 			Fx[i], Fy[i] = 0, 0
 		}
-		// Degree-weighted repulsion between every pair (magnitude ~ repK·mi·mj/d).
+		// Degree-weighted repulsion via a Barnes-Hut quadtree (O(n log n)).
+		root := buildQuad(Px, Py, mass)
 		for i := 0; i < n; i++ {
-			xi, yi, mi := Px[i], Py[i], mass[i]
-			for j := i + 1; j < n; j++ {
-				dx := xi - Px[j]
-				dy := yi - Py[j]
-				d2 := dx*dx + dy*dy
-				if d2 < 1e-4 {
-					dx, dy = rng.Float64()+0.1, rng.Float64()+0.1
-					d2 = dx*dx + dy*dy
-				}
-				f := repK * mi * mass[j] / d2 // raw dx carries the extra 1/d for the unit vector
-				Fx[i] += dx * f
-				Fy[i] += dy * f
-				Fx[j] -= dx * f
-				Fy[j] -= dy * f
-			}
+			fx, fy := root.force(Px[i], Py[i], mass[i], bhTheta)
+			Fx[i] += fx
+			Fy[i] += fy
 		}
 		// Linear spring attraction along edges (Hooke: springK·(d-springLen)).
 		for _, e := range edges {
@@ -124,15 +113,10 @@ func layoutPositions(g *model.Graph, nc map[string]int) map[string]xy {
 			Fx[e.b] += dx * f
 			Fy[e.b] += dy * f
 		}
-		// Weak central gravity keeps disconnected/peripheral nodes from drifting off.
+		// Central gravity (grows with distance) keeps stragglers contained.
 		for i := 0; i < n; i++ {
-			d := math.Hypot(Px[i], Py[i])
-			if d < 1e-6 {
-				continue
-			}
-			f := centralG * mass[i] / d
-			Fx[i] -= Px[i] * f
-			Fy[i] -= Py[i] * f
+			Fx[i] -= centralG * mass[i] * Px[i]
+			Fy[i] -= centralG * mass[i] * Py[i]
 		}
 		// Integrate with damping; cap the step for stability.
 		for i := 0; i < n; i++ {
@@ -147,21 +131,151 @@ func layoutPositions(g *model.Graph, nc map[string]int) map[string]xy {
 		}
 	}
 
+	radialClamp(Px, Py)
 	for i, id := range ids {
 		out[id] = xy{Px[i], Py[i]}
 	}
 	return out
 }
 
-// frIterations bounds the O(n^2) solve so build time stays reasonable: fewer
-// iterations as the graph grows (community seeding carries the rest).
-func frIterations(n int) int {
-	it := 400_000_000 / (n * n)
-	if it > 300 {
-		it = 300
+// layoutIters scales iterations down as the graph grows (Barnes-Hut keeps each
+// cheap, so even the large end gets enough passes to expand).
+func layoutIters(n int) int {
+	switch {
+	case n > 3000:
+		return 300
+	case n > 800:
+		return 400
+	default:
+		return 500
 	}
-	if it < 60 {
-		it = 60
+}
+
+// radialClamp pulls any node sitting far outside the bulk back to the edge of it,
+// so a handful of disconnected/peripheral nodes can't stretch the view. Operates
+// around the centroid using the 90th-percentile radius as the reference.
+func radialClamp(Px, Py []float64) {
+	n := len(Px)
+	if n < 12 {
+		return
 	}
-	return it
+	var cx, cy float64
+	for i := range Px {
+		cx += Px[i]
+		cy += Py[i]
+	}
+	cx /= float64(n)
+	cy /= float64(n)
+	rad := make([]float64, n)
+	for i := range Px {
+		rad[i] = math.Hypot(Px[i]-cx, Py[i]-cy)
+	}
+	sorted := append([]float64(nil), rad...)
+	sort.Float64s(sorted)
+	cap := sorted[int(float64(n)*0.9)] * 1.8
+	if cap <= 0 {
+		return
+	}
+	for i := range Px {
+		if rad[i] > cap {
+			s := cap / rad[i]
+			Px[i] = cx + (Px[i]-cx)*s
+			Py[i] = cy + (Py[i]-cy)*s
+		}
+	}
+}
+
+// quad is a Barnes-Hut quadtree node accumulating a centre of mass.
+type quad struct {
+	cx, cy, hs       float64 // centre and half-size of this cell
+	comX, comY, mass float64 // centre of mass
+	n                int     // bodies contained
+	bx, by, bm       float64 // the single body, when n==1 and not divided
+	children         [4]*quad
+	divided          bool
+}
+
+// buildQuad builds a quadtree over the points, sized to their bounding box.
+func buildQuad(Px, Py, mass []float64) *quad {
+	minX, minY := Px[0], Py[0]
+	maxX, maxY := Px[0], Py[0]
+	for i := range Px {
+		minX, maxX = math.Min(minX, Px[i]), math.Max(maxX, Px[i])
+		minY, maxY = math.Min(minY, Py[i]), math.Max(maxY, Py[i])
+	}
+	hs := math.Max(maxX-minX, maxY-minY)/2 + 1
+	root := &quad{cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, hs: hs}
+	for i := range Px {
+		root.insert(Px[i], Py[i], mass[i])
+	}
+	return root
+}
+
+func (q *quad) insert(x, y, m float64) {
+	tm := q.mass + m
+	q.comX = (q.comX*q.mass + x*m) / tm
+	q.comY = (q.comY*q.mass + y*m) / tm
+	q.mass = tm
+	if q.n == 0 {
+		q.bx, q.by, q.bm, q.n = x, y, m, 1
+		return
+	}
+	if q.hs < 0.5 { // too small to split; bucket bodies together
+		q.n++
+		return
+	}
+	if !q.divided {
+		q.subdivide()
+		q.child(q.bx, q.by).insert(q.bx, q.by, q.bm)
+		q.divided = true
+	}
+	q.child(x, y).insert(x, y, m)
+	q.n++
+}
+
+func (q *quad) subdivide() {
+	h := q.hs / 2
+	q.children[0] = &quad{cx: q.cx - h, cy: q.cy - h, hs: h} // SW
+	q.children[1] = &quad{cx: q.cx + h, cy: q.cy - h, hs: h} // SE
+	q.children[2] = &quad{cx: q.cx - h, cy: q.cy + h, hs: h} // NW
+	q.children[3] = &quad{cx: q.cx + h, cy: q.cy + h, hs: h} // NE
+}
+
+func (q *quad) child(x, y float64) *quad {
+	i := 0
+	if x >= q.cx {
+		i |= 1
+	}
+	if y >= q.cy {
+		i |= 2
+	}
+	return q.children[i]
+}
+
+// force returns the repulsion on a unit-mass body at (x,y); the caller scales by
+// the body's own mass. Aggregates distant cells by their centre of mass.
+func (q *quad) force(x, y, m, theta float64) (fx, fy float64) {
+	if q == nil || q.n == 0 {
+		return 0, 0
+	}
+	dx := x - q.comX
+	dy := y - q.comY
+	d2 := dx*dx + dy*dy
+	if !q.divided {
+		if d2 < 1e-4 { // self / coincident
+			return 0, 0
+		}
+		f := m * repK * q.mass / d2
+		return dx * f, dy * f
+	}
+	if (2*q.hs)*(2*q.hs) < theta*theta*d2 { // cell is far enough to aggregate
+		f := m * repK * q.mass / d2
+		return dx * f, dy * f
+	}
+	for _, c := range q.children {
+		cx, cy := c.force(x, y, m, theta)
+		fx += cx
+		fy += cy
+	}
+	return fx, fy
 }
