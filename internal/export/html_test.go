@@ -35,6 +35,8 @@ func TestToHTMLNodeLevelHooks(t *testing.T) {
 		"3 nodes · 2 edges · 2 communities", // stats line
 		`smooth:{type:"continuous"`,         // small graph keeps curved edges
 		`iterations:300`,                    // and the full stabilization budget
+		`"x":`,                              // precomputed layout coordinates baked in
+		`function applyView`,                // physics-off render path
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("HTML missing %q", want)

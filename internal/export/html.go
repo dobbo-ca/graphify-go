@@ -46,6 +46,10 @@ type vnode struct {
 	Size  float64 `json:"size"`
 	Font  vfont   `json:"font"`
 	Comm  int     `json:"comm"`
+	// Precomputed layout position (node-level only); lets the browser render with
+	// physics off. Pointers so an omitted position falls back to browser physics.
+	X *float64 `json:"x,omitempty"`
+	Y *float64 `json:"y,omitempty"`
 	// Inspector fields (node-level view only; omitted in the meta view).
 	FileType  string      `json:"ftype,omitempty"`
 	Source    string      `json:"sfile,omitempty"`
@@ -194,8 +198,10 @@ func ToHTML(g *model.Graph, communities map[int][]string, outPath string) error 
 	meta := g.NumNodes() > metaThreshold
 
 	// Node-level nodes/edges are always built: they're the initial view for small
-	// graphs and the drill-down target for large ones.
-	subNodes, subEdges, legend := buildNodeLevel(g, communities, nc)
+	// graphs and the drill-down target for large ones. Positions are precomputed
+	// here so the browser renders node-level views with physics disabled.
+	positions := layoutPositions(g, nc)
+	subNodes, subEdges, legend := buildNodeLevel(g, communities, nc, positions)
 
 	var rawNodes []vnode
 	var rawEdges []vedge
@@ -262,7 +268,7 @@ func communityNames(g *model.Graph, communities map[int][]string) map[int]string
 // buildNodeLevel renders every node, sized by degree, with labels only on hubs.
 // Each node carries its inspect metadata and a relation-grouped neighbour list;
 // edges encode confidence (solid/opaque when EXTRACTED, dashed/faint otherwise).
-func buildNodeLevel(g *model.Graph, communities map[int][]string, nc map[string]int) ([]vnode, []vedge, []legendRow) {
+func buildNodeLevel(g *model.Graph, communities map[int][]string, nc map[string]int, positions map[string]xy) ([]vnode, []vedge, []legendRow) {
 	maxDeg := 1
 	for _, id := range g.NodeIDs() {
 		if d := g.Degree(id); d > maxDeg {
@@ -304,8 +310,13 @@ func buildNodeLevel(g *model.Graph, communities map[int][]string, nc map[string]
 		for _, t := range list {
 			vn = append(vn, vneighbor{ID: t.id, Grp: t.group})
 		}
+		var px, py *float64
+		if p, ok := positions[id]; ok {
+			x, y := p.X, p.Y
+			px, py = &x, &y
+		}
 		nodes = append(nodes, vnode{
-			ID: id, Label: label,
+			ID: id, Label: label, X: px, Y: py,
 			Title:     security.SanitizeLabel(strings.TrimSpace(n.SourceFile + " " + n.SourceLocation)),
 			Color:     colorFor(nc[id]),
 			Size:      10 + 30*float64(deg)/float64(maxDeg),
@@ -493,28 +504,35 @@ setHelp(!META);
 if(!bannerEl.textContent.trim())bannerEl.style.display="none";
 if(META)legendEl.classList.add("drill");
 
-let curNodes=new vis.DataSet(RAW), curEdges=new vis.DataSet(EDG);
+let curNodes, curEdges;
 let mode=META?"meta":"node"; // "meta" overview, a community id (drilled), or "node" (small graph)
-let pending=null;            // node id to focus once a drilled subgraph settles
+let pending=null;            // node id to focus once a view settles
 
-const net=new vis.Network(document.getElementById("g"),{nodes:curNodes,edges:curEdges},{
+const net=new vis.Network(document.getElementById("g"),{nodes:[],edges:[]},{
  nodes:{shape:"dot",borderWidth:1.5},
  edges:{color:{color:"#3a3a5e",opacity:0.55},arrows:{to:{enabled:true,scaleFactor:0.4}},smooth:/*SMOOTH*/,selectionWidth:3},
  interaction:{hover:true,tooltipDelay:120,hideEdgesOnDrag:true},
- // Solve once with strong overlap avoidance, then freeze — never spins. A huge
- // updateInterval skips intermediate repaints during the solve (faster first paint).
- physics:{enabled:true,solver:"forceAtlas2Based",
+ // Node-level views ship precomputed positions and render with physics off (no
+ // solve on load). The community overview has no positions, so it gets a quick
+ // forceAtlas2 solve and freezes; a huge updateInterval skips repaints mid-solve.
+ physics:{enabled:false,solver:"forceAtlas2Based",
   forceAtlas2Based:{gravitationalConstant:-60,centralGravity:0.005,springLength:120,springConstant:0.08,damping:0.4,avoidOverlap:0.8},
   stabilization:{iterations:/*ITERS*/,updateInterval:1000000,fit:true}}});
 net.on("stabilizationIterationsDone",()=>{
  net.setOptions({physics:{enabled:false}});
- if(pending){const id=pending;pending=null;focusLocal(id);}
+ runPending();
 });
+function runPending(){if(pending){const id=pending;pending=null;focusLocal(id);}}
 
-function setView(nodes,edges){
+// applyView swaps the rendered graph. If the nodes carry precomputed positions
+// (any node-level view) it renders instantly with physics off; otherwise (the
+// community overview) it runs a one-off solve.
+function applyView(nodes,edges){
  curNodes=new vis.DataSet(nodes); curEdges=new vis.DataSet(edges);
- net.setOptions({physics:{enabled:true}});
+ const fixed=nodes.length>0 && nodes[0].x!==undefined;
+ net.setOptions({physics:{enabled:!fixed}});
  net.setData({nodes:curNodes,edges:curEdges});
+ if(fixed){net.fit();runPending();}
 }
 function openCommunity(cid,focusId){
  const ns=SUB.filter(n=>n.comm===cid), ids=new Set(ns.map(n=>n.id));
@@ -523,16 +541,17 @@ function openCommunity(cid,focusId){
  navEl.style.display="flex"; bannerEl.style.display="none";
  vtitle.textContent=(NAME[cid]||("Community "+cid))+" · "+ns.length+" nodes";
  info.innerHTML=PLACEHOLDER; setHelp(true);
- setView(ns,es);
+ applyView(ns,es);
 }
 function backToOverview(){
  mode="meta"; pending=null;
  navEl.style.display="none";
  if(bannerEl.textContent.trim())bannerEl.style.display="";
  info.innerHTML='<div class="muted">Click a community to open it.</div>'; setHelp(false);
- setView(RAW,EDG);
+ applyView(RAW,EDG);
 }
 document.getElementById("back").onclick=backToOverview;
+applyView(RAW,EDG); // initial render
 
 // Inspect panel: metadata + neighbours grouped by relation, each clickable.
 function showNode(id){
