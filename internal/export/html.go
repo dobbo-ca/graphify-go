@@ -16,13 +16,18 @@ import (
 )
 
 // metaThreshold is the node count above which the viewer opens on an aggregated
-// community meta-graph (one node per community) instead of every node. Drawing
-// thousands of individual nodes at once is an unreadable hairball; the macro view
-// of how communities connect is what's useful at that scale. Communities are
-// named after their dominant directory and are clickable: opening one drills into
-// that community's node-level subgraph (search + inspect panel), so the overview
-// is a way in, not a dead end. Use `graphify query`/`explain` for raw detail.
-const metaThreshold = 500
+// community meta-graph instead of rendering every node. Below it the viewer is
+// node-level (search + click-to-inspect + community legend filter), matching how
+// the Python original navigates: it renders all nodes up to MAX_NODES_FOR_VIZ
+// (5000) and digs into communities via the legend show/hide, never aggregating.
+//
+// We match that 5000 ceiling, so for essentially every real repo the experience
+// is the Python node-level one. The difference: past 5000 the Python tool just
+// errors out ("too large for HTML viz"); we instead degrade to a directory-named
+// community overview that drills into a community's node-level subgraph on click,
+// so the viewer stays useful rather than failing. Use `graphify query`/`explain`
+// for raw detail at any size.
+const metaThreshold = 5000
 
 // palette colours communities by index.
 var palette = []string{
