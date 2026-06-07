@@ -9,7 +9,7 @@
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
       "source_location": "L1",
-      "community": 0,
+      "community": 1,
       "norm_label": "main.go"
     },
     {
@@ -17,17 +17,26 @@
       "label": "main()",
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L32",
-      "community": 0,
+      "source_location": "L34",
+      "community": 1,
       "norm_label": "main()"
+    },
+    {
+      "id": "graphify_main_extractall",
+      "label": "extractAll()",
+      "file_type": "code",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L75",
+      "community": 8,
+      "norm_label": "extractall()"
     },
     {
       "id": "graphify_main_cmdbuild",
       "label": "cmdBuild()",
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L68",
-      "community": 0,
+      "source_location": "L117",
+      "community": 3,
       "norm_label": "cmdbuild()"
     },
     {
@@ -35,8 +44,8 @@
       "label": "cmdQuery()",
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L108",
-      "community": 0,
+      "source_location": "L149",
+      "community": 1,
       "norm_label": "cmdquery()"
     },
     {
@@ -44,8 +53,8 @@
       "label": "cmdExplain()",
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L127",
-      "community": 0,
+      "source_location": "L168",
+      "community": 1,
       "norm_label": "cmdexplain()"
     },
     {
@@ -53,8 +62,8 @@
       "label": "cmdPath()",
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L146",
-      "community": 0,
+      "source_location": "L187",
+      "community": 1,
       "norm_label": "cmdpath()"
     },
     {
@@ -62,8 +71,8 @@
       "label": "cmdExtract()",
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L163",
-      "community": 0,
+      "source_location": "L204",
+      "community": 8,
       "norm_label": "cmdextract()"
     },
     {
@@ -71,8 +80,8 @@
       "label": "load()",
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L182",
-      "community": 0,
+      "source_location": "L223",
+      "community": 1,
       "norm_label": "load()"
     },
     {
@@ -80,8 +89,8 @@
       "label": "locOf()",
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L184",
-      "community": 0,
+      "source_location": "L225",
+      "community": 1,
       "norm_label": "locof()"
     },
     {
@@ -89,8 +98,8 @@
       "label": "gitHead()",
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L192",
-      "community": 0,
+      "source_location": "L233",
+      "community": 1,
       "norm_label": "githead()"
     },
     {
@@ -98,8 +107,8 @@
       "label": "arg()",
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L201",
-      "community": 0,
+      "source_location": "L242",
+      "community": 1,
       "norm_label": "arg()"
     },
     {
@@ -107,8 +116,8 @@
       "label": "mustArg()",
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L208",
-      "community": 0,
+      "source_location": "L249",
+      "community": 1,
       "norm_label": "mustarg()"
     },
     {
@@ -116,8 +125,8 @@
       "label": "usage()",
       "file_type": "code",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L216",
-      "community": 0,
+      "source_location": "L257",
+      "community": 1,
       "norm_label": "usage()"
     },
     {
@@ -297,7 +306,7 @@
       "file_type": "code",
       "source_file": "internal/detect/detect.go",
       "source_location": "L1",
-      "community": 4,
+      "community": 7,
       "norm_label": "detect.go"
     },
     {
@@ -305,8 +314,8 @@
       "label": "CollectFiles()",
       "file_type": "code",
       "source_file": "internal/detect/detect.go",
-      "source_location": "L60",
-      "community": 4,
+      "source_location": "L61",
+      "community": 7,
       "norm_label": "collectfiles()"
     },
     {
@@ -314,8 +323,8 @@
       "label": "isSensitive()",
       "file_type": "code",
       "source_file": "internal/detect/detect.go",
-      "source_location": "L89",
-      "community": 4,
+      "source_location": "L90",
+      "community": 7,
       "norm_label": "issensitive()"
     },
     {
@@ -324,7 +333,7 @@
       "file_type": "code",
       "source_file": "internal/export/export.go",
       "source_location": "L1",
-      "community": 4,
+      "community": 1,
       "norm_label": "export.go"
     },
     {
@@ -333,7 +342,7 @@
       "file_type": "code",
       "source_file": "internal/export/export.go",
       "source_location": "L21",
-      "community": 4,
+      "community": 1,
       "norm_label": "jsonnode"
     },
     {
@@ -342,7 +351,7 @@
       "file_type": "code",
       "source_file": "internal/export/export.go",
       "source_location": "L31",
-      "community": 4,
+      "community": 1,
       "norm_label": "jsonlink"
     },
     {
@@ -351,7 +360,7 @@
       "file_type": "code",
       "source_file": "internal/export/export.go",
       "source_location": "L41",
-      "community": 4,
+      "community": 1,
       "norm_label": "jsongraph"
     },
     {
@@ -378,7 +387,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L1",
-      "community": 2,
+      "community": 4,
       "norm_label": "html.go"
     },
     {
@@ -387,7 +396,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L41",
-      "community": 2,
+      "community": 4,
       "norm_label": "vnode"
     },
     {
@@ -396,7 +405,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L62",
-      "community": 2,
+      "community": 4,
       "norm_label": "vfont"
     },
     {
@@ -405,7 +414,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L69",
-      "community": 2,
+      "community": 4,
       "norm_label": "vneighbor"
     },
     {
@@ -414,7 +423,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L74",
-      "community": 2,
+      "community": 4,
       "norm_label": "vedge"
     },
     {
@@ -423,7 +432,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L83",
-      "community": 2,
+      "community": 4,
       "norm_label": "vecolor"
     },
     {
@@ -432,7 +441,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L88",
-      "community": 2,
+      "community": 4,
       "norm_label": "legendrow"
     },
     {
@@ -441,7 +450,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L101",
-      "community": 2,
+      "community": 4,
       "norm_label": "groupprio()"
     },
     {
@@ -450,7 +459,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L112",
-      "community": 2,
+      "community": 4,
       "norm_label": "neighborgroup()"
     },
     {
@@ -459,7 +468,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L151",
-      "community": 2,
+      "community": 4,
       "norm_label": "communityname()"
     },
     {
@@ -468,7 +477,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L181",
-      "community": 2,
+      "community": 4,
       "norm_label": "shortenpath()"
     },
     {
@@ -477,7 +486,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L196",
-      "community": 2,
+      "community": 3,
       "norm_label": "tohtml()"
     },
     {
@@ -486,7 +495,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L260",
-      "community": 2,
+      "community": 4,
       "norm_label": "communitynames()"
     },
     {
@@ -495,7 +504,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L271",
-      "community": 2,
+      "community": 4,
       "norm_label": "buildnodelevel()"
     },
     {
@@ -504,7 +513,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L352",
-      "community": 2,
+      "community": 4,
       "norm_label": "buildmeta()"
     },
     {
@@ -513,7 +522,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L402",
-      "community": 2,
+      "community": 4,
       "norm_label": "colorfor()"
     },
     {
@@ -522,7 +531,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L409",
-      "community": 2,
+      "community": 4,
       "norm_label": "legendrows()"
     },
     {
@@ -531,7 +540,7 @@
       "file_type": "code",
       "source_file": "internal/export/html.go",
       "source_location": "L423",
-      "community": 2,
+      "community": 4,
       "norm_label": "legendhtml()"
     },
     {
@@ -576,7 +585,7 @@
       "file_type": "code",
       "source_file": "internal/export/layout.go",
       "source_location": "L1",
-      "community": 5,
+      "community": 2,
       "norm_label": "layout.go"
     },
     {
@@ -585,7 +594,7 @@
       "file_type": "code",
       "source_file": "internal/export/layout.go",
       "source_location": "L11",
-      "community": 5,
+      "community": 2,
       "norm_label": "xy"
     },
     {
@@ -594,7 +603,7 @@
       "file_type": "code",
       "source_file": "internal/export/layout.go",
       "source_location": "L39",
-      "community": 5,
+      "community": 2,
       "norm_label": "layoutpositions()"
     },
     {
@@ -603,7 +612,7 @@
       "file_type": "code",
       "source_file": "internal/export/layout.go",
       "source_location": "L144",
-      "community": 5,
+      "community": 2,
       "norm_label": "layoutiters()"
     },
     {
@@ -612,7 +621,7 @@
       "file_type": "code",
       "source_file": "internal/export/layout.go",
       "source_location": "L158",
-      "community": 5,
+      "community": 2,
       "norm_label": "radialclamp()"
     },
     {
@@ -621,7 +630,7 @@
       "file_type": "code",
       "source_file": "internal/export/layout.go",
       "source_location": "L190",
-      "community": 5,
+      "community": 2,
       "norm_label": "quad"
     },
     {
@@ -630,7 +639,7 @@
       "file_type": "code",
       "source_file": "internal/export/layout.go",
       "source_location": "L200",
-      "community": 5,
+      "community": 2,
       "norm_label": "buildquad()"
     },
     {
@@ -639,7 +648,7 @@
       "file_type": "code",
       "source_file": "internal/export/layout.go",
       "source_location": "L215",
-      "community": 5,
+      "community": 2,
       "norm_label": "quad.insert()"
     },
     {
@@ -648,7 +657,7 @@
       "file_type": "code",
       "source_file": "internal/export/layout.go",
       "source_location": "L237",
-      "community": 5,
+      "community": 2,
       "norm_label": "quad.subdivide()"
     },
     {
@@ -657,7 +666,7 @@
       "file_type": "code",
       "source_file": "internal/export/layout.go",
       "source_location": "L245",
-      "community": 5,
+      "community": 2,
       "norm_label": "quad.child()"
     },
     {
@@ -666,7 +675,7 @@
       "file_type": "code",
       "source_file": "internal/export/layout.go",
       "source_location": "L258",
-      "community": 5,
+      "community": 2,
       "norm_label": "quad.force()"
     },
     {
@@ -675,7 +684,7 @@
       "file_type": "code",
       "source_file": "internal/export/layout_test.go",
       "source_location": "L1",
-      "community": 5,
+      "community": 2,
       "norm_label": "layout_test.go"
     },
     {
@@ -693,7 +702,7 @@
       "file_type": "code",
       "source_file": "internal/export/layout_test.go",
       "source_location": "L51",
-      "community": 5,
+      "community": 2,
       "norm_label": "testbarneshutexact()"
     },
     {
@@ -702,7 +711,7 @@
       "file_type": "code",
       "source_file": "internal/export/layout_test.go",
       "source_location": "L86",
-      "community": 5,
+      "community": 2,
       "norm_label": "newtestrand()"
     },
     {
@@ -711,7 +720,7 @@
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
       "source_location": "L1",
-      "community": 1,
+      "community": 0,
       "norm_label": "extract.go"
     },
     {
@@ -720,7 +729,7 @@
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
       "source_location": "L23",
-      "community": 1,
+      "community": 0,
       "norm_label": "def"
     },
     {
@@ -729,7 +738,7 @@
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
       "source_location": "L28",
-      "community": 1,
+      "community": 0,
       "norm_label": "call"
     },
     {
@@ -738,7 +747,7 @@
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
       "source_location": "L33",
-      "community": 1,
+      "community": 0,
       "norm_label": "imp"
     },
     {
@@ -747,7 +756,7 @@
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
       "source_location": "L38",
-      "community": 1,
+      "community": 0,
       "norm_label": "result"
     },
     {
@@ -756,7 +765,7 @@
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
       "source_location": "L48",
-      "community": 0,
+      "community": 8,
       "norm_label": "file()"
     },
     {
@@ -764,8 +773,8 @@
       "label": "parseRoot()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L72",
-      "community": 1,
+      "source_location": "L76",
+      "community": 0,
       "norm_label": "parseroot()"
     },
     {
@@ -773,8 +782,8 @@
       "label": "fileStem()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L82",
-      "community": 1,
+      "source_location": "L86",
+      "community": 0,
       "norm_label": "filestem()"
     },
     {
@@ -782,8 +791,8 @@
       "label": "line()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L90",
-      "community": 1,
+      "source_location": "L94",
+      "community": 0,
       "norm_label": "line()"
     },
     {
@@ -791,8 +800,8 @@
       "label": "itoa()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L94",
-      "community": 1,
+      "source_location": "L98",
+      "community": 0,
       "norm_label": "itoa()"
     },
     {
@@ -800,8 +809,8 @@
       "label": "builder",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L109",
-      "community": 1,
+      "source_location": "L113",
+      "community": 0,
       "norm_label": "builder"
     },
     {
@@ -809,8 +818,8 @@
       "label": "newBuilder()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L117",
-      "community": 1,
+      "source_location": "L121",
+      "community": 0,
       "norm_label": "newbuilder()"
     },
     {
@@ -818,8 +827,8 @@
       "label": "builder.addNode()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L124",
-      "community": 1,
+      "source_location": "L128",
+      "community": 0,
       "norm_label": "builder.addnode()"
     },
     {
@@ -827,8 +836,8 @@
       "label": "builder.contains()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L134",
-      "community": 1,
+      "source_location": "L138",
+      "community": 0,
       "norm_label": "builder.contains()"
     },
     {
@@ -836,8 +845,8 @@
       "label": "builder.def()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L143",
-      "community": 1,
+      "source_location": "L147",
+      "community": 0,
       "norm_label": "builder.def()"
     },
     {
@@ -845,8 +854,8 @@
       "label": "builder.call()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L149",
-      "community": 1,
+      "source_location": "L153",
+      "community": 0,
       "norm_label": "builder.call()"
     },
     {
@@ -854,8 +863,8 @@
       "label": "builder.imp()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L156",
-      "community": 1,
+      "source_location": "L160",
+      "community": 0,
       "norm_label": "builder.imp()"
     },
     {
@@ -863,8 +872,8 @@
       "label": "walk()",
       "file_type": "code",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L164",
-      "community": 1,
+      "source_location": "L168",
+      "community": 0,
       "norm_label": "walk()"
     },
     {
@@ -873,7 +882,7 @@
       "file_type": "code",
       "source_file": "internal/extract/extract_test.go",
       "source_location": "L1",
-      "community": 10,
+      "community": 8,
       "norm_label": "extract_test.go"
     },
     {
@@ -882,7 +891,7 @@
       "file_type": "code",
       "source_file": "internal/extract/extract_test.go",
       "source_location": "L5",
-      "community": 0,
+      "community": 8,
       "norm_label": "testextractandresolve()"
     },
     {
@@ -891,7 +900,7 @@
       "file_type": "code",
       "source_file": "internal/extract/golang.go",
       "source_location": "L1",
-      "community": 1,
+      "community": 0,
       "norm_label": "golang.go"
     },
     {
@@ -900,7 +909,7 @@
       "file_type": "code",
       "source_file": "internal/extract/golang.go",
       "source_location": "L14",
-      "community": 1,
+      "community": 0,
       "norm_label": "extractgo()"
     },
     {
@@ -909,7 +918,7 @@
       "file_type": "code",
       "source_file": "internal/extract/golang.go",
       "source_location": "L35",
-      "community": 1,
+      "community": 0,
       "norm_label": "builder.gofunc()"
     },
     {
@@ -918,7 +927,7 @@
       "file_type": "code",
       "source_file": "internal/extract/golang.go",
       "source_location": "L45",
-      "community": 1,
+      "community": 0,
       "norm_label": "builder.gomethod()"
     },
     {
@@ -927,7 +936,7 @@
       "file_type": "code",
       "source_file": "internal/extract/golang.go",
       "source_location": "L63",
-      "community": 1,
+      "community": 0,
       "norm_label": "goreceivertype()"
     },
     {
@@ -936,7 +945,7 @@
       "file_type": "code",
       "source_file": "internal/extract/golang.go",
       "source_location": "L82",
-      "community": 1,
+      "community": 0,
       "norm_label": "builder.gotypes()"
     },
     {
@@ -945,7 +954,7 @@
       "file_type": "code",
       "source_file": "internal/extract/golang.go",
       "source_location": "L96",
-      "community": 1,
+      "community": 0,
       "norm_label": "builder.goimports()"
     },
     {
@@ -954,7 +963,7 @@
       "file_type": "code",
       "source_file": "internal/extract/golang.go",
       "source_location": "L110",
-      "community": 1,
+      "community": 0,
       "norm_label": "builder.gocalls()"
     },
     {
@@ -963,7 +972,7 @@
       "file_type": "code",
       "source_file": "internal/extract/golang.go",
       "source_location": "L134",
-      "community": 1,
+      "community": 0,
       "norm_label": "fieldtext()"
     },
     {
@@ -972,7 +981,7 @@
       "file_type": "code",
       "source_file": "internal/extract/golang.go",
       "source_location": "L141",
-      "community": 1,
+      "community": 0,
       "norm_label": "unquote()"
     },
     {
@@ -981,7 +990,7 @@
       "file_type": "code",
       "source_file": "internal/extract/javascript.go",
       "source_location": "L1",
-      "community": 1,
+      "community": 0,
       "norm_label": "javascript.go"
     },
     {
@@ -990,7 +999,7 @@
       "file_type": "code",
       "source_file": "internal/extract/javascript.go",
       "source_location": "L15",
-      "community": 1,
+      "community": 0,
       "norm_label": "extractjs()"
     },
     {
@@ -999,7 +1008,7 @@
       "file_type": "code",
       "source_file": "internal/extract/javascript.go",
       "source_location": "L27",
-      "community": 1,
+      "community": 0,
       "norm_label": "builder.jsstatement()"
     },
     {
@@ -1008,7 +1017,7 @@
       "file_type": "code",
       "source_file": "internal/extract/javascript.go",
       "source_location": "L48",
-      "community": 1,
+      "community": 0,
       "norm_label": "builder.jsfunc()"
     },
     {
@@ -1017,7 +1026,7 @@
       "file_type": "code",
       "source_file": "internal/extract/javascript.go",
       "source_location": "L58",
-      "community": 1,
+      "community": 0,
       "norm_label": "builder.jsclass()"
     },
     {
@@ -1026,7 +1035,7 @@
       "file_type": "code",
       "source_file": "internal/extract/javascript.go",
       "source_location": "L90",
-      "community": 1,
+      "community": 0,
       "norm_label": "builder.jsnamedtype()"
     },
     {
@@ -1035,7 +1044,7 @@
       "file_type": "code",
       "source_file": "internal/extract/javascript.go",
       "source_location": "L100",
-      "community": 1,
+      "community": 0,
       "norm_label": "builder.jsvarfuncs()"
     },
     {
@@ -1044,8 +1053,89 @@
       "file_type": "code",
       "source_file": "internal/extract/javascript.go",
       "source_location": "L120",
-      "community": 1,
+      "community": 0,
       "norm_label": "builder.jscalls()"
+    },
+    {
+      "id": "internal_extract_python_go",
+      "label": "python.go",
+      "file_type": "code",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L1",
+      "community": 0,
+      "norm_label": "python.go"
+    },
+    {
+      "id": "extract_python_extractpython",
+      "label": "extractPython()",
+      "file_type": "code",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L15",
+      "community": 0,
+      "norm_label": "extractpython()"
+    },
+    {
+      "id": "extract_python_builder_pystatement",
+      "label": "builder.pyStatement()",
+      "file_type": "code",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L27",
+      "community": 0,
+      "norm_label": "builder.pystatement()"
+    },
+    {
+      "id": "extract_python_builder_pyfunc",
+      "label": "builder.pyFunc()",
+      "file_type": "code",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L42",
+      "community": 0,
+      "norm_label": "builder.pyfunc()"
+    },
+    {
+      "id": "extract_python_builder_pyclass",
+      "label": "builder.pyClass()",
+      "file_type": "code",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L52",
+      "community": 0,
+      "norm_label": "builder.pyclass()"
+    },
+    {
+      "id": "extract_python_builder_pyimports",
+      "label": "builder.pyImports()",
+      "file_type": "code",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L93",
+      "community": 0,
+      "norm_label": "builder.pyimports()"
+    },
+    {
+      "id": "extract_python_builder_pycalls",
+      "label": "builder.pyCalls()",
+      "file_type": "code",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L117",
+      "community": 0,
+      "norm_label": "builder.pycalls()"
+    },
+    {
+      "id": "internal_extract_python_test_go",
+      "label": "python_test.go",
+      "file_type": "code",
+      "source_file": "internal/extract/python_test.go",
+      "source_location": "L1",
+      "community": 8,
+      "norm_label": "python_test.go"
+    },
+    {
+      "id": "extract_python_test_testextractpython",
+      "label": "TestExtractPython()",
+      "file_type": "code",
+      "source_file": "internal/extract/python_test.go",
+      "source_location": "L5",
+      "community": 8,
+      "norm_label": "testextractpython()"
     },
     {
       "id": "internal_extract_resolve_go",
@@ -1053,7 +1143,7 @@
       "file_type": "code",
       "source_file": "internal/extract/resolve.go",
       "source_location": "L1",
-      "community": 0,
+      "community": 5,
       "norm_label": "resolve.go"
     },
     {
@@ -1062,7 +1152,7 @@
       "file_type": "code",
       "source_file": "internal/extract/resolve.go",
       "source_location": "L18",
-      "community": 0,
+      "community": 8,
       "norm_label": "resolve()"
     },
     {
@@ -1071,8 +1161,107 @@
       "file_type": "code",
       "source_file": "internal/extract/resolve.go",
       "source_location": "L88",
-      "community": 0,
+      "community": 8,
       "norm_label": "resolverelimport()"
+    },
+    {
+      "id": "internal_extract_rust_go",
+      "label": "rust.go",
+      "file_type": "code",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L1",
+      "community": 0,
+      "norm_label": "rust.go"
+    },
+    {
+      "id": "extract_rust_extractrust",
+      "label": "extractRust()",
+      "file_type": "code",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L15",
+      "community": 0,
+      "norm_label": "extractrust()"
+    },
+    {
+      "id": "extract_rust_builder_rustitems",
+      "label": "builder.rustItems()",
+      "file_type": "code",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L26",
+      "community": 0,
+      "norm_label": "builder.rustitems()"
+    },
+    {
+      "id": "extract_rust_builder_rustfunc",
+      "label": "builder.rustFunc()",
+      "file_type": "code",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L46",
+      "community": 0,
+      "norm_label": "builder.rustfunc()"
+    },
+    {
+      "id": "extract_rust_builder_rusttype",
+      "label": "builder.rustType()",
+      "file_type": "code",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L56",
+      "community": 0,
+      "norm_label": "builder.rusttype()"
+    },
+    {
+      "id": "extract_rust_builder_rustimpl",
+      "label": "builder.rustImpl()",
+      "file_type": "code",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L66",
+      "community": 0,
+      "norm_label": "builder.rustimpl()"
+    },
+    {
+      "id": "extract_rust_builder_rustuse",
+      "label": "builder.rustUse()",
+      "file_type": "code",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L98",
+      "community": 0,
+      "norm_label": "builder.rustuse()"
+    },
+    {
+      "id": "extract_rust_rusttypename",
+      "label": "rustTypeName()",
+      "file_type": "code",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L112",
+      "community": 0,
+      "norm_label": "rusttypename()"
+    },
+    {
+      "id": "extract_rust_builder_rustcalls",
+      "label": "builder.rustCalls()",
+      "file_type": "code",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L144",
+      "community": 0,
+      "norm_label": "builder.rustcalls()"
+    },
+    {
+      "id": "internal_extract_rust_test_go",
+      "label": "rust_test.go",
+      "file_type": "code",
+      "source_file": "internal/extract/rust_test.go",
+      "source_location": "L1",
+      "community": 8,
+      "norm_label": "rust_test.go"
+    },
+    {
+      "id": "extract_rust_test_testextractrust",
+      "label": "TestExtractRust()",
+      "file_type": "code",
+      "source_file": "internal/extract/rust_test.go",
+      "source_location": "L5",
+      "community": 8,
+      "norm_label": "testextractrust()"
     },
     {
       "id": "internal_extract_terraform_go",
@@ -1080,7 +1269,7 @@
       "file_type": "code",
       "source_file": "internal/extract/terraform.go",
       "source_location": "L1",
-      "community": 6,
+      "community": 5,
       "norm_label": "terraform.go"
     },
     {
@@ -1089,7 +1278,7 @@
       "file_type": "code",
       "source_file": "internal/extract/terraform.go",
       "source_location": "L23",
-      "community": 6,
+      "community": 5,
       "norm_label": "extractterraform()"
     },
     {
@@ -1098,7 +1287,7 @@
       "file_type": "code",
       "source_file": "internal/extract/terraform.go",
       "source_location": "L136",
-      "community": 6,
+      "community": 5,
       "norm_label": "tfblock()"
     },
     {
@@ -1107,7 +1296,7 @@
       "file_type": "code",
       "source_file": "internal/extract/terraform.go",
       "source_location": "L155",
-      "community": 6,
+      "community": 5,
       "norm_label": "tfrefaddress()"
     },
     {
@@ -1116,7 +1305,7 @@
       "file_type": "code",
       "source_file": "internal/extract/terraform.go",
       "source_location": "L198",
-      "community": 6,
+      "community": 5,
       "norm_label": "firstident()"
     },
     {
@@ -1125,7 +1314,7 @@
       "file_type": "code",
       "source_file": "internal/extract/terraform.go",
       "source_location": "L208",
-      "community": 6,
+      "community": 5,
       "norm_label": "tfchild()"
     },
     {
@@ -1134,7 +1323,7 @@
       "file_type": "code",
       "source_file": "internal/extract/terraform.go",
       "source_location": "L215",
-      "community": 6,
+      "community": 5,
       "norm_label": "tfchildnode()"
     },
     {
@@ -1143,7 +1332,7 @@
       "file_type": "code",
       "source_file": "internal/extract/terraform.go",
       "source_location": "L225",
-      "community": 6,
+      "community": 5,
       "norm_label": "dirscope()"
     },
     {
@@ -1152,7 +1341,7 @@
       "file_type": "code",
       "source_file": "internal/extract/terraform_test.go",
       "source_location": "L1",
-      "community": 10,
+      "community": 8,
       "norm_label": "terraform_test.go"
     },
     {
@@ -1161,7 +1350,7 @@
       "file_type": "code",
       "source_file": "internal/extract/terraform_test.go",
       "source_location": "L5",
-      "community": 0,
+      "community": 8,
       "norm_label": "testextractterraform()"
     },
     {
@@ -1170,7 +1359,7 @@
       "file_type": "code",
       "source_file": "internal/extract/testdata/proj/util/math.go",
       "source_location": "L1",
-      "community": 11,
+      "community": 6,
       "norm_label": "math.go"
     },
     {
@@ -1179,16 +1368,16 @@
       "file_type": "code",
       "source_file": "internal/extract/testdata/proj/util/math.go",
       "source_location": "L3",
-      "community": 11,
+      "community": 6,
       "norm_label": "calc"
     },
     {
       "id": "util_math_add",
-      "label": "Add()",
+      "label": "add()",
       "file_type": "code",
-      "source_file": "internal/extract/testdata/proj/util/math.go",
-      "source_location": "L5",
-      "community": 11,
+      "source_file": "internal/extract/testdata/rsproj/util/math.rs",
+      "source_location": "L1",
+      "community": 6,
       "norm_label": "add()"
     },
     {
@@ -1197,7 +1386,7 @@
       "file_type": "code",
       "source_file": "internal/extract/testdata/proj/util/math.go",
       "source_location": "L7",
-      "community": 11,
+      "community": 6,
       "norm_label": "calc.sum()"
     },
     {
@@ -1206,35 +1395,71 @@
       "file_type": "code",
       "source_file": "internal/extract/testdata/proj/web/server.ts",
       "source_location": "L1",
-      "community": 9,
+      "community": 6,
       "norm_label": "server.ts"
     },
     {
       "id": "web_server_server",
       "label": "Server",
       "file_type": "code",
-      "source_file": "internal/extract/testdata/proj/web/server.ts",
-      "source_location": "L4",
-      "community": 9,
+      "source_file": "internal/extract/testdata/rsproj/web/server.rs",
+      "source_location": "L3",
+      "community": 6,
       "norm_label": "server"
     },
     {
       "id": "web_server_server_start",
       "label": "Server.start()",
       "file_type": "code",
-      "source_file": "internal/extract/testdata/proj/web/server.ts",
-      "source_location": "L5",
-      "community": 9,
+      "source_file": "internal/extract/testdata/rsproj/web/server.rs",
+      "source_location": "L8",
+      "community": 6,
       "norm_label": "server.start()"
     },
     {
       "id": "web_server_boot",
       "label": "boot()",
       "file_type": "code",
-      "source_file": "internal/extract/testdata/proj/web/server.ts",
-      "source_location": "L10",
-      "community": 9,
+      "source_file": "internal/extract/testdata/rsproj/web/server.rs",
+      "source_location": "L13",
+      "community": 6,
       "norm_label": "boot()"
+    },
+    {
+      "id": "internal_extract_testdata_pyproj_util_math_py",
+      "label": "math.py",
+      "file_type": "code",
+      "source_file": "internal/extract/testdata/pyproj/util/math.py",
+      "source_location": "L1",
+      "community": 6,
+      "norm_label": "math.py"
+    },
+    {
+      "id": "internal_extract_testdata_pyproj_web_server_py",
+      "label": "server.py",
+      "file_type": "code",
+      "source_file": "internal/extract/testdata/pyproj/web/server.py",
+      "source_location": "L1",
+      "community": 6,
+      "norm_label": "server.py"
+    },
+    {
+      "id": "internal_extract_testdata_rsproj_util_math_rs",
+      "label": "math.rs",
+      "file_type": "code",
+      "source_file": "internal/extract/testdata/rsproj/util/math.rs",
+      "source_location": "L1",
+      "community": 6,
+      "norm_label": "math.rs"
+    },
+    {
+      "id": "internal_extract_testdata_rsproj_web_server_rs",
+      "label": "server.rs",
+      "file_type": "code",
+      "source_file": "internal/extract/testdata/rsproj/web/server.rs",
+      "source_location": "L1",
+      "community": 6,
+      "norm_label": "server.rs"
     },
     {
       "id": "internal_extract_testdata_tf_main_tf",
@@ -1242,7 +1467,7 @@
       "file_type": "code",
       "source_file": "internal/extract/testdata/tf/main.tf",
       "source_location": "L1",
-      "community": 8,
+      "community": 9,
       "norm_label": "main.tf"
     },
     {
@@ -1251,7 +1476,7 @@
       "file_type": "code",
       "source_file": "internal/extract/testdata/tf/main.tf",
       "source_location": "L1",
-      "community": 8,
+      "community": 9,
       "norm_label": "var.region"
     },
     {
@@ -1260,7 +1485,7 @@
       "file_type": "code",
       "source_file": "internal/extract/testdata/tf/main.tf",
       "source_location": "L3",
-      "community": 8,
+      "community": 9,
       "norm_label": "data.aws_ami.ubuntu"
     },
     {
@@ -1269,7 +1494,7 @@
       "file_type": "code",
       "source_file": "internal/extract/testdata/tf/main.tf",
       "source_location": "L5",
-      "community": 8,
+      "community": 9,
       "norm_label": "aws_vpc.main"
     },
     {
@@ -1278,7 +1503,7 @@
       "file_type": "code",
       "source_file": "internal/extract/testdata/tf/main.tf",
       "source_location": "L7",
-      "community": 8,
+      "community": 9,
       "norm_label": "aws_instance.web"
     },
     {
@@ -1287,7 +1512,7 @@
       "file_type": "code",
       "source_file": "internal/extract/testdata/tf/outputs.tf",
       "source_location": "L1",
-      "community": 8,
+      "community": 9,
       "norm_label": "outputs.tf"
     },
     {
@@ -1296,7 +1521,7 @@
       "file_type": "code",
       "source_file": "internal/extract/testdata/tf/outputs.tf",
       "source_location": "L1",
-      "community": 8,
+      "community": 9,
       "norm_label": "output.instance_id"
     },
     {
@@ -1305,7 +1530,7 @@
       "file_type": "code",
       "source_file": "internal/graph/build.go",
       "source_location": "L1",
-      "community": 3,
+      "community": 5,
       "norm_label": "build.go"
     },
     {
@@ -1323,7 +1548,7 @@
       "file_type": "code",
       "source_file": "internal/graph/build.go",
       "source_location": "L76",
-      "community": 3,
+      "community": 5,
       "norm_label": "crosslanguage()"
     },
     {
@@ -1359,7 +1584,7 @@
       "file_type": "code",
       "source_file": "internal/idutil/idutil.go",
       "source_location": "L1",
-      "community": 4,
+      "community": 7,
       "norm_label": "idutil.go"
     },
     {
@@ -1368,7 +1593,7 @@
       "file_type": "code",
       "source_file": "internal/idutil/idutil.go",
       "source_location": "L27",
-      "community": 1,
+      "community": 0,
       "norm_label": "makeid()"
     },
     {
@@ -1377,7 +1602,7 @@
       "file_type": "code",
       "source_file": "internal/idutil/idutil.go",
       "source_location": "L42",
-      "community": 4,
+      "community": 7,
       "norm_label": "normalizeid()"
     },
     {
@@ -1386,7 +1611,7 @@
       "file_type": "code",
       "source_file": "internal/idutil/idutil.go",
       "source_location": "L44",
-      "community": 4,
+      "community": 7,
       "norm_label": "clean()"
     },
     {
@@ -1395,7 +1620,7 @@
       "file_type": "code",
       "source_file": "internal/idutil/idutil_test.go",
       "source_location": "L1",
-      "community": 10,
+      "community": 7,
       "norm_label": "idutil_test.go"
     },
     {
@@ -1404,7 +1629,7 @@
       "file_type": "code",
       "source_file": "internal/idutil/idutil_test.go",
       "source_location": "L5",
-      "community": 10,
+      "community": 7,
       "norm_label": "testmakeid()"
     },
     {
@@ -1413,7 +1638,7 @@
       "file_type": "code",
       "source_file": "internal/idutil/idutil_test.go",
       "source_location": "L25",
-      "community": 10,
+      "community": 7,
       "norm_label": "testnormalizeidmatchesmakeid()"
     },
     {
@@ -1557,7 +1782,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L1",
-      "community": 0,
+      "community": 1,
       "norm_label": "query.go"
     },
     {
@@ -1566,7 +1791,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L19",
-      "community": 0,
+      "community": 1,
       "norm_label": "graph"
     },
     {
@@ -1575,7 +1800,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L28",
-      "community": 0,
+      "community": 1,
       "norm_label": "node"
     },
     {
@@ -1584,7 +1809,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L39",
-      "community": 0,
+      "community": 1,
       "norm_label": "link"
     },
     {
@@ -1593,7 +1818,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L48",
-      "community": 0,
+      "community": 1,
       "norm_label": "load()"
     },
     {
@@ -1602,7 +1827,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L79",
-      "community": 0,
+      "community": 1,
       "norm_label": "match"
     },
     {
@@ -1611,7 +1836,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L85",
-      "community": 0,
+      "community": 1,
       "norm_label": "query()"
     },
     {
@@ -1620,7 +1845,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L102",
-      "community": 0,
+      "community": 1,
       "norm_label": "neighbor"
     },
     {
@@ -1629,7 +1854,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L107",
-      "community": 0,
+      "community": 1,
       "norm_label": "explanation"
     },
     {
@@ -1638,7 +1863,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L115",
-      "community": 0,
+      "community": 1,
       "norm_label": "explain()"
     },
     {
@@ -1647,7 +1872,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L149",
-      "community": 0,
+      "community": 1,
       "norm_label": "path()"
     },
     {
@@ -1656,7 +1881,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L195",
-      "community": 0,
+      "community": 1,
       "norm_label": "graph.resolve()"
     },
     {
@@ -1665,7 +1890,7 @@
       "file_type": "code",
       "source_file": "internal/query/query.go",
       "source_location": "L218",
-      "community": 0,
+      "community": 1,
       "norm_label": "loc()"
     },
     {
@@ -1674,7 +1899,7 @@
       "file_type": "code",
       "source_file": "internal/query/query_test.go",
       "source_location": "L1",
-      "community": 0,
+      "community": 1,
       "norm_label": "query_test.go"
     },
     {
@@ -1683,7 +1908,7 @@
       "file_type": "code",
       "source_file": "internal/query/query_test.go",
       "source_location": "L22",
-      "community": 0,
+      "community": 1,
       "norm_label": "loadsample()"
     },
     {
@@ -1692,7 +1917,7 @@
       "file_type": "code",
       "source_file": "internal/query/query_test.go",
       "source_location": "L35",
-      "community": 0,
+      "community": 1,
       "norm_label": "testquerymatches()"
     },
     {
@@ -1701,7 +1926,7 @@
       "file_type": "code",
       "source_file": "internal/query/query_test.go",
       "source_location": "L49",
-      "community": 0,
+      "community": 1,
       "norm_label": "testexplainneighbors()"
     },
     {
@@ -1710,7 +1935,7 @@
       "file_type": "code",
       "source_file": "internal/query/query_test.go",
       "source_location": "L70",
-      "community": 0,
+      "community": 1,
       "norm_label": "testpath()"
     },
     {
@@ -1719,7 +1944,7 @@
       "file_type": "code",
       "source_file": "internal/report/report.go",
       "source_location": "L1",
-      "community": 7,
+      "community": 2,
       "norm_label": "report.go"
     },
     {
@@ -1728,7 +1953,7 @@
       "file_type": "code",
       "source_file": "internal/report/report.go",
       "source_location": "L19",
-      "community": 7,
+      "community": 2,
       "norm_label": "generate()"
     },
     {
@@ -1737,7 +1962,7 @@
       "file_type": "code",
       "source_file": "internal/report/report.go",
       "source_location": "L95",
-      "community": 7,
+      "community": 2,
       "norm_label": "confidencebreakdown()"
     },
     {
@@ -1746,7 +1971,7 @@
       "file_type": "code",
       "source_file": "internal/report/report.go",
       "source_location": "L112",
-      "community": 7,
+      "community": 2,
       "norm_label": "reallabels()"
     },
     {
@@ -1755,7 +1980,7 @@
       "file_type": "code",
       "source_file": "internal/report/report.go",
       "source_location": "L124",
-      "community": 7,
+      "community": 2,
       "norm_label": "sortedkeys()"
     },
     {
@@ -1764,7 +1989,7 @@
       "file_type": "code",
       "source_file": "internal/report/report.go",
       "source_location": "L133",
-      "community": 7,
+      "community": 2,
       "norm_label": "base()"
     },
     {
@@ -1773,7 +1998,7 @@
       "file_type": "code",
       "source_file": "internal/report/report.go",
       "source_location": "L140",
-      "community": 7,
+      "community": 2,
       "norm_label": "short()"
     },
     {
@@ -1827,7 +2052,7 @@
       "file_type": "code",
       "source_file": "internal/security/security.go",
       "source_location": "L100",
-      "community": 0,
+      "community": 1,
       "norm_label": "checkgraphfilesize()"
     },
     {
@@ -1836,7 +2061,7 @@
       "file_type": "code",
       "source_file": "internal/security/security.go",
       "source_location": "L115",
-      "community": 2,
+      "community": 4,
       "norm_label": "sanitizelabel()"
     },
     {
@@ -1897,7 +2122,7 @@
       "label": "os",
       "file_type": "concept",
       "source_file": "",
-      "community": 4,
+      "community": 1,
       "norm_label": "os"
     },
     {
@@ -1905,7 +2130,7 @@
       "label": "os/exec",
       "file_type": "concept",
       "source_file": "",
-      "community": 0,
+      "community": 1,
       "norm_label": "os/exec"
     },
     {
@@ -1913,23 +2138,39 @@
       "label": "path/filepath",
       "file_type": "concept",
       "source_file": "",
-      "community": 0,
+      "community": 5,
       "norm_label": "path/filepath"
+    },
+    {
+      "id": "runtime",
+      "label": "runtime",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 1,
+      "norm_label": "runtime"
     },
     {
       "id": "strings",
       "label": "strings",
       "file_type": "concept",
       "source_file": "",
-      "community": 4,
+      "community": 7,
       "norm_label": "strings"
+    },
+    {
+      "id": "sync",
+      "label": "sync",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 1,
+      "norm_label": "sync"
     },
     {
       "id": "github_com_dobbo_ca_graphify_go_internal_cluster",
       "label": "github.com/dobbo-ca/graphify-go/internal/cluster",
       "file_type": "concept",
       "source_file": "",
-      "community": 5,
+      "community": 2,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/cluster"
     },
     {
@@ -1937,7 +2178,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/detect",
       "file_type": "concept",
       "source_file": "",
-      "community": 0,
+      "community": 1,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/detect"
     },
     {
@@ -1945,7 +2186,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/export",
       "file_type": "concept",
       "source_file": "",
-      "community": 0,
+      "community": 1,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/export"
     },
     {
@@ -1953,7 +2194,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/extract",
       "file_type": "concept",
       "source_file": "",
-      "community": 0,
+      "community": 1,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/extract"
     },
     {
@@ -1961,7 +2202,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/graph",
       "file_type": "concept",
       "source_file": "",
-      "community": 0,
+      "community": 1,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/graph"
     },
     {
@@ -1969,7 +2210,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/query",
       "file_type": "concept",
       "source_file": "",
-      "community": 0,
+      "community": 1,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/query"
     },
     {
@@ -1977,7 +2218,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/report",
       "file_type": "concept",
       "source_file": "",
-      "community": 0,
+      "community": 1,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/report"
     },
     {
@@ -1985,7 +2226,7 @@
       "label": "sort",
       "file_type": "concept",
       "source_file": "",
-      "community": 3,
+      "community": 5,
       "norm_label": "sort"
     },
     {
@@ -1993,7 +2234,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/model",
       "file_type": "concept",
       "source_file": "",
-      "community": 3,
+      "community": 2,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/model"
     },
     {
@@ -2025,7 +2266,7 @@
       "label": "io/fs",
       "file_type": "concept",
       "source_file": "",
-      "community": 4,
+      "community": 7,
       "norm_label": "io/fs"
     },
     {
@@ -2033,7 +2274,7 @@
       "label": "regexp",
       "file_type": "concept",
       "source_file": "",
-      "community": 4,
+      "community": 7,
       "norm_label": "regexp"
     },
     {
@@ -2041,7 +2282,7 @@
       "label": "encoding/json",
       "file_type": "concept",
       "source_file": "",
-      "community": 4,
+      "community": 1,
       "norm_label": "encoding/json"
     },
     {
@@ -2049,7 +2290,7 @@
       "label": "unicode",
       "file_type": "concept",
       "source_file": "",
-      "community": 4,
+      "community": 1,
       "norm_label": "unicode"
     },
     {
@@ -2057,7 +2298,7 @@
       "label": "golang.org/x/text/unicode/norm",
       "file_type": "concept",
       "source_file": "",
-      "community": 4,
+      "community": 7,
       "norm_label": "golang.org/x/text/unicode/norm"
     },
     {
@@ -2065,7 +2306,7 @@
       "label": "html",
       "file_type": "concept",
       "source_file": "",
-      "community": 2,
+      "community": 4,
       "norm_label": "html"
     },
     {
@@ -2073,7 +2314,7 @@
       "label": "math",
       "file_type": "concept",
       "source_file": "",
-      "community": 5,
+      "community": 2,
       "norm_label": "math"
     },
     {
@@ -2081,7 +2322,7 @@
       "label": "path",
       "file_type": "concept",
       "source_file": "",
-      "community": 0,
+      "community": 5,
       "norm_label": "path"
     },
     {
@@ -2089,7 +2330,7 @@
       "label": "strconv",
       "file_type": "concept",
       "source_file": "",
-      "community": 2,
+      "community": 4,
       "norm_label": "strconv"
     },
     {
@@ -2097,7 +2338,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/security",
       "file_type": "concept",
       "source_file": "",
-      "community": 0,
+      "community": 1,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/security"
     },
     {
@@ -2105,7 +2346,7 @@
       "label": "testing",
       "file_type": "concept",
       "source_file": "",
-      "community": 10,
+      "community": 8,
       "norm_label": "testing"
     },
     {
@@ -2113,7 +2354,7 @@
       "label": "math/rand",
       "file_type": "concept",
       "source_file": "",
-      "community": 5,
+      "community": 2,
       "norm_label": "math/rand"
     },
     {
@@ -2121,7 +2362,7 @@
       "label": "unsafe",
       "file_type": "concept",
       "source_file": "",
-      "community": 1,
+      "community": 0,
       "norm_label": "unsafe"
     },
     {
@@ -2129,7 +2370,7 @@
       "label": "github.com/tree-sitter/go-tree-sitter",
       "file_type": "concept",
       "source_file": "",
-      "community": 1,
+      "community": 0,
       "norm_label": "github.com/tree-sitter/go-tree-sitter"
     },
     {
@@ -2137,7 +2378,7 @@
       "label": "github.com/tree-sitter/tree-sitter-javascript/bindings/go",
       "file_type": "concept",
       "source_file": "",
-      "community": 1,
+      "community": 0,
       "norm_label": "github.com/tree-sitter/tree-sitter-javascript/bindings/go"
     },
     {
@@ -2145,7 +2386,7 @@
       "label": "github.com/tree-sitter/tree-sitter-typescript/bindings/go",
       "file_type": "concept",
       "source_file": "",
-      "community": 1,
+      "community": 0,
       "norm_label": "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
     },
     {
@@ -2153,7 +2394,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/idutil",
       "file_type": "concept",
       "source_file": "",
-      "community": 1,
+      "community": 5,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/idutil"
     },
     {
@@ -2161,15 +2402,31 @@
       "label": "github.com/tree-sitter/tree-sitter-go/bindings/go",
       "file_type": "concept",
       "source_file": "",
-      "community": 1,
+      "community": 0,
       "norm_label": "github.com/tree-sitter/tree-sitter-go/bindings/go"
+    },
+    {
+      "id": "github_com_tree_sitter_tree_sitter_python_bindings_go",
+      "label": "github.com/tree-sitter/tree-sitter-python/bindings/go",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 0,
+      "norm_label": "github.com/tree-sitter/tree-sitter-python/bindings/go"
+    },
+    {
+      "id": "github_com_tree_sitter_tree_sitter_rust_bindings_go",
+      "label": "github.com/tree-sitter/tree-sitter-rust/bindings/go",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 0,
+      "norm_label": "github.com/tree-sitter/tree-sitter-rust/bindings/go"
     },
     {
       "id": "github_com_tree_sitter_grammars_tree_sitter_hcl_bindings_go",
       "label": "github.com/tree-sitter-grammars/tree-sitter-hcl/bindings/go",
       "file_type": "concept",
       "source_file": "",
-      "community": 6,
+      "community": 5,
       "norm_label": "github.com/tree-sitter-grammars/tree-sitter-hcl/bindings/go"
     },
     {
@@ -2177,7 +2434,7 @@
       "label": "../util/math",
       "file_type": "concept",
       "source_file": "",
-      "community": 9,
+      "community": 6,
       "norm_label": "../util/math"
     },
     {
@@ -2185,15 +2442,23 @@
       "label": "express",
       "file_type": "concept",
       "source_file": "",
-      "community": 9,
+      "community": 6,
       "norm_label": "express"
+    },
+    {
+      "id": "crate_util_math",
+      "label": "crate::util::math",
+      "file_type": "concept",
+      "source_file": "",
+      "community": 6,
+      "norm_label": "crate::util::math"
     },
     {
       "id": "golang_org_x_text_cases",
       "label": "golang.org/x/text/cases",
       "file_type": "concept",
       "source_file": "",
-      "community": 4,
+      "community": 7,
       "norm_label": "golang.org/x/text/cases"
     },
     {
@@ -2201,7 +2466,7 @@
       "label": "github.com/dobbo-ca/graphify-go/internal/analyze",
       "file_type": "concept",
       "source_file": "",
-      "community": 7,
+      "community": 2,
       "norm_label": "github.com/dobbo-ca/graphify-go/internal/analyze"
     },
     {
@@ -2435,7 +2700,7 @@
       "relation": "imports",
       "confidence": "EXTRACTED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L14",
+      "source_location": "L16",
       "confidence_score": 1
     },
     {
@@ -2444,7 +2709,7 @@
       "relation": "imports",
       "confidence": "EXTRACTED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L15",
+      "source_location": "L17",
       "confidence_score": 1
     },
     {
@@ -2453,7 +2718,7 @@
       "relation": "imports",
       "confidence": "EXTRACTED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L16",
+      "source_location": "L18",
       "confidence_score": 1
     },
     {
@@ -2462,7 +2727,7 @@
       "relation": "imports",
       "confidence": "EXTRACTED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L17",
+      "source_location": "L19",
       "confidence_score": 1
     },
     {
@@ -2471,7 +2736,7 @@
       "relation": "imports",
       "confidence": "EXTRACTED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L18",
+      "source_location": "L20",
       "confidence_score": 1
     },
     {
@@ -2480,7 +2745,7 @@
       "relation": "imports",
       "confidence": "EXTRACTED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L19",
+      "source_location": "L21",
       "confidence_score": 1
     },
     {
@@ -2489,7 +2754,7 @@
       "relation": "imports",
       "confidence": "EXTRACTED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L20",
+      "source_location": "L22",
       "confidence_score": 1
     },
     {
@@ -2498,7 +2763,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L201",
+      "source_location": "L242",
       "confidence_score": 1
     },
     {
@@ -2507,7 +2772,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L68",
+      "source_location": "L117",
       "confidence_score": 1
     },
     {
@@ -2516,7 +2781,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L127",
+      "source_location": "L168",
       "confidence_score": 1
     },
     {
@@ -2525,7 +2790,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L163",
+      "source_location": "L204",
       "confidence_score": 1
     },
     {
@@ -2534,7 +2799,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L146",
+      "source_location": "L187",
       "confidence_score": 1
     },
     {
@@ -2543,7 +2808,16 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L108",
+      "source_location": "L149",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "graphify_main_extractall",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L75",
       "confidence_score": 1
     },
     {
@@ -2552,7 +2826,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L192",
+      "source_location": "L233",
       "confidence_score": 1
     },
     {
@@ -2561,7 +2835,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L182",
+      "source_location": "L223",
       "confidence_score": 1
     },
     {
@@ -2570,7 +2844,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L184",
+      "source_location": "L225",
       "confidence_score": 1
     },
     {
@@ -2579,7 +2853,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L32",
+      "source_location": "L34",
       "confidence_score": 1
     },
     {
@@ -2588,7 +2862,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L208",
+      "source_location": "L249",
       "confidence_score": 1
     },
     {
@@ -2597,7 +2871,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L216",
+      "source_location": "L257",
       "confidence_score": 1
     },
     {
@@ -2629,11 +2903,29 @@
     },
     {
       "source": "cmd_graphify_main_go",
-      "target": "strings",
+      "target": "runtime",
       "relation": "imports",
       "confidence": "EXTRACTED",
       "source_file": "cmd/graphify/main.go",
       "source_location": "L12",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "strings",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L13",
+      "confidence_score": 1
+    },
+    {
+      "source": "cmd_graphify_main_go",
+      "target": "sync",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L14",
       "confidence_score": 1
     },
     {
@@ -2642,7 +2934,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/detect/detect.go",
-      "source_location": "L80",
+      "source_location": "L81",
       "confidence_score": 0.5
     },
     {
@@ -3200,7 +3492,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L144",
+      "source_location": "L148",
       "confidence_score": 0.5
     },
     {
@@ -3209,7 +3501,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L145",
+      "source_location": "L149",
       "confidence_score": 0.5
     },
     {
@@ -3232,6 +3524,24 @@
     },
     {
       "source": "extract_extract_file",
+      "target": "extract_python_extractpython",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L66",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_extract_file",
+      "target": "extract_rust_extractrust",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/extract.go",
+      "source_location": "L68",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_extract_file",
       "target": "extract_terraform_extractterraform",
       "relation": "calls",
       "confidence": "INFERRED",
@@ -3245,7 +3555,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L91",
+      "source_location": "L95",
       "confidence_score": 0.5
     },
     {
@@ -3254,7 +3564,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L120",
+      "source_location": "L124",
       "confidence_score": 0.5
     },
     {
@@ -3263,7 +3573,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L119",
+      "source_location": "L123",
       "confidence_score": 0.5
     },
     {
@@ -3272,7 +3582,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L118",
+      "source_location": "L122",
       "confidence_score": 0.5
     },
     {
@@ -3852,6 +4162,222 @@
       "confidence_score": 0.5
     },
     {
+      "source": "extract_python_builder_pycalls",
+      "target": "extract_extract_builder_call",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L131",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_builder_pycalls",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L131",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_builder_pycalls",
+      "target": "extract_extract_walk",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L121",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_builder_pyclass",
+      "target": "extract_extract_builder_addnode",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L80",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_builder_pyclass",
+      "target": "extract_extract_builder_def",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L58",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_builder_pyclass",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L58",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_builder_pyclass",
+      "target": "extract_golang_fieldtext",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L53",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_builder_pyclass",
+      "target": "extract_python_builder_pycalls",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L86",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_builder_pyclass",
+      "target": "idutil_idutil_makeid",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L57",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_builder_pyfunc",
+      "target": "extract_extract_builder_def",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L48",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_builder_pyfunc",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L48",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_builder_pyfunc",
+      "target": "extract_golang_fieldtext",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L43",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_builder_pyfunc",
+      "target": "extract_python_builder_pycalls",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L49",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_builder_pyfunc",
+      "target": "idutil_idutil_makeid",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L47",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_builder_pyimports",
+      "target": "extract_extract_builder_imp",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L100",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_builder_pyimports",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L100",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_builder_pystatement",
+      "target": "extract_python_builder_pyclass",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L36",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_builder_pystatement",
+      "target": "extract_python_builder_pyfunc",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L34",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_builder_pystatement",
+      "target": "extract_python_builder_pyimports",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L38",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_extractpython",
+      "target": "extract_extract_newbuilder",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L18",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_extractpython",
+      "target": "extract_extract_parseroot",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L16",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_extractpython",
+      "target": "extract_python_builder_pystatement",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L21",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_test_testextractpython",
+      "target": "extract_extract_file",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python_test.go",
+      "source_location": "L11",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_python_test_testextractpython",
+      "target": "extract_resolve_resolve",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/python_test.go",
+      "source_location": "L17",
+      "confidence_score": 0.5
+    },
+    {
       "source": "extract_resolve_resolve",
       "target": "extract_resolve_resolverelimport",
       "relation": "calls",
@@ -3867,6 +4393,276 @@
       "confidence": "INFERRED",
       "source_file": "internal/extract/resolve.go",
       "source_location": "L66",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rustcalls",
+      "target": "extract_extract_builder_call",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L157",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rustcalls",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L157",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rustcalls",
+      "target": "extract_extract_walk",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L148",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rustfunc",
+      "target": "extract_extract_builder_def",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L52",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rustfunc",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L52",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rustfunc",
+      "target": "extract_golang_fieldtext",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L47",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rustfunc",
+      "target": "extract_rust_builder_rustcalls",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L53",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rustfunc",
+      "target": "idutil_idutil_makeid",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L51",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rustimpl",
+      "target": "extract_extract_builder_addnode",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L85",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rustimpl",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L85",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rustimpl",
+      "target": "extract_golang_fieldtext",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L80",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rustimpl",
+      "target": "extract_rust_builder_rustcalls",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L92",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rustimpl",
+      "target": "extract_rust_rusttypename",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L67",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rustimpl",
+      "target": "idutil_idutil_makeid",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L84",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rustitems",
+      "target": "extract_rust_builder_rustfunc",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L31",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rustitems",
+      "target": "extract_rust_builder_rustimpl",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L35",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rustitems",
+      "target": "extract_rust_builder_rusttype",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L33",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rustitems",
+      "target": "extract_rust_builder_rustuse",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L37",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rusttype",
+      "target": "extract_extract_builder_def",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L61",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rusttype",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L61",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rusttype",
+      "target": "extract_golang_fieldtext",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L57",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rusttype",
+      "target": "idutil_idutil_makeid",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L61",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rustuse",
+      "target": "extract_extract_builder_imp",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L104",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_builder_rustuse",
+      "target": "extract_extract_line",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L104",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_extractrust",
+      "target": "extract_extract_newbuilder",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L18",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_extractrust",
+      "target": "extract_extract_parseroot",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L16",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_extractrust",
+      "target": "extract_rust_builder_rustitems",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L20",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_rusttypename",
+      "target": "extract_extract_walk",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L128",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_test_testextractrust",
+      "target": "extract_extract_file",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust_test.go",
+      "source_location": "L11",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "extract_rust_test_testextractrust",
+      "target": "extract_resolve_resolve",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/rust_test.go",
+      "source_location": "L17",
       "confidence_score": 0.5
     },
     {
@@ -4118,7 +4914,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L86",
+      "source_location": "L127",
       "confidence_score": 0.5
     },
     {
@@ -4127,7 +4923,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L69",
+      "source_location": "L118",
       "confidence_score": 0.5
     },
     {
@@ -4136,7 +4932,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L93",
+      "source_location": "L134",
       "confidence_score": 0.5
     },
     {
@@ -4145,16 +4941,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L96",
-      "confidence_score": 0.5
-    },
-    {
-      "source": "graphify_main_cmdbuild",
-      "target": "extract_extract_file",
-      "relation": "calls",
-      "confidence": "INFERRED",
-      "source_file": "cmd/graphify/main.go",
-      "source_location": "L78",
+      "source_location": "L137",
       "confidence_score": 0.5
     },
     {
@@ -4163,7 +4950,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L85",
+      "source_location": "L126",
       "confidence_score": 0.5
     },
     {
@@ -4172,7 +4959,16 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L85",
+      "source_location": "L126",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_cmdbuild",
+      "target": "graphify_main_extractall",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L125",
       "confidence_score": 0.5
     },
     {
@@ -4181,7 +4977,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L87",
+      "source_location": "L128",
       "confidence_score": 0.5
     },
     {
@@ -4190,7 +4986,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L104",
+      "source_location": "L145",
       "confidence_score": 0.5
     },
     {
@@ -4199,7 +4995,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L104",
+      "source_location": "L145",
       "confidence_score": 0.5
     },
     {
@@ -4208,7 +5004,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L99",
+      "source_location": "L140",
       "confidence_score": 0.5
     },
     {
@@ -4217,7 +5013,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L128",
+      "source_location": "L169",
       "confidence_score": 0.5
     },
     {
@@ -4226,7 +5022,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L136",
+      "source_location": "L177",
       "confidence_score": 0.5
     },
     {
@@ -4235,7 +5031,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L132",
+      "source_location": "L173",
       "confidence_score": 0.5
     },
     {
@@ -4244,7 +5040,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L168",
+      "source_location": "L209",
       "confidence_score": 0.5
     },
     {
@@ -4253,7 +5049,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L172",
+      "source_location": "L213",
       "confidence_score": 0.5
     },
     {
@@ -4262,7 +5058,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L147",
+      "source_location": "L188",
       "confidence_score": 0.5
     },
     {
@@ -4271,7 +5067,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L151",
+      "source_location": "L192",
       "confidence_score": 0.5
     },
     {
@@ -4280,7 +5076,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L109",
+      "source_location": "L150",
       "confidence_score": 0.5
     },
     {
@@ -4289,7 +5085,16 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L113",
+      "source_location": "L154",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "graphify_main_extractall",
+      "target": "extract_extract_file",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "cmd/graphify/main.go",
+      "source_location": "L93",
       "confidence_score": 0.5
     },
     {
@@ -4298,7 +5103,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L182",
+      "source_location": "L223",
       "confidence_score": 0.5
     },
     {
@@ -4307,7 +5112,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L43",
+      "source_location": "L45",
       "confidence_score": 0.5
     },
     {
@@ -4316,7 +5121,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L43",
+      "source_location": "L45",
       "confidence_score": 0.5
     },
     {
@@ -4325,7 +5130,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L47",
+      "source_location": "L49",
       "confidence_score": 0.5
     },
     {
@@ -4334,7 +5139,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L55",
+      "source_location": "L57",
       "confidence_score": 0.5
     },
     {
@@ -4343,7 +5148,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L52",
+      "source_location": "L54",
       "confidence_score": 0.5
     },
     {
@@ -4352,7 +5157,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L45",
+      "source_location": "L47",
       "confidence_score": 0.5
     },
     {
@@ -4361,7 +5166,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L45",
+      "source_location": "L47",
       "confidence_score": 0.5
     },
     {
@@ -4370,7 +5175,7 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "source_file": "cmd/graphify/main.go",
-      "source_location": "L34",
+      "source_location": "L36",
       "confidence_score": 0.5
     },
     {
@@ -4667,7 +5472,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/detect/detect.go",
-      "source_location": "L60",
+      "source_location": "L61",
       "confidence_score": 1
     },
     {
@@ -4676,7 +5481,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/detect/detect.go",
-      "source_location": "L89",
+      "source_location": "L90",
       "confidence_score": 1
     },
     {
@@ -5360,7 +6165,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L109",
+      "source_location": "L113",
       "confidence_score": 1
     },
     {
@@ -5369,7 +6174,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L124",
+      "source_location": "L128",
       "confidence_score": 1
     },
     {
@@ -5378,7 +6183,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L149",
+      "source_location": "L153",
       "confidence_score": 1
     },
     {
@@ -5387,7 +6192,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L134",
+      "source_location": "L138",
       "confidence_score": 1
     },
     {
@@ -5396,7 +6201,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L143",
+      "source_location": "L147",
       "confidence_score": 1
     },
     {
@@ -5405,7 +6210,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L156",
+      "source_location": "L160",
       "confidence_score": 1
     },
     {
@@ -5441,7 +6246,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L82",
+      "source_location": "L86",
       "confidence_score": 1
     },
     {
@@ -5459,7 +6264,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L94",
+      "source_location": "L98",
       "confidence_score": 1
     },
     {
@@ -5468,7 +6273,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L90",
+      "source_location": "L94",
       "confidence_score": 1
     },
     {
@@ -5477,7 +6282,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L117",
+      "source_location": "L121",
       "confidence_score": 1
     },
     {
@@ -5486,7 +6291,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L72",
+      "source_location": "L76",
       "confidence_score": 1
     },
     {
@@ -5504,7 +6309,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/extract.go",
-      "source_location": "L164",
+      "source_location": "L168",
       "confidence_score": 1
     },
     {
@@ -5823,6 +6628,114 @@
       "confidence_score": 1
     },
     {
+      "source": "internal_extract_python_go",
+      "target": "extract_python_builder_pycalls",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L117",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_python_go",
+      "target": "extract_python_builder_pyclass",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L52",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_python_go",
+      "target": "extract_python_builder_pyfunc",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L42",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_python_go",
+      "target": "extract_python_builder_pyimports",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L93",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_python_go",
+      "target": "extract_python_builder_pystatement",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L27",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_python_go",
+      "target": "extract_python_extractpython",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L15",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_python_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_idutil",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L7",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_python_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_model",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L8",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_python_go",
+      "target": "github_com_tree_sitter_go_tree_sitter",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L4",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_python_go",
+      "target": "github_com_tree_sitter_tree_sitter_python_bindings_go",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/python.go",
+      "source_location": "L5",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_python_test_go",
+      "target": "extract_python_test_testextractpython",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/python_test.go",
+      "source_location": "L5",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_python_test_go",
+      "target": "testing",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/python_test.go",
+      "source_location": "L3",
+      "confidence_score": 1
+    },
+    {
       "source": "internal_extract_resolve_go",
       "target": "extract_resolve_resolve",
       "relation": "contains",
@@ -5874,6 +6787,132 @@
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/resolve.go",
       "source_location": "L5",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_rust_go",
+      "target": "extract_rust_builder_rustcalls",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L144",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_rust_go",
+      "target": "extract_rust_builder_rustfunc",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L46",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_rust_go",
+      "target": "extract_rust_builder_rustimpl",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L66",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_rust_go",
+      "target": "extract_rust_builder_rustitems",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L26",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_rust_go",
+      "target": "extract_rust_builder_rusttype",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L56",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_rust_go",
+      "target": "extract_rust_builder_rustuse",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L98",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_rust_go",
+      "target": "extract_rust_extractrust",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L15",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_rust_go",
+      "target": "extract_rust_rusttypename",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L112",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_rust_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_idutil",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L7",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_rust_go",
+      "target": "github_com_dobbo_ca_graphify_go_internal_model",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L8",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_rust_go",
+      "target": "github_com_tree_sitter_go_tree_sitter",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L4",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_rust_go",
+      "target": "github_com_tree_sitter_tree_sitter_rust_bindings_go",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/rust.go",
+      "source_location": "L5",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_rust_test_go",
+      "target": "extract_rust_test_testextractrust",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/rust_test.go",
+      "source_location": "L5",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_rust_test_go",
+      "target": "testing",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/rust_test.go",
+      "source_location": "L3",
       "confidence_score": 1
     },
     {
@@ -6072,6 +7111,87 @@
       "confidence": "EXTRACTED",
       "source_file": "internal/extract/testdata/proj/web/server.ts",
       "source_location": "L4",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_pyproj_util_math_py",
+      "target": "util_math_add",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/pyproj/util/math.py",
+      "source_location": "L1",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_pyproj_web_server_py",
+      "target": "os",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/pyproj/web/server.py",
+      "source_location": "L2",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_pyproj_web_server_py",
+      "target": "util_math",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/pyproj/web/server.py",
+      "source_location": "L1",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_pyproj_web_server_py",
+      "target": "web_server_boot",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/pyproj/web/server.py",
+      "source_location": "L10",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_pyproj_web_server_py",
+      "target": "web_server_server",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/pyproj/web/server.py",
+      "source_location": "L5",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_rsproj_util_math_rs",
+      "target": "util_math_add",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/rsproj/util/math.rs",
+      "source_location": "L1",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_rsproj_web_server_rs",
+      "target": "crate_util_math",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/rsproj/web/server.rs",
+      "source_location": "L1",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_rsproj_web_server_rs",
+      "target": "web_server_boot",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/rsproj/web/server.rs",
+      "source_location": "L13",
+      "confidence_score": 1
+    },
+    {
+      "source": "internal_extract_testdata_rsproj_web_server_rs",
+      "target": "web_server_server",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "internal/extract/testdata/rsproj/web/server.rs",
+      "source_location": "L3",
       "confidence_score": 1
     },
     {
@@ -7272,15 +8392,6 @@
       "confidence_score": 1
     },
     {
-      "source": "util_math_calc_sum",
-      "target": "util_math_add",
-      "relation": "calls",
-      "confidence": "INFERRED",
-      "source_file": "internal/extract/testdata/proj/util/math.go",
-      "source_location": "L9",
-      "confidence_score": 0.5
-    },
-    {
       "source": "web_server_boot",
       "target": "web_server_server_start",
       "relation": "calls",
@@ -7297,8 +8408,26 @@
       "source_file": "internal/extract/testdata/proj/web/server.ts",
       "source_location": "L5",
       "confidence_score": 1
+    },
+    {
+      "source": "web_server_server_start",
+      "target": "util_math_add",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/testdata/proj/web/server.ts",
+      "source_location": "L6",
+      "confidence_score": 0.5
+    },
+    {
+      "source": "web_server_server_start",
+      "target": "web_server_boot",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "source_file": "internal/extract/testdata/pyproj/web/server.py",
+      "source_location": "L7",
+      "confidence_score": 0.5
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "ab16f0e050c10b6dfb6f2e097421811dd68e9f94"
+  "built_at_commit": "027638493d2b5c1a4c59935d3f36496117cb99be"
 }
