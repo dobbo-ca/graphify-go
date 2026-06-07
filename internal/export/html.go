@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/dobbo-ca/graphify-go/internal/cluster"
@@ -217,6 +218,23 @@ func ToHTML(g *model.Graph, communities map[int][]string, outPath string) error 
 	}
 	stats := fmt.Sprintf("%d nodes · %d edges · %d communities", g.NumNodes(), g.NumEdges(), len(communities))
 
+	// Load-time scales with the in-browser physics solve and edge rendering. For
+	// bigger graphs, cut stabilization iterations and drop the (expensive) curved
+	// edges for straight lines — both speed up the first paint without changing
+	// the algorithm. Tuned off the total node count, since that's the heaviest
+	// view the user reaches (node-level default, or a large drilled community).
+	iters := 300
+	switch n := g.NumNodes(); {
+	case n > 3000:
+		iters = 150
+	case n > 1200:
+		iters = 220
+	}
+	smoothOpt := `{type:"continuous",roundness:0.2}`
+	if g.NumNodes() > 600 {
+		smoothOpt = "false"
+	}
+
 	page := strings.NewReplacer(
 		"/*NODES*/", string(rawNodesJSON),
 		"/*EDGES*/", string(rawEdgesJSON),
@@ -224,6 +242,8 @@ func ToHTML(g *model.Graph, communities map[int][]string, outPath string) error 
 		"/*SUBEDGES*/", string(subEdgesJSON),
 		"/*NAMES*/", string(namesJSON),
 		"/*META*/", fmt.Sprintf("%t", meta),
+		"/*SMOOTH*/", smoothOpt,
+		"/*ITERS*/", strconv.Itoa(iters),
 		"<!--LEGEND-->", legendHTML(legend),
 		"<!--BANNER-->", banner,
 		"<!--STATS-->", stats,
@@ -479,12 +499,13 @@ let pending=null;            // node id to focus once a drilled subgraph settles
 
 const net=new vis.Network(document.getElementById("g"),{nodes:curNodes,edges:curEdges},{
  nodes:{shape:"dot",borderWidth:1.5},
- edges:{color:{color:"#3a3a5e",opacity:0.55},arrows:{to:{enabled:true,scaleFactor:0.4}},smooth:{type:"continuous",roundness:0.2},selectionWidth:3},
+ edges:{color:{color:"#3a3a5e",opacity:0.55},arrows:{to:{enabled:true,scaleFactor:0.4}},smooth:/*SMOOTH*/,selectionWidth:3},
  interaction:{hover:true,tooltipDelay:120,hideEdgesOnDrag:true},
- // Solve off-screen with strong overlap avoidance, then freeze — never spins.
+ // Solve once with strong overlap avoidance, then freeze — never spins. A huge
+ // updateInterval skips intermediate repaints during the solve (faster first paint).
  physics:{enabled:true,solver:"forceAtlas2Based",
   forceAtlas2Based:{gravitationalConstant:-60,centralGravity:0.005,springLength:120,springConstant:0.08,damping:0.4,avoidOverlap:0.8},
-  stabilization:{iterations:300,fit:true}}});
+  stabilization:{iterations:/*ITERS*/,updateInterval:1000000,fit:true}}});
 net.on("stabilizationIterationsDone",()=>{
  net.setOptions({physics:{enabled:false}});
  if(pending){const id=pending;pending=null;focusLocal(id);}
