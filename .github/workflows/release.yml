@@ -39,6 +39,9 @@ jobs:
         with:
           version: latest
           install-only: true
+          # args is required by the action's schema even when only installing;
+          # uplift is actually run in the next step.
+          args: version
 
       - name: Run Uplift
         id: uplift
