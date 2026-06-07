@@ -49,7 +49,7 @@ Roughly priority order.
 
 ### Correctness / coverage
 - [ ] **Respect `.gitignore`** in `detect.CollectFiles` (currently only a fixed skip-dir/skip-file list). Generated/ignored files can pollute the graph.
-- [ ] **Test coverage** for `cluster`, `analyze`, `report`, `export` (currently covered: idutil, security, model, detect, extract, graph, query).
+- [x] **Test coverage** for `cluster`, `analyze`, `report`, `export` (now ~87–90% each; covered across the pipeline: idutil, security, model, detect, extract, graph, query, cluster, analyze, report, export).
 - [ ] Improve cross-file call resolution precision (current rule: same-file def, else unique global by name — ambiguous names are skipped).
 
 ### Viewer
