@@ -50,50 +50,57 @@ func File(root, rel string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	return FileFromBytes(rel, src), nil
+}
+
+// FileFromBytes extracts rel from already-read source bytes. It lets callers
+// that have hashed the file (e.g. the incremental cache) avoid a second read.
+// Unsupported extensions return an empty result.
+func FileFromBytes(rel string, src []byte) Result {
 	rel = filepath.ToSlash(rel)
 	switch strings.ToLower(filepath.Ext(rel)) {
 	case ".go":
-		return extractGo(rel, src), nil
+		return extractGo(rel, src)
 	case ".js", ".jsx", ".mjs", ".cjs":
-		return extractJS(rel, src, tsjs.Language()), nil
+		return extractJS(rel, src, tsjs.Language())
 	case ".tsx":
-		return extractJS(rel, src, tstsx.LanguageTSX()), nil
+		return extractJS(rel, src, tstsx.LanguageTSX())
 	case ".ts":
-		return extractJS(rel, src, tstsx.LanguageTypescript()), nil
+		return extractJS(rel, src, tstsx.LanguageTypescript())
 	case ".tf", ".tfvars", ".hcl":
-		return extractTerraform(rel, src), nil
+		return extractTerraform(rel, src)
 	case ".py":
-		return extractPython(rel, src), nil
+		return extractPython(rel, src)
 	case ".rs":
-		return extractRust(rel, src), nil
+		return extractRust(rel, src)
 	case ".c", ".h":
-		return extractC(rel, src), nil
+		return extractC(rel, src)
 	case ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx":
-		return extractCpp(rel, src), nil
+		return extractCpp(rel, src)
 	case ".java":
-		return extractJava(rel, src), nil
+		return extractJava(rel, src)
 	case ".cs":
-		return extractCSharp(rel, src), nil
+		return extractCSharp(rel, src)
 	case ".rb":
-		return extractRuby(rel, src), nil
+		return extractRuby(rel, src)
 	case ".php", ".phtml":
-		return extractPHP(rel, src), nil
+		return extractPHP(rel, src)
 	case ".sh", ".bash":
-		return extractBash(rel, src), nil
+		return extractBash(rel, src)
 	case ".scala", ".sc":
-		return extractScala(rel, src), nil
+		return extractScala(rel, src)
 	case ".jl":
-		return extractJulia(rel, src), nil
+		return extractJulia(rel, src)
 	case ".v", ".sv", ".svh", ".vh":
-		return extractVerilog(rel, src), nil
+		return extractVerilog(rel, src)
 	case ".kt", ".kts":
-		return extractKotlin(rel, src), nil
+		return extractKotlin(rel, src)
 	case ".lua":
-		return extractLua(rel, src), nil
+		return extractLua(rel, src)
 	case ".zig":
-		return extractZig(rel, src), nil
+		return extractZig(rel, src)
 	}
-	return Result{}, nil
+	return Result{}
 }
 
 // parseRoot parses src with the given grammar and returns the root node plus a
