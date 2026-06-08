@@ -47,6 +47,10 @@ func main() {
 		err = cmdBuild(arg(2, "."))
 	case "update":
 		err = cmdUpdate(arg(2, "."))
+	case "watch":
+		err = cmdWatch(arg(2, "."))
+	case "hook":
+		err = cmdHook(os.Args[2:])
 	case "query":
 		err = cmdQuery(mustArg(2, "query <pattern>"))
 	case "explain":
@@ -328,6 +332,8 @@ func usage() {
 usage:
   graphify build [path]        build graph.json + report under <path>/graphify-out
   graphify update [path]       rebuild incrementally, re-parsing only changed files
+  graphify watch [path]        rebuild incrementally as files change (Ctrl-C to stop)
+  graphify hook install [path] install git hooks that update the graph after commits
   graphify query <pattern>     find nodes by name (regex, case-insensitive)
   graphify explain <node>      show a node and its neighbours
   graphify path <from> <to>    shortest dependency path between two nodes
