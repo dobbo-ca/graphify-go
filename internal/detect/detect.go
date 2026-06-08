@@ -86,12 +86,24 @@ var sensitivePatterns = []*regexp.Regexp{
 // in sorted order for deterministic output.
 func CollectFiles(root string) ([]string, error) {
 	var files []string
+	ign := newIgnorer(root)
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil // unreadable entry — skip, don't abort the whole walk
 		}
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		slashRel := filepath.ToSlash(rel)
 		if d.IsDir() {
-			if path != root && skipDirs[d.Name()] {
+			if path == root {
+				return nil
+			}
+			if skipDirs[d.Name()] || ign.ignored(slashRel, true) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -100,11 +112,7 @@ func CollectFiles(root string) ([]string, error) {
 		if skipFiles[name] || !SupportedExtensions[strings.ToLower(filepath.Ext(name))] {
 			return nil
 		}
-		rel, relErr := filepath.Rel(root, path)
-		if relErr != nil {
-			return nil
-		}
-		if isSensitive(rel) {
+		if isSensitive(rel) || ign.ignored(slashRel, false) {
 			return nil
 		}
 		files = append(files, rel)
