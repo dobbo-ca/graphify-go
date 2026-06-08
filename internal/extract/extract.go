@@ -66,6 +66,32 @@ func File(root, rel string) (Result, error) {
 		return extractPython(rel, src), nil
 	case ".rs":
 		return extractRust(rel, src), nil
+	case ".c", ".h":
+		return extractC(rel, src), nil
+	case ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx":
+		return extractCpp(rel, src), nil
+	case ".java":
+		return extractJava(rel, src), nil
+	case ".cs":
+		return extractCSharp(rel, src), nil
+	case ".rb":
+		return extractRuby(rel, src), nil
+	case ".php", ".phtml":
+		return extractPHP(rel, src), nil
+	case ".sh", ".bash":
+		return extractBash(rel, src), nil
+	case ".scala", ".sc":
+		return extractScala(rel, src), nil
+	case ".jl":
+		return extractJulia(rel, src), nil
+	case ".v", ".sv", ".svh", ".vh":
+		return extractVerilog(rel, src), nil
+	case ".kt", ".kts":
+		return extractKotlin(rel, src), nil
+	case ".lua":
+		return extractLua(rel, src), nil
+	case ".zig":
+		return extractZig(rel, src), nil
 	}
 	return Result{}, nil
 }
