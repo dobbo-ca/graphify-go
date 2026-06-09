@@ -98,7 +98,11 @@ func extractTerraform(rel string, src []byte) Result {
 			}
 		case "module":
 			if len(labels) >= 1 {
-				refsFrom(def("module."+labels[0], "module."+labels[0], loc), bbody)
+				id := def("module."+labels[0], "module."+labels[0], loc)
+				refsFrom(id, bbody)
+				if s := tfAttrString(bbody, "source", src); s != "" {
+					res.ModRefs = append(res.ModRefs, ModRef{FromID: id, Source: s, File: rel, Loc: loc})
+				}
 			}
 		case "variable":
 			if len(labels) >= 1 {
@@ -148,6 +152,34 @@ func tfBlock(n *ts.Node, src []byte) (btype string, labels []string, body *ts.No
 		}
 	}
 	return
+}
+
+// tfAttrString returns the literal string value of the attribute named key in
+// body, or "" if absent. Used for a module's `source`, which Terraform requires
+// to be a literal (no interpolation), so taking the first string_lit is safe.
+func tfAttrString(body *ts.Node, key string, src []byte) string {
+	if body == nil {
+		return ""
+	}
+	for i := uint(0); i < body.ChildCount(); i++ {
+		a := body.Child(i)
+		if a == nil || a.Kind() != "attribute" || tfChild(a, "identifier", src) != key {
+			continue
+		}
+		var out string
+		walk(a, func(n *ts.Node) bool {
+			if out != "" {
+				return false
+			}
+			if n.Kind() == "string_lit" {
+				out = strings.Trim(n.Utf8Text(src), `"`)
+				return false
+			}
+			return true
+		})
+		return out
+	}
+	return ""
 }
 
 // tfRefAddress turns a variable_expr (plus its trailing get_attr chain) into a
@@ -221,9 +253,13 @@ func tfChildNode(n *ts.Node, kind string) *ts.Node {
 	return nil
 }
 
-// dirScope is the directory-name scope for Terraform addresses.
+// dirScope is the directory scope for Terraform addresses. Terraform addresses
+// are module(directory)-scoped, so same-directory files share a scope and their
+// cross-file references resolve once merged. The scope is the file's full
+// directory path (not just its base name) so that two directories sharing a base
+// name — e.g. workspaces/scalr-agents and modules/scalr-agents — do not collide.
 func dirScope(rel string) string {
-	if d := filepath.Base(filepath.Dir(rel)); d != "." && d != "/" && d != "" {
+	if d := filepath.ToSlash(filepath.Dir(rel)); d != "." && d != "/" && d != "" {
 		return d
 	}
 	return "tf"

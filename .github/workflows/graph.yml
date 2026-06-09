@@ -43,4 +43,16 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add graphify-out
           git commit -m "chore: regenerate knowledge graph [skip ci]"
-          git push
+          # Another workflow (e.g. release) can push to main concurrently. Rebase
+          # onto the latest tip and retry so our commit is never lost to a
+          # non-fast-forward rejection. The graph commit only touches
+          # graphify-out/, so the rebase cannot conflict with a changelog/tag push.
+          for attempt in 1 2 3 4 5; do
+            if git push; then
+              exit 0
+            fi
+            echo "push rejected (attempt $attempt) — rebasing onto origin/$GITHUB_REF_NAME"
+            git pull --rebase --autostash origin "$GITHUB_REF_NAME"
+          done
+          echo "failed to push graph after 5 attempts" >&2
+          exit 1
