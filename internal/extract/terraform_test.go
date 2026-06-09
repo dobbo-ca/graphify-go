@@ -150,3 +150,32 @@ module "vpc" {
 		t.Error("expected module.vpc --references--> cloudposse/vpc/aws (external node)")
 	}
 }
+
+func TestExtractTerraformNullLabelMarker(t *testing.T) {
+	src := []byte(`
+module "this" {
+  source  = "cloudposse/label/null"
+  version = "0.25.0"
+}
+module "label" {
+  source = "git::https://github.com/cloudposse/terraform-null-label.git?ref=tags/0.25.0"
+}
+module "plain" {
+  source = "../vpc"
+}
+`)
+	res := FileFromBytes("main.tf", src)
+	labels := map[string]bool{}
+	for _, n := range res.Nodes {
+		labels[n.Label] = true
+	}
+	if !labels["module.this [null-label]"] {
+		t.Error("expected module.this tagged [null-label] (registry source)")
+	}
+	if !labels["module.label [null-label]"] {
+		t.Error("expected module.label tagged [null-label] (git source)")
+	}
+	if !labels["module.plain"] {
+		t.Error("expected module.plain to be untagged")
+	}
+}

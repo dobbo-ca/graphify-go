@@ -98,9 +98,15 @@ func extractTerraform(rel string, src []byte) Result {
 			}
 		case "module":
 			if len(labels) >= 1 {
-				id := def("module."+labels[0], "module."+labels[0], loc)
+				addr := "module." + labels[0]
+				s := tfAttrString(bbody, "source", src)
+				label := addr
+				if isNullLabel(s) {
+					label = addr + " [null-label]"
+				}
+				id := def(addr, label, loc)
 				refsFrom(id, bbody)
-				if s := tfAttrString(bbody, "source", src); s != "" {
+				if s != "" {
 					res.ModRefs = append(res.ModRefs, ModRef{FromID: id, Source: s, File: rel, Loc: loc})
 				}
 			}
@@ -134,6 +140,14 @@ func extractTerraform(rel string, src []byte) Result {
 		}
 	}
 	return res
+}
+
+// isNullLabel reports whether a module source is the cloudposse null-label
+// module — the registry form "cloudposse/label/null" or any git/github form of
+// "terraform-null-label" (with or without a ?ref= version).
+func isNullLabel(source string) bool {
+	return strings.Contains(source, "cloudposse/label/null") ||
+		strings.Contains(source, "terraform-null-label")
 }
 
 // tfBlock returns a block's type identifier, its quoted labels, and its body.
