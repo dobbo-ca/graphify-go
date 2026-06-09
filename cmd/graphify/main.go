@@ -63,6 +63,8 @@ func main() {
 		}
 	case "extract":
 		err = cmdExtract(mustArg(2, "extract <file>"))
+	case "export":
+		err = cmdExport(mustArg(2, "export <graphml|dot|csv> [path]"), arg(3, "."))
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -292,6 +294,40 @@ func cmdExtract(file string) error {
 	return nil
 }
 
+// cmdExport converts a built graph.json into another format under
+// <root>/graphify-out. It reads the committed artifact rather than rebuilding.
+func cmdExport(format, root string) error {
+	outDir := filepath.Join(root, "graphify-out")
+	jsonPath := filepath.Join(outDir, "graph.json")
+	if _, err := os.Stat(jsonPath); err != nil {
+		return fmt.Errorf("no graph at %s — run `graphify build` first", jsonPath)
+	}
+	switch format {
+	case "graphml":
+		out := filepath.Join(outDir, "graph.graphml")
+		if err := export.GraphMLFromJSON(jsonPath, out); err != nil {
+			return err
+		}
+		fmt.Println("wrote " + out)
+	case "dot":
+		out := filepath.Join(outDir, "graph.dot")
+		if err := export.DOTFromJSON(jsonPath, out); err != nil {
+			return err
+		}
+		fmt.Println("wrote " + out)
+	case "csv":
+		nodes := filepath.Join(outDir, "graph.nodes.csv")
+		edges := filepath.Join(outDir, "graph.edges.csv")
+		if err := export.CSVFromJSON(jsonPath, nodes, edges); err != nil {
+			return err
+		}
+		fmt.Println("wrote " + nodes + " and " + edges)
+	default:
+		return fmt.Errorf("unknown export format %q (want: graphml, dot, csv)", format)
+	}
+	return nil
+}
+
 func load() (*query.Graph, error) { return query.Load(defaultGraphPath) }
 
 func locOf(n *query.Node) string {
@@ -338,5 +374,6 @@ usage:
   graphify explain <node>      show a node and its neighbours
   graphify path <from> <to>    shortest dependency path between two nodes
   graphify extract <file>      print one file's extracted nodes/edges (debug)
+  graphify export <fmt> [path] convert graph.json to graphml, dot, or csv
   graphify version             print version`)
 }
