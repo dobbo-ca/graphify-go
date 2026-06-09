@@ -60,6 +60,7 @@ var skipDirs = map[string]bool{
 	".next": true, ".nuxt": true, ".turbo": true, ".svelte-kit": true,
 	".cache": true, ".idea": true, ".vscode": true, ".worktrees": true,
 	"graphify-out": true, ".graphify": true,
+	".terraform": true, // provider/module cache from `terraform init` — vendored, never source
 }
 
 var skipFiles = map[string]bool{
