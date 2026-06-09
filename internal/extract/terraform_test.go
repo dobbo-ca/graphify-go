@@ -69,3 +69,31 @@ output "o" {}
 		}
 	}
 }
+
+// Terraform addresses are directory-scoped. Two directories that merely share a
+// base name (e.g. workspaces/scalr-agents and modules/scalr-agents) must NOT
+// collapse their addresses into one node — that fabricates cross-directory
+// references and drops real nodes. Scope is the full directory path, so the same
+// resource address in different directories yields distinct nodes.
+func TestExtractTerraformScopeByFullPath(t *testing.T) {
+	src := []byte(`resource "aws_x" "r" {}`)
+	files := []string{"a/dup/main.tf", "b/dup/main.tf"}
+	results := []Result{
+		FileFromBytes(files[0], src),
+		FileFromBytes(files[1], src),
+	}
+	ext := Resolve(results, files)
+
+	var ids []string
+	for _, n := range ext.Nodes {
+		if n.Label == "aws_x.r" {
+			ids = append(ids, n.ID)
+		}
+	}
+	if len(ids) != 2 {
+		t.Fatalf("expected 2 distinct aws_x.r nodes (one per directory), got %d: %v", len(ids), ids)
+	}
+	if ids[0] == ids[1] {
+		t.Errorf("same-basename directories collided into one node id %q", ids[0])
+	}
+}

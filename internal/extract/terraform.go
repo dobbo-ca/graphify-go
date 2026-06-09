@@ -221,9 +221,13 @@ func tfChildNode(n *ts.Node, kind string) *ts.Node {
 	return nil
 }
 
-// dirScope is the directory-name scope for Terraform addresses.
+// dirScope is the directory scope for Terraform addresses. Terraform addresses
+// are module(directory)-scoped, so same-directory files share a scope and their
+// cross-file references resolve once merged. The scope is the file's full
+// directory path (not just its base name) so that two directories sharing a base
+// name — e.g. workspaces/scalr-agents and modules/scalr-agents — do not collide.
 func dirScope(rel string) string {
-	if d := filepath.Base(filepath.Dir(rel)); d != "." && d != "/" && d != "" {
+	if d := filepath.ToSlash(filepath.Dir(rel)); d != "." && d != "/" && d != "" {
 		return d
 	}
 	return "tf"
