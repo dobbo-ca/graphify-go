@@ -12,6 +12,7 @@ type Node struct {
 	FileType       string `json:"file_type"`
 	SourceFile     string `json:"source_file"`
 	SourceLocation string `json:"source_location,omitempty"`
+	ComputedName   string `json:"computed_name,omitempty"`
 }
 
 // Edge is a directed relationship between two nodes. The graph stores edges

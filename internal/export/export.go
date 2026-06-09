@@ -26,6 +26,7 @@ type jsonNode struct {
 	SourceLocation string `json:"source_location,omitempty"`
 	Community      *int   `json:"community"`
 	NormLabel      string `json:"norm_label"`
+	ComputedName   string `json:"computed_name,omitempty"`
 }
 
 type jsonLink struct {
@@ -63,10 +64,14 @@ func ToJSON(g *model.Graph, communities map[int][]string, path, builtAtCommit st
 		if c, ok := nc[id]; ok {
 			comm = &c
 		}
+		nl := normLabel(n.Label)
+		if n.ComputedName != "" {
+			nl = nl + " " + normLabel(n.ComputedName)
+		}
 		out.Nodes = append(out.Nodes, jsonNode{
 			ID: n.ID, Label: n.Label, FileType: n.FileType,
 			SourceFile: n.SourceFile, SourceLocation: n.SourceLocation,
-			Community: comm, NormLabel: normLabel(n.Label),
+			Community: comm, NormLabel: nl, ComputedName: n.ComputedName,
 		})
 	}
 	for _, e := range g.Edges() {
