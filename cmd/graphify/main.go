@@ -322,8 +322,14 @@ func cmdExport(format, root string) error {
 			return err
 		}
 		fmt.Println("wrote " + nodes + " and " + edges)
+	case "callflow-html":
+		out := filepath.Join(outDir, "graph.callflow.html")
+		if err := export.CallflowFromJSON(jsonPath, out); err != nil {
+			return err
+		}
+		fmt.Println("wrote " + out)
 	default:
-		return fmt.Errorf("unknown export format %q (want: graphml, dot, csv)", format)
+		return fmt.Errorf("unknown export format %q (want: graphml, dot, csv, callflow-html)", format)
 	}
 	return nil
 }
