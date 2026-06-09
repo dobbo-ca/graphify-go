@@ -3,6 +3,7 @@ package extract
 import (
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -98,7 +99,61 @@ func Resolve(results []Result, files []string) model.Extraction {
 			})
 		}
 	}
+
+	// Terraform module sources: a local source resolves to the target directory
+	// node (created once, with contains edges to that directory's files so the
+	// module call is navigable into its implementation); a registry or
+	// private-registry source becomes an external concept node.
+	dirFiles := map[string][]string{}
+	for _, f := range files {
+		sf := filepath.ToSlash(f)
+		dirFiles[path.Dir(sf)] = append(dirFiles[path.Dir(sf)], sf)
+	}
+	modSeen := map[string]bool{}
+	for _, r := range results {
+		for _, m := range r.ModRefs {
+			target, isLocal := m.Source, isLocalSource(m.Source)
+			if isLocal {
+				target = path.Clean(path.Join(path.Dir(filepath.ToSlash(m.File)), m.Source))
+				if filesIn, ok := dirFiles[target]; ok {
+					dirID := idutil.MakeID("tfmodule", target)
+					if !modSeen[dirID] {
+						modSeen[dirID] = true
+						out.Nodes = append(out.Nodes, model.Node{ID: dirID, Label: target, FileType: "code", SourceFile: target, SourceLocation: "L1"})
+						for _, ff := range filesIn {
+							out.Edges = append(out.Edges, model.Edge{
+								Source: dirID, Target: idutil.MakeID(ff), Relation: "contains",
+								Confidence: "EXTRACTED", SourceFile: target,
+							})
+						}
+					}
+					out.Edges = append(out.Edges, model.Edge{
+						Source: m.FromID, Target: dirID, Relation: "references",
+						Confidence: "EXTRACTED", SourceFile: m.File, SourceLocation: m.Loc,
+					})
+					continue
+				}
+				// local source pointing outside the corpus — keep it visible as a
+				// concept node keyed by the cleaned target path.
+			}
+			extID := idutil.MakeID("tfmodule", target)
+			if !modSeen[extID] {
+				modSeen[extID] = true
+				out.Nodes = append(out.Nodes, model.Node{ID: extID, Label: target, FileType: "concept"})
+			}
+			out.Edges = append(out.Edges, model.Edge{
+				Source: m.FromID, Target: extID, Relation: "references",
+				Confidence: "EXTRACTED", SourceFile: m.File, SourceLocation: m.Loc,
+			})
+		}
+	}
 	return out
+}
+
+// isLocalSource reports whether a Terraform module source is a local filesystem
+// path (resolvable within the corpus) rather than a registry/git/private source.
+func isLocalSource(s string) bool {
+	return s == "." || s == ".." || strings.HasPrefix(s, "./") || strings.HasPrefix(s, "../") || strings.HasPrefix(s, "/")
 }
 
 // disambiguate picks the call target among definitions sharing the called

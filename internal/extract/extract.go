@@ -34,13 +34,22 @@ type Imp struct {
 	FileID, File, Spec, Loc string
 }
 
+// ModRef is a Terraform module block's source before resolution: the module
+// node FromID declared `source = Source` in File. Resolve turns a local source
+// into an edge to the target directory node, and a registry/private-registry
+// source into an external concept node.
+type ModRef struct {
+	FromID, Source, File, Loc string
+}
+
 // Result is one file's extraction before cross-file resolution.
 type Result struct {
-	Nodes []model.Node
-	Edges []model.Edge
-	Defs  []Def
-	Calls []Call
-	Imps  []Imp
+	Nodes   []model.Node
+	Edges   []model.Edge
+	Defs    []Def
+	Calls   []Call
+	Imps    []Imp
+	ModRefs []ModRef
 }
 
 // File extracts rel (a path relative to root). Unsupported extensions return an
