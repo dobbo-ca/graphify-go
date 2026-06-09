@@ -18,6 +18,10 @@ methods (nodes) and their `contains` / `calls` / `imports` relationships
   `contains` it, what it `imports`.
 - **Trace a dependency chain** → `graphify path <from> <to>` — shortest path
   between two nodes.
+- **Scope a change** → `graphify affected [file...]` — the symbols defined in
+  those files plus everything that transitively depends on them (callers,
+  importers). With no arguments it uses your uncommitted changes, answering
+  "what does my current edit touch?".
 
 ## Workflow
 
@@ -35,8 +39,10 @@ methods (nodes) and their `contains` / `calls` / `imports` relationships
 absent or behind `git rev-parse HEAD`, rebuild it:
 
 ```bash
-graphify build .
+graphify build .     # full rebuild
+graphify update .    # incremental — re-parses only changed files
 ```
 
-Supported languages: Go, JavaScript, TypeScript, Terraform/HCL, Python, Rust.
-For files in other languages, fall back to reading the source directly.
+Supported languages: Go, JavaScript, TypeScript, Terraform/HCL, Python, Rust,
+C, C++, Java, C#, Ruby, PHP, Bash, Scala, Julia, Verilog/SystemVerilog, Kotlin,
+Lua, Zig. For files in other languages, fall back to reading the source directly.
