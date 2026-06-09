@@ -65,6 +65,10 @@ func main() {
 		err = cmdExtract(mustArg(2, "extract <file>"))
 	case "export":
 		err = cmdExport(mustArg(2, "export <graphml|dot|csv> [path]"), arg(3, "."))
+	case "affected":
+		err = cmdAffected(os.Args[2:])
+	case "validate":
+		err = cmdValidate()
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -334,6 +338,71 @@ func cmdExport(format, root string) error {
 	return nil
 }
 
+// cmdAffected prints the graph nodes defined in the given files and everything
+// that transitively depends on them. With no files it derives them from the
+// working tree's uncommitted changes (git diff against HEAD).
+func cmdAffected(files []string) error {
+	g, err := load()
+	if err != nil {
+		return err
+	}
+	if len(files) == 0 {
+		files = gitChangedFiles(".")
+		if len(files) == 0 {
+			return fmt.Errorf("no files given and no uncommitted changes detected (usage: graphify affected [file...])")
+		}
+		fmt.Printf("changed files (from git): %s\n", strings.Join(files, ", "))
+	}
+	res := query.Affected(g, files)
+	if len(res.Changed) == 0 {
+		fmt.Println("no graph nodes are defined in those files")
+		return nil
+	}
+	printNodes := func(title string, ns []query.Node) {
+		fmt.Printf("%s (%d):\n", title, len(ns))
+		for i := range ns {
+			fmt.Printf("  %-40s %s\n", ns[i].Label, locOf(&ns[i]))
+		}
+	}
+	printNodes("changed", res.Changed)
+	printNodes("impacted", res.Impacted)
+	return nil
+}
+
+// cmdValidate checks graph.json for structural problems and exits non-zero if
+// any are found, so it can gate CI.
+func cmdValidate() error {
+	issues, nodes, links, err := query.Validate(defaultGraphPath)
+	if err != nil {
+		return err
+	}
+	if len(issues) == 0 {
+		fmt.Printf("graph OK: %d nodes · %d edges, no issues\n", nodes, links)
+		return nil
+	}
+	fmt.Printf("graph has %d issue(s) across %d nodes · %d edges:\n", len(issues), nodes, links)
+	for _, is := range issues {
+		fmt.Println("  - " + is)
+	}
+	return fmt.Errorf("%d validation issue(s)", len(issues))
+}
+
+// gitChangedFiles lists files that differ from HEAD in the working tree, or nil
+// if git is unavailable or there are no changes.
+func gitChangedFiles(root string) []string {
+	out, err := exec.Command("git", "-C", root, "diff", "--name-only", "HEAD").Output()
+	if err != nil {
+		return nil
+	}
+	var files []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line != "" {
+			files = append(files, line)
+		}
+	}
+	return files
+}
+
 func load() (*query.Graph, error) { return query.Load(defaultGraphPath) }
 
 func locOf(n *query.Node) string {
@@ -379,6 +448,8 @@ usage:
   graphify query <pattern>     find nodes by name (regex, case-insensitive)
   graphify explain <node>      show a node and its neighbours
   graphify path <from> <to>    shortest dependency path between two nodes
+  graphify affected [file...]  nodes defined in changed files + their dependents
+  graphify validate            check graph.json for structural problems
   graphify extract <file>      print one file's extracted nodes/edges (debug)
   graphify export <fmt> [path] convert graph.json to graphml, dot, or csv
   graphify version             print version`)
