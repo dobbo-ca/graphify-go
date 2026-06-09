@@ -25,6 +25,32 @@ var SupportedExtensions = map[string]bool{
 	".hcl":    true,
 	".py":     true,
 	".rs":     true,
+	".c":      true,
+	".h":      true,
+	".cpp":    true,
+	".cc":     true,
+	".cxx":    true,
+	".hpp":    true,
+	".hh":     true,
+	".hxx":    true,
+	".java":   true,
+	".cs":     true,
+	".rb":     true,
+	".php":    true,
+	".phtml":  true,
+	".sh":     true,
+	".bash":   true,
+	".scala":  true,
+	".sc":     true,
+	".jl":     true,
+	".v":      true,
+	".sv":     true,
+	".svh":    true,
+	".vh":     true,
+	".kt":     true,
+	".kts":    true,
+	".lua":    true,
+	".zig":    true,
 }
 
 var skipDirs = map[string]bool{
@@ -60,12 +86,24 @@ var sensitivePatterns = []*regexp.Regexp{
 // in sorted order for deterministic output.
 func CollectFiles(root string) ([]string, error) {
 	var files []string
+	ign := newIgnorer(root)
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil // unreadable entry — skip, don't abort the whole walk
 		}
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		slashRel := filepath.ToSlash(rel)
 		if d.IsDir() {
-			if path != root && skipDirs[d.Name()] {
+			if path == root {
+				return nil
+			}
+			if skipDirs[d.Name()] || ign.ignored(slashRel, true) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -74,11 +112,7 @@ func CollectFiles(root string) ([]string, error) {
 		if skipFiles[name] || !SupportedExtensions[strings.ToLower(filepath.Ext(name))] {
 			return nil
 		}
-		rel, relErr := filepath.Rel(root, path)
-		if relErr != nil {
-			return nil
-		}
-		if isSensitive(rel) {
+		if isSensitive(rel) || ign.ignored(slashRel, false) {
 			return nil
 		}
 		files = append(files, rel)

@@ -41,16 +41,24 @@ Roughly priority order.
 - [x] **Terraform / HCL extractor** (done — higher priority than Python/Rust).
 - [x] **Python extractor** (functions, classes + methods, imports, calls). Tree-sitter Python `v0.25.0`.
 - [x] **Rust extractor** (functions, struct/enum/union/trait/type, impl methods, `use` imports, call + macro edges; descends into `mod`). Tree-sitter Rust `v0.24.2`.
+- [x] **13 more extractors** (in-spirit parity push): C, C++, Java, C#, Ruby, PHP, Bash, Scala, Julia, Verilog/SystemVerilog, Kotlin, Lua, Zig — every tree-sitter grammar with a Go binding. Node kinds verified against each grammar's `node-types.json`; each ships a unit test. Coverage is now **19 language families**.
 - [x] Wired each into `detect.SupportedExtensions`, `extract.File` dispatch (`langFamily` already had `.py`/`.rs`).
+- Deferred (no Go tree-sitter binding): Elixir, PowerShell, Fortran, Swift, Obj-C. Structural-only (no fn/type/call model): JSON, Markdown.
 
 ### Performance (original goal stage 3 — partly outstanding)
 - [x] **Parallelize extraction.** `cmdBuild` fans out `extract.File` across a `runtime.NumCPU()` worker pool (`extractAll`); fixed result slots preserve file order so graph output stays byte-identical to the sequential path.
-- [ ] **Incremental rebuild** (`graphify update`): re-extract only changed files and merge into the existing `graph.json`, instead of a full rebuild. The original has `build_merge` + a file watcher.
+- [x] **Incremental rebuild** (`graphify update`): caches each file's extraction result keyed by content hash (`internal/cache`, `graphify-out/.graphify_cache.json`) and re-parses only changed files, reusing cached results for the rest. Output is byte-identical to a full build (verified by test). Plus `graphify watch` (poll-based) and `graphify hook install` (post-commit/merge/checkout hooks).
 
 ### Correctness / coverage
-- [ ] **Respect `.gitignore`** in `detect.CollectFiles` (currently only a fixed skip-dir/skip-file list). Generated/ignored files can pollute the graph.
+- [x] **Respect `.gitignore`** in `detect.CollectFiles` — pure-Go matcher (`internal/detect/gitignore.go`) covering nested files, negation, anchoring, dir-only, and `*`/`?`/`**` globs; expectations cross-checked against `git check-ignore`.
 - [x] **Test coverage** for `cluster`, `analyze`, `report`, `export` (now ~87–90% each; covered across the pipeline: idutil, security, model, detect, extract, graph, query, cluster, analyze, report, export).
-- [ ] Improve cross-file call resolution precision (current rule: same-file def, else unique global by name — ambiguous names are skipped).
+- [x] **Improve cross-file call resolution precision** — when a called name has several definitions, `Resolve` disambiguates by the caller's imports, then by same-directory (same package), instead of skipping. Only ever adds uniquely-determined edges.
+
+### New commands (in-spirit parity push)
+- [x] `graphify export <graphml|dot|csv|callflow-html>` — extra exports plus a Mermaid call-flow architecture page (one flowchart per community).
+- [x] `graphify affected [file...]` — change blast radius: nodes in changed files + their transitive dependents (callers/importers); no args → git diff vs HEAD.
+- [x] `graphify validate` — structural check of `graph.json` (dangling edges, duplicate/empty ids); non-zero exit gates CI.
+- [ ] Deferred dep-light commands: `graphify global` (multi-repo registry + merge), PR analysis, `cluster`-only recluster, `diagnostics` (marginal — `build` already clusters and `GRAPH_REPORT.md` already reports stats).
 
 ### Viewer
 - [x] Drill-down from a community circle (meta view) to that community's node-level subgraph.
@@ -63,5 +71,9 @@ Roughly priority order.
 
 ## Out of scope (intentionally not ported)
 
-LLM-based semantic extraction, Obsidian / Neo4j / SVG exports, MCP server,
-AI-assistant installers, the 30+ other language extractors.
+The features that need external services or a far larger surface than the
+minimal port targets: LLM-based semantic extraction and the LLM backends,
+MCP server, video/audio transcription, image vision, Office/Postgres/Google
+ingest, Neo4j / Obsidian / SVG exports, and the multi-assistant installers.
+The exotic language extractors without a Go tree-sitter binding stay out too
+(see Language coverage above).

@@ -39,9 +39,15 @@ as GitHub releases + a Homebrew formula on every merge to `main`.
 
 ```bash
 graphify build [path]        # build graph.json + GRAPH_REPORT.md + graph.html under <path>/graphify-out
+graphify update [path]       # rebuild incrementally, re-parsing only changed files
+graphify watch [path]        # rebuild incrementally as files change (Ctrl-C to stop)
+graphify hook install [path] # install git hooks that update the graph after commits
 graphify query <pattern>     # find nodes by name (regex, case-insensitive)
 graphify explain <node>      # show a node and its neighbours (calls, called-by, imports, contains)
 graphify path <from> <to>    # shortest dependency path between two nodes
+graphify affected [file...]  # nodes defined in changed files + everything that depends on them
+graphify validate            # check graph.json for structural problems
+graphify export <fmt> [path] # convert graph.json to graphml, dot, csv, or callflow-html
 graphify extract <file>      # print one file's extracted nodes/edges (debug)
 ```
 
@@ -87,6 +93,11 @@ detect → extract → build → cluster → analyze → report → export
 
 ## Scope
 
-Languages today: **Go, JavaScript, TypeScript, Terraform/HCL, Python, Rust**.
-The original's LLM-based semantic extraction, Obsidian/Neo4j/SVG exports, MCP
-server, and AI-assistant installers are intentionally out of scope.
+Languages today: **Go, JavaScript, TypeScript, Terraform/HCL, Python, Rust, C,
+C++, Java, C#, Ruby, PHP, Bash, Scala, Julia, Verilog/SystemVerilog, Kotlin,
+Lua, Zig** — every grammar with a Go tree-sitter binding. `detect` also honours
+`.gitignore`.
+
+The original's LLM-based semantic extraction, MCP server, video/image/Office
+ingest, Postgres/Neo4j/Obsidian/SVG exports, and the multi-assistant installers
+need external services or a far larger surface, and stay out of scope.
