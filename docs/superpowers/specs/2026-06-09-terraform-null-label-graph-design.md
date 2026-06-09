@@ -232,11 +232,14 @@ resolution (that is Stage C). This is the bulk of the feature.
 - New file `internal/extract/nulllabel.go`:
   - `nullLabelInputs(body, src) labelInputs` — capture from the block body,
     **literals only**: scalars `namespace/tenant/environment/stage/name`
-    (string_lit → KNOWN; `""`/null → EMPTY; absent → EMPTY *unless* a `context`
-    attr is present, then UNKNOWN; non-literal expr → UNKNOWN), list `attributes`
-    (tuple of string_lit → KNOWN list; non-literal → UNKNOWN), and knobs
-    `delimiter`/`label_order`/`label_value_case` (literal → use; absent → assume
-    documented default; present-but-non-literal → mark shape UNRESOLVED).
+    (string_lit → KNOWN; `""`/null → EMPTY; absent → EMPTY; non-literal expr e.g.
+    `var.X` → UNKNOWN→sentinel), list `attributes` (tuple of string_lit → KNOWN
+    list; non-literal → UNKNOWN), and knobs `delimiter`/`label_order`/
+    `label_value_case` (literal → use; absent → assume documented default;
+    present-but-non-literal → mark shape UNRESOLVED). A `context =` attr does not
+    by itself create sentinels — it sets `hasContext`, which marks the id
+    **partial** (inherited segments may exist that Stage C resolves), keeping the
+    Stage-B id clean (`{namespace}-app (partial)`, not a wall of sentinels).
   - `composeID(in labelInputs) string` — the cloudposse subset (**no
     truncation**): per-segment normalize (regex strip `[^-a-zA-Z0-9]` → case);
     `attributes` → `join(delimiter)` into one slot; assemble per resolved
