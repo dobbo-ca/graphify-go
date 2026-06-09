@@ -53,8 +53,11 @@ func extractTerraform(rel string, src []byte) Result {
 				return true
 			}
 			rel2 := "references"
-			if tfChild(c, "identifier", src) == "depends_on" {
+			switch tfChild(c, "identifier", src) {
+			case "depends_on":
 				rel2 = "depends_on"
+			case "context":
+				rel2 = "inherits_context"
 			}
 			walk(c, func(v *ts.Node) bool {
 				if v.Kind() != "variable_expr" {

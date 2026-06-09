@@ -151,6 +151,34 @@ module "vpc" {
 	}
 }
 
+func TestExtractTerraformInheritsContext(t *testing.T) {
+	src := []byte(`
+module "this" {
+  source = "cloudposse/label/null"
+}
+module "label" {
+  source  = "cloudposse/label/null"
+  context = module.this.context
+}
+`)
+	res := FileFromBytes("main.tf", src)
+	id2label := map[string]string{}
+	for _, n := range res.Nodes {
+		id2label[n.ID] = n.Label
+	}
+	found := false
+	for _, e := range res.Edges {
+		if e.Relation == "inherits_context" &&
+			id2label[e.Source] == "module.label [null-label]" &&
+			id2label[e.Target] == "module.this [null-label]" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected module.label --inherits_context--> module.this")
+	}
+}
+
 func TestExtractTerraformNullLabelMarker(t *testing.T) {
 	src := []byte(`
 module "this" {
