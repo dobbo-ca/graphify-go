@@ -1,30 +1,19 @@
 
-### ⚡ Performance
+### 🐛 Bug Fixes
 
-- Parallelize file extraction across a worker pool
+- Guard nil node in walk to survive empty TF block bodies
+- Skip .terraform provider/module cache
+- Scope Terraform addresses by full directory path
 
 ### 📚 Documentation
 
-- Update changelog for v0.2.0 [skip ci]
-- Reflect parity push (languages, commands, follow-ups)
+- Update changelog for v0.3.0 [skip ci]
 
 ### 🔧 Miscellaneous Tasks
 
-- Regenerate knowledge graph [skip ci]
-- Regenerate knowledge graph [skip ci]
+- Make graph + release pushes to main race-safe
 
 ### 🚀 Features
 
-- Add 13 tree-sitter language extractors
-- Respect .gitignore when collecting files
-- Add `graphify update` for incremental rebuilds
-- Add `graphify watch` and `graphify hook install`
-- Disambiguate ambiguous cross-file calls
-- Add graphml, dot, and csv export formats
-- Add callflow-html Mermaid architecture page
-- Add `graphify affected` and `graphify validate`
-
-### 🧪 Testing
-
-- Add coverage for cluster, analyze, report, and export
+- Resolve Terraform module sources
 
