@@ -197,8 +197,12 @@ func (b *builder) imp(spec, loc string) {
 }
 
 // walk visits every descendant of n, calling fn on each. fn returns false to
-// stop descending into that node's children.
+// stop descending into that node's children. n may be nil (e.g. an empty block
+// body, or a missing tree-sitter child), in which case there is nothing to do.
 func walk(n *ts.Node, fn func(*ts.Node) bool) {
+	if n == nil {
+		return
+	}
 	if !fn(n) {
 		return
 	}

@@ -47,3 +47,25 @@ func TestExtractTerraform(t *testing.T) {
 		t.Error("expected cross-file output.instance_id --references--> aws_instance.web")
 	}
 }
+
+// Empty block bodies (e.g. `data "aws_region" "current" {}`) are pervasive in
+// real Terraform. tree-sitter yields a nil body for them, which previously
+// panicked when refsFrom walked it. The block node must still be extracted.
+func TestExtractTerraformEmptyBody(t *testing.T) {
+	src := []byte(`data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}
+resource "aws_x" "y" {}
+module "m" {}
+output "o" {}
+`)
+	res := FileFromBytes("empty.tf", src)
+	labels := map[string]bool{}
+	for _, n := range res.Nodes {
+		labels[n.Label] = true
+	}
+	for _, want := range []string{"data.aws_region.current", "data.aws_caller_identity.current", "aws_x.y", "module.m", "output.o"} {
+		if !labels[want] {
+			t.Errorf("missing node %q from empty-body blocks", want)
+		}
+	}
+}
