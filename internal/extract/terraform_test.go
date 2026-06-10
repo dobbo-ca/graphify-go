@@ -150,3 +150,60 @@ module "vpc" {
 		t.Error("expected module.vpc --references--> cloudposse/vpc/aws (external node)")
 	}
 }
+
+func TestExtractTerraformInheritsContext(t *testing.T) {
+	src := []byte(`
+module "this" {
+  source = "cloudposse/label/null"
+}
+module "label" {
+  source  = "cloudposse/label/null"
+  context = module.this.context
+}
+`)
+	res := FileFromBytes("main.tf", src)
+	id2label := map[string]string{}
+	for _, n := range res.Nodes {
+		id2label[n.ID] = n.Label
+	}
+	found := false
+	for _, e := range res.Edges {
+		if e.Relation == "inherits_context" &&
+			id2label[e.Source] == "module.label [null-label]" &&
+			id2label[e.Target] == "module.this [null-label]" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected module.label --inherits_context--> module.this")
+	}
+}
+
+func TestExtractTerraformNullLabelMarker(t *testing.T) {
+	src := []byte(`
+module "this" {
+  source  = "cloudposse/label/null"
+  version = "0.25.0"
+}
+module "label" {
+  source = "git::https://github.com/cloudposse/terraform-null-label.git?ref=tags/0.25.0"
+}
+module "plain" {
+  source = "../vpc"
+}
+`)
+	res := FileFromBytes("main.tf", src)
+	labels := map[string]bool{}
+	for _, n := range res.Nodes {
+		labels[n.Label] = true
+	}
+	if !labels["module.this [null-label]"] {
+		t.Error("expected module.this tagged [null-label] (registry source)")
+	}
+	if !labels["module.label [null-label]"] {
+		t.Error("expected module.label tagged [null-label] (git source)")
+	}
+	if !labels["module.plain"] {
+		t.Error("expected module.plain to be untagged")
+	}
+}

@@ -33,6 +33,14 @@ methods (nodes) and their `contains` / `calls` / `imports` relationships
 4. Read `graphify-out/GRAPH_REPORT.md` for the project's "god nodes" (core
    abstractions), surprising cross-file connections, and import cycles.
 
+## Terraform: cloudposse null-label modules
+
+Module blocks sourced from cloudposse null-label are tagged `[null-label]` in
+their graph label. Each carries a `computed_name` (e.g. `eg-prod-app`) folded
+into the searchable label, so `graphify query <deployed-name>` finds the node.
+Names that can't be fully resolved from local literals appear with `{segment}`
+placeholders and a `(partial)` suffix — never fabricated.
+
 ## If the graph is missing or stale
 
 `graph.json` records the commit it was built from (`built_at_commit`). If it is

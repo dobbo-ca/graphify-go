@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -65,5 +66,34 @@ func TestToJSON(t *testing.T) {
 				t.Errorf("INFERRED link score = %v, want 0.5", l.ConfidenceScore)
 			}
 		}
+	}
+}
+
+func TestToJSONComputedName(t *testing.T) {
+	g := model.New()
+	g.AddNode(model.Node{ID: "m1", Label: "module.this [null-label]", FileType: "code", SourceFile: "main.tf", SourceLocation: "L1", ComputedName: "eg-prod-app"})
+	communities := map[int][]string{0: {"m1"}}
+
+	path := filepath.Join(t.TempDir(), "graph.json")
+	if err := ToJSON(g, communities, path, "deadbeefcafe"); err != nil {
+		t.Fatalf("ToJSON: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	var out jsonGraph
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(out.Nodes) != 1 {
+		t.Fatalf("want 1 node, got %d", len(out.Nodes))
+	}
+	n := out.Nodes[0]
+	if n.ComputedName != "eg-prod-app" {
+		t.Errorf("computed_name = %q, want eg-prod-app", n.ComputedName)
+	}
+	if !strings.Contains(n.NormLabel, "eg-prod-app") {
+		t.Errorf("norm_label = %q, want it to contain eg-prod-app", n.NormLabel)
 	}
 }

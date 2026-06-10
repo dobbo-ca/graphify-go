@@ -33,6 +33,7 @@ type Node struct {
 	SourceLocation string `json:"source_location"`
 	Community      *int   `json:"community"`
 	NormLabel      string `json:"norm_label"`
+	ComputedName   string `json:"computed_name"`
 }
 
 // Link mirrors a graph.json edge.

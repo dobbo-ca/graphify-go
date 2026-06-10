@@ -53,6 +53,7 @@ Roughly priority order.
 - [x] **Respect `.gitignore`** in `detect.CollectFiles` — pure-Go matcher (`internal/detect/gitignore.go`) covering nested files, negation, anchoring, dir-only, and `*`/`?`/`**` globs; expectations cross-checked against `git check-ignore`.
 - [x] **Test coverage** for `cluster`, `analyze`, `report`, `export` (now ~87–90% each; covered across the pipeline: idutil, security, model, detect, extract, graph, query, cluster, analyze, report, export).
 - [x] **Improve cross-file call resolution precision** — when a called name has several definitions, `Resolve` disambiguates by the caller's imports, then by same-directory (same package), instead of skipping. Only ever adds uniquely-determined edges.
+- [x] cloudposse null-label awareness: tag + computed_name search + context-chain reconstruction
 
 ### New commands (in-spirit parity push)
 - [x] `graphify export <graphml|dot|csv|callflow-html>` — extra exports plus a Mermaid call-flow architecture page (one flowchart per community).

@@ -31,13 +31,14 @@ func extractTerraform(rel string, src []byte) Result {
 	}}}
 	seen := map[string]bool{fileID: true}
 
-	// def adds a block node (once) and a contains edge from the file.
-	def := func(addr, label, loc string) string {
+	// defNode adds a block node (once) with an optional computed name, plus a
+	// contains edge from the file. def is the common case (no computed name).
+	defNode := func(addr, label, loc, computed string) string {
 		id := idutil.MakeID(scope, addr)
 		if !seen[id] {
 			seen[id] = true
 			res.Nodes = append(res.Nodes, model.Node{
-				ID: id, Label: label, FileType: "code", SourceFile: rel, SourceLocation: loc,
+				ID: id, Label: label, FileType: "code", SourceFile: rel, SourceLocation: loc, ComputedName: computed,
 			})
 			res.Edges = append(res.Edges, model.Edge{
 				Source: fileID, Target: id, Relation: "contains",
@@ -46,6 +47,7 @@ func extractTerraform(rel string, src []byte) Result {
 		}
 		return id
 	}
+	def := func(addr, label, loc string) string { return defNode(addr, label, loc, "") }
 	// refsFrom emits an edge from srcID to every address interpolated within node.
 	refsFrom := func(srcID string, node *ts.Node) {
 		walk(node, func(c *ts.Node) bool {
@@ -53,8 +55,11 @@ func extractTerraform(rel string, src []byte) Result {
 				return true
 			}
 			rel2 := "references"
-			if tfChild(c, "identifier", src) == "depends_on" {
+			switch tfChild(c, "identifier", src) {
+			case "depends_on":
 				rel2 = "depends_on"
+			case "context":
+				rel2 = "inherits_context"
 			}
 			walk(c, func(v *ts.Node) bool {
 				if v.Kind() != "variable_expr" {
@@ -98,10 +103,32 @@ func extractTerraform(rel string, src []byte) Result {
 			}
 		case "module":
 			if len(labels) >= 1 {
-				id := def("module."+labels[0], "module."+labels[0], loc)
+				addr := "module." + labels[0]
+				s := tfAttrString(bbody, "source", src)
+				label := addr
+				computed := ""
+				var in labelInputs
+				if isNullLabel(s) {
+					label = addr + " [null-label]"
+					in = nullLabelInputs(bbody, src)
+					computed = composeID(in)
+				}
+				id := defNode(addr, label, loc, computed)
 				refsFrom(id, bbody)
-				if s := tfAttrString(bbody, "source", src); s != "" {
+				if s != "" {
 					res.ModRefs = append(res.ModRefs, ModRef{FromID: id, Source: s, File: rel, Loc: loc})
+				}
+				// Stage C carry: capture every invocation's args so a local
+				// wrapper chain can be followed, and the null-label inputs so
+				// its partial id can be completed from the caller.
+				args, varRefs := moduleArgs(bbody, src)
+				res.ModInvokes = append(res.ModInvokes, ModInvoke{
+					NodeID: id, Dir: scope, Args: args, ArgVarRefs: varRefs,
+				})
+				if isNullLabel(s) {
+					res.NullLabels = append(res.NullLabels, NullLabelRef{
+						NodeID: id, Scope: scope, Inputs: in,
+					})
 				}
 			}
 		case "variable":
@@ -134,6 +161,62 @@ func extractTerraform(rel string, src []byte) Result {
 		}
 	}
 	return res
+}
+
+// listSep joins/splits a list value carried inside a segVal (Args holds scalars
+// and lists in one map; a list is encoded as its elements joined by listSep).
+const listSep = "\x00"
+
+// moduleArgs reads a module block body into Stage C carry data: literal scalar
+// and list arguments (Args) and bare `arg = var.<name>` pass-throughs (varRefs).
+// Non-literal, non-var-ref arguments are simply omitted (they are unresolvable
+// from here).
+func moduleArgs(body *ts.Node, src []byte) (args map[string]segVal, varRefs map[string]string) {
+	args = map[string]segVal{}
+	varRefs = map[string]string{}
+	if body == nil {
+		return
+	}
+	for i := uint(0); i < body.NamedChildCount(); i++ {
+		a := body.NamedChild(i)
+		if a == nil || a.Kind() != "attribute" {
+			continue
+		}
+		key := tfChild(a, "identifier", src)
+		if key == "" || a.NamedChildCount() < 2 {
+			continue
+		}
+		e := a.NamedChild(1) // value expression
+		if key == "source" || key == "version" {
+			continue
+		}
+		if vn := exprVarName(e, src); vn != "" { // arg = var.<name>
+			varRefs[key] = vn
+			continue
+		}
+		// literal scalar?
+		if v, st := classifyScalar(e, src); st != segUnknown {
+			if st == segKnown && v != "" {
+				args[key] = segVal{val: v, state: segKnown}
+			} else {
+				args[key] = segVal{state: segEmpty}
+			}
+			continue
+		}
+		// literal list (e.g. attributes = ["1","2"])?
+		if vals, st := classifyList(e, src); st != segUnknown {
+			args[key] = segVal{val: strings.Join(vals, listSep), state: segKnown}
+		}
+	}
+	return
+}
+
+// isNullLabel reports whether a module source is the cloudposse null-label
+// module — the registry form "cloudposse/label/null" or any git/github form of
+// "terraform-null-label" (with or without a ?ref= version).
+func isNullLabel(source string) bool {
+	return strings.Contains(source, "cloudposse/label/null") ||
+		strings.Contains(source, "terraform-null-label")
 }
 
 // tfBlock returns a block's type identifier, its quoted labels, and its body.
