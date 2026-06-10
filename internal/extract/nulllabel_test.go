@@ -1,6 +1,12 @@
 package extract
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/dobbo-ca/graphify-go/internal/idutil"
+	"github.com/dobbo-ca/graphify-go/internal/model"
+)
 
 // composeFromHCL parses a single module body and returns its reconstructed id.
 func composeFromHCL(t *testing.T, body string) string {
@@ -96,6 +102,87 @@ resource "aws_s3_bucket" "b" {
 	}
 	if !linked {
 		t.Error("expected aws_s3_bucket.b --references--> module.this")
+	}
+}
+
+// computedNameOf returns the ComputedName of the null-label module node living
+// in dir, or "" if not found. The node ID encodes its dir scope, so two
+// null-label modules in different dirs are distinguishable.
+func computedNameOf(ext model.Extraction, dir string) string {
+	want := idutil.MakeID(dir, "module.this")
+	for _, n := range ext.Nodes {
+		if n.ID == want {
+			return n.ComputedName
+		}
+	}
+	return ""
+}
+
+func TestNullLabelChainResolved(t *testing.T) {
+	root := []byte(`
+module "label" {
+  source     = "../modules/label"
+  namespace  = "eg"
+  stage      = "prod"
+  name       = "app"
+  attributes = ["1"]
+}
+`)
+	wrapper := []byte(`
+variable "namespace" {}
+variable "stage" {}
+variable "name" {}
+variable "attributes" { default = [] }
+
+module "this" {
+  source     = "cloudposse/label/null"
+  namespace  = var.namespace
+  stage      = var.stage
+  name       = var.name
+  attributes = var.attributes
+}
+`)
+	rRoot := FileFromBytes("root/main.tf", root)
+	rWrap := FileFromBytes("modules/label/main.tf", wrapper)
+	ext := Resolve([]Result{rRoot, rWrap}, []string{"root/main.tf", "modules/label/main.tf"})
+	if got := computedNameOf(ext, "modules/label"); got != "eg-prod-app-1" {
+		t.Fatalf("chain ComputedName = %q, want eg-prod-app-1", got)
+	}
+}
+
+func TestNullLabelChainPartialStop(t *testing.T) {
+	root := []byte(`
+module "label" {
+  source     = "../modules/label"
+  namespace  = var.something
+  stage      = "prod"
+  name       = "app"
+  attributes = ["1"]
+}
+`)
+	wrapper := []byte(`
+variable "namespace" {}
+variable "stage" {}
+variable "name" {}
+variable "attributes" { default = [] }
+
+module "this" {
+  source     = "cloudposse/label/null"
+  namespace  = var.namespace
+  stage      = var.stage
+  name       = var.name
+  attributes = var.attributes
+}
+`)
+	rRoot := FileFromBytes("root/main.tf", root)
+	rWrap := FileFromBytes("modules/label/main.tf", wrapper)
+	ext := Resolve([]Result{rRoot, rWrap}, []string{"root/main.tf", "modules/label/main.tf"})
+	got := computedNameOf(ext, "modules/label")
+	if !strings.Contains(got, "{namespace}") {
+		t.Fatalf("partial-stop ComputedName = %q, want it to contain {namespace}", got)
+	}
+	if !strings.HasSuffix(got, "(partial)") {
+		t.Fatalf("partial-stop ComputedName = %q, want it to end with (partial)", got)
 	}
 }
 

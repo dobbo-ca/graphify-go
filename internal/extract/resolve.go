@@ -147,6 +147,10 @@ func Resolve(results []Result, files []string) model.Extraction {
 			})
 		}
 	}
+
+	// Stage C: complete partial cloudposse null-label ids across local wrapper
+	// chains, using the module-source edges and invocation args captured above.
+	resolveNullLabels(results, files, &out)
 	return out
 }
 
