@@ -31,13 +31,14 @@ func extractTerraform(rel string, src []byte) Result {
 	}}}
 	seen := map[string]bool{fileID: true}
 
-	// def adds a block node (once) and a contains edge from the file.
-	def := func(addr, label, loc string) string {
+	// defNode adds a block node (once) with an optional computed name, plus a
+	// contains edge from the file. def is the common case (no computed name).
+	defNode := func(addr, label, loc, computed string) string {
 		id := idutil.MakeID(scope, addr)
 		if !seen[id] {
 			seen[id] = true
 			res.Nodes = append(res.Nodes, model.Node{
-				ID: id, Label: label, FileType: "code", SourceFile: rel, SourceLocation: loc,
+				ID: id, Label: label, FileType: "code", SourceFile: rel, SourceLocation: loc, ComputedName: computed,
 			})
 			res.Edges = append(res.Edges, model.Edge{
 				Source: fileID, Target: id, Relation: "contains",
@@ -46,6 +47,7 @@ func extractTerraform(rel string, src []byte) Result {
 		}
 		return id
 	}
+	def := func(addr, label, loc string) string { return defNode(addr, label, loc, "") }
 	// refsFrom emits an edge from srcID to every address interpolated within node.
 	refsFrom := func(srcID string, node *ts.Node) {
 		walk(node, func(c *ts.Node) bool {
@@ -104,10 +106,12 @@ func extractTerraform(rel string, src []byte) Result {
 				addr := "module." + labels[0]
 				s := tfAttrString(bbody, "source", src)
 				label := addr
+				computed := ""
 				if isNullLabel(s) {
 					label = addr + " [null-label]"
+					computed = composeID(nullLabelInputs(bbody, src))
 				}
-				id := def(addr, label, loc)
+				id := defNode(addr, label, loc, computed)
 				refsFrom(id, bbody)
 				if s != "" {
 					res.ModRefs = append(res.ModRefs, ModRef{FromID: id, Source: s, File: rel, Loc: loc})
