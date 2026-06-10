@@ -63,6 +63,35 @@ func TestAffectedTransitive(t *testing.T) {
 	}
 }
 
+// inheritsJSON: module.this lives in child.tf; module.label (in parent.tf)
+// inherits its cloudposse context from module.this. Changing child.tf must flag
+// module.label, whose computed name depends on the context parent.
+const inheritsJSON = `{"directed":true,"multigraph":false,"graph":{},
+"nodes":[
+ {"id":"module_this","label":"module.this [null-label]","file_type":"code","source_file":"child.tf","source_location":"L1"},
+ {"id":"module_label","label":"module.label [null-label]","file_type":"code","source_file":"parent.tf","source_location":"L1"}
+],
+"links":[
+ {"source":"module_label","target":"module_this","relation":"inherits_context","confidence":"EXTRACTED"}
+],
+"hyperedges":[]}`
+
+func TestAffectedInheritsContext(t *testing.T) {
+	g := loadJSON(t, inheritsJSON)
+	res := Affected(g, []string{"child.tf"})
+
+	if len(res.Changed) != 1 || res.Changed[0].ID != "module_this" {
+		t.Fatalf("changed: got %+v, want [module_this]", res.Changed)
+	}
+	got := map[string]bool{}
+	for _, n := range res.Impacted {
+		got[n.ID] = true
+	}
+	if !got["module_label"] {
+		t.Errorf("impacted should include module.label (inherits context from changed module.this), got %v", got)
+	}
+}
+
 func TestAffectedNoMatch(t *testing.T) {
 	g := loadJSON(t, affectedJSON)
 	res := Affected(g, []string{"nonexistent.go"})

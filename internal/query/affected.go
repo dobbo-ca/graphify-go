@@ -9,7 +9,7 @@ import (
 // reversing them finds the things impacted when the target changes.
 var depRelations = map[string]bool{
 	"calls": true, "imports": true, "imports_from": true,
-	"references": true, "depends_on": true,
+	"references": true, "depends_on": true, "inherits_context": true,
 }
 
 // AffectedResult separates the symbols defined in the changed files from the
