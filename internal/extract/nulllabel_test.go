@@ -60,3 +60,58 @@ func TestComposeIDNoLiterals(t *testing.T) {
 		t.Errorf("no-literals id = %q, want empty", got)
 	}
 }
+
+func TestNullLabelComputedNameOnNode(t *testing.T) {
+	src := []byte(`
+module "this" {
+  source     = "cloudposse/label/null"
+  namespace  = "eg"
+  stage      = "prod"
+  name       = "app"
+  attributes = ["public"]
+}
+resource "aws_s3_bucket" "b" {
+  bucket = module.this.id
+}
+`)
+	res := FileFromBytes("main.tf", src)
+	var got string
+	for _, n := range res.Nodes {
+		if n.Label == "module.this [null-label]" {
+			got = n.ComputedName
+		}
+	}
+	if got != "eg-prod-app-public" {
+		t.Fatalf("ComputedName = %q, want eg-prod-app-public", got)
+	}
+	id2label := map[string]string{}
+	for _, n := range res.Nodes {
+		id2label[n.ID] = n.Label
+	}
+	linked := false
+	for _, e := range res.Edges {
+		if e.Relation == "references" && id2label[e.Source] == "aws_s3_bucket.b" && id2label[e.Target] == "module.this [null-label]" {
+			linked = true
+		}
+	}
+	if !linked {
+		t.Error("expected aws_s3_bucket.b --references--> module.this")
+	}
+}
+
+func TestNullLabelFixture(t *testing.T) {
+	r, err := File("testdata/tf/label", "main.tf")
+	if err != nil {
+		t.Fatalf("File: %v", err)
+	}
+	ext := Resolve([]Result{r}, []string{"label/main.tf"})
+	var got string
+	for _, n := range ext.Nodes {
+		if n.Label == "module.this [null-label]" {
+			got = n.ComputedName
+		}
+	}
+	if got != "eg-ue1-prod-app-public" {
+		t.Fatalf("fixture ComputedName = %q, want eg-ue1-prod-app-public", got)
+	}
+}
