@@ -1,6 +1,7 @@
 package extract
 
 import (
+	"maps"
 	"strings"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
@@ -193,15 +194,16 @@ func inheritContext(child *labelInputs, parent labelInputs) {
 		child.attrs, child.attrState = merged, segKnown
 	}
 	// Clear the child's "pending inheritance" markers ONLY when the resolved
-	// parent is itself fully exact — a non-empty id with no {seg} placeholder,
-	// no " (partial)" suffix, and no residual contextRef/varRefs of its own. If
-	// the parent is still partial, the child must stay partial too: dropping the
-	// markers here would emit a wrong EXACT id (the parent's unknown segment is
-	// silently lost). Never fabricate; a gap is safer than a wrong name.
+	// parent is itself fully exact. composeID already fully encodes the parent's
+	// determinacy: an unknown field in the active label_order surfaces as a
+	// {seg}, an unresolved parent context keeps the " (partial)" suffix, and a
+	// non-literal knob yields "". So a non-empty id with no {seg} and no
+	// " (partial)" PROVES the parent's id is fully determined — even if the
+	// parent still carries varRefs/contextRef that were already resolved into its
+	// scalars. If the parent is still partial the child must stay partial too;
+	// never fabricate, a gap is safer than a wrong name.
 	pid := composeID(parent)
-	parentExact := pid != "" && !strings.Contains(pid, "{") &&
-		!strings.HasSuffix(pid, " (partial)") &&
-		parent.contextRef == "" && len(parent.varRefs) == 0
+	parentExact := pid != "" && !strings.Contains(pid, "{") && !strings.HasSuffix(pid, " (partial)")
 	if parentExact {
 		child.hasContext = false
 		child.contextRef = ""
@@ -212,16 +214,10 @@ func inheritContext(child *labelInputs, parent labelInputs) {
 // copy never mutates the captured original.
 func cloneInputs(in labelInputs) labelInputs {
 	out := in
-	out.scalars = make(map[string]segVal, len(in.scalars))
-	for k, v := range in.scalars {
-		out.scalars[k] = v
-	}
+	out.scalars = maps.Clone(in.scalars)
 	out.attrs = append([]string(nil), in.attrs...)
 	out.labelOrder = append([]string(nil), in.labelOrder...)
-	out.varRefs = make(map[string]string, len(in.varRefs))
-	for k, v := range in.varRefs {
-		out.varRefs[k] = v
-	}
+	out.varRefs = maps.Clone(in.varRefs)
 	return out
 }
 

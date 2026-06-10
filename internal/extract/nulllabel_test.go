@@ -231,6 +231,38 @@ module "this" {
 	}
 }
 
+func TestNullLabelWrapperContextChild(t *testing.T) {
+	root := []byte(`
+module "label" {
+  source      = "../modules/label"
+  namespace   = "eg"
+  environment = "ue1"
+}
+`)
+	wrapper := []byte(`
+variable "namespace" {}
+variable "environment" {}
+
+module "base" {
+  source      = "cloudposse/label/null"
+  namespace   = var.namespace
+  environment = var.environment
+}
+module "this" {
+  source  = "cloudposse/label/null"
+  stage   = "prod"
+  name    = "app"
+  context = module.base.context
+}
+`)
+	rRoot := FileFromBytes("root/main.tf", root)
+	rWrap := FileFromBytes("modules/label/main.tf", wrapper)
+	ext := Resolve([]Result{rRoot, rWrap}, []string{"root/main.tf", "modules/label/main.tf"})
+	if got := computedNameOf(ext, "modules/label"); got != "eg-ue1-prod-app" {
+		t.Fatalf("wrapper-context-child ComputedName = %q, want eg-ue1-prod-app", got)
+	}
+}
+
 func TestNullLabelFixture(t *testing.T) {
 	r, err := File("testdata/tf/label", "main.tf")
 	if err != nil {
