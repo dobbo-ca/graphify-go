@@ -21,7 +21,7 @@ const maxChainDepth = 8
 // direct `var.X -> arg` mappings, and same-corpus `module.Y.context` inheritance.
 // For multi-caller dirs, remote/registry hops, or anything unresolvable it
 // leaves the Stage B (partial) id untouched — never fabricating an exact id.
-func resolveNullLabels(results []Result, files []string, out *model.Extraction) {
+func resolveNullLabels(results []Result, out *model.Extraction) {
 	// Index invocations by their module node id.
 	invByNode := map[string]ModInvoke{}
 	for _, r := range results {
@@ -172,8 +172,17 @@ func resolveArg(M ModInvoke, vname string, callersByDir map[string][]ModInvoke, 
 // Attributes merge parent-first, then dedup in composeID.
 func inheritContext(child *labelInputs, parent labelInputs) {
 	for _, k := range labelScalars {
-		if child.scalars[k].state != segKnown && parent.scalars[k].state == segKnown {
+		if child.scalars[k].state == segKnown {
+			continue // child overrides the inherited value
+		}
+		switch parent.scalars[k].state {
+		case segKnown:
 			child.scalars[k] = parent.scalars[k]
+		case segUnknown:
+			// The parent contributes this field but its value is unknown; the
+			// child's effective value is therefore unknown too, so it renders as
+			// a {seg} placeholder (partial) rather than being silently dropped.
+			child.scalars[k] = segVal{state: segUnknown}
 		}
 	}
 	if parent.attrState == segKnown {
@@ -183,14 +192,17 @@ func inheritContext(child *labelInputs, parent labelInputs) {
 		}
 		child.attrs, child.attrState = merged, segKnown
 	}
-	// Knobs: prefer the child's own; adopt the parent's literal knobs only when
-	// the child kept defaults. (Defaults are indistinguishable from explicit
-	// matching values, which is harmless — the result is identical.)
-	if !parent.unresolved {
-		// Context was followed to a resolvable parent: clear the "pending
-		// inheritance" flags so composeID no longer marks the id partial purely
-		// because a context attr existed. Any still-unknown scalar keeps its own
-		// {seg} partial marker.
+	// Clear the child's "pending inheritance" markers ONLY when the resolved
+	// parent is itself fully exact — a non-empty id with no {seg} placeholder,
+	// no " (partial)" suffix, and no residual contextRef/varRefs of its own. If
+	// the parent is still partial, the child must stay partial too: dropping the
+	// markers here would emit a wrong EXACT id (the parent's unknown segment is
+	// silently lost). Never fabricate; a gap is safer than a wrong name.
+	pid := composeID(parent)
+	parentExact := pid != "" && !strings.Contains(pid, "{") &&
+		!strings.HasSuffix(pid, " (partial)") &&
+		parent.contextRef == "" && len(parent.varRefs) == 0
+	if parentExact {
 		child.hasContext = false
 		child.contextRef = ""
 	}

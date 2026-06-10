@@ -186,6 +186,51 @@ module "this" {
 	}
 }
 
+func TestNullLabelInheritPartialParent(t *testing.T) {
+	src := []byte(`
+variable "x" {}
+module "base" {
+  source      = "cloudposse/label/null"
+  namespace   = var.x
+  environment = "ue1"
+}
+module "this" {
+  source  = "cloudposse/label/null"
+  stage   = "prod"
+  name    = "app"
+  context = module.base.context
+}
+`)
+	ext := Resolve([]Result{FileFromBytes("main.tf", src)}, []string{"main.tf"})
+	got := computedNameOf(ext, "tf")
+	if !strings.Contains(got, "{namespace}") {
+		t.Fatalf("inherit-partial-parent ComputedName = %q, want it to contain {namespace}", got)
+	}
+	if !strings.HasSuffix(got, "(partial)") {
+		t.Fatalf("inherit-partial-parent ComputedName = %q, want it to end with (partial)", got)
+	}
+}
+
+func TestNullLabelInheritExactParent(t *testing.T) {
+	src := []byte(`
+module "base" {
+  source      = "cloudposse/label/null"
+  namespace   = "eg"
+  environment = "ue1"
+}
+module "this" {
+  source  = "cloudposse/label/null"
+  stage   = "prod"
+  name    = "app"
+  context = module.base.context
+}
+`)
+	ext := Resolve([]Result{FileFromBytes("main.tf", src)}, []string{"main.tf"})
+	if got := computedNameOf(ext, "tf"); got != "eg-ue1-prod-app" {
+		t.Fatalf("inherit-exact-parent ComputedName = %q, want eg-ue1-prod-app", got)
+	}
+}
+
 func TestNullLabelFixture(t *testing.T) {
 	r, err := File("testdata/tf/label", "main.tf")
 	if err != nil {
