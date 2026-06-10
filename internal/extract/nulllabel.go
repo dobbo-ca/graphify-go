@@ -31,6 +31,13 @@ type labelInputs struct {
 	valueCase  string
 	hasContext bool // a `context =` attr is present -> some segments may be inherited
 	unresolved bool // a knob (delimiter/label_order/label_value_case) is non-literal
+
+	// Stage C carry: cross-module resolution inputs. varRefs maps a label field
+	// (a labelScalar, or "attributes") to the bare variable name when its value
+	// expression is exactly `var.<name>`. contextRef is the address a `context =`
+	// attr points at (`module.<name>` or `var.<name>`), or "".
+	varRefs    map[string]string
+	contextRef string
 }
 
 var labelScalars = []string{"namespace", "tenant", "environment", "stage", "name"}
@@ -57,6 +64,7 @@ func nullLabelInputs(body *ts.Node, src []byte) labelInputs {
 	in := labelInputs{
 		scalars: map[string]segVal{}, delimiter: "-", valueCase: "lower",
 		labelOrder: defaultLabelOrder, hasContext: exprs["context"] != nil,
+		varRefs: map[string]string{},
 	}
 
 	for _, k := range labelScalars {
@@ -75,6 +83,9 @@ func nullLabelInputs(body *ts.Node, src []byte) labelInputs {
 			in.scalars[k] = segVal{state: segEmpty}
 		default: // explicit var.X / expression -> referenced but unresolved
 			in.scalars[k] = segVal{state: segUnknown}
+			if vn := exprVarName(e, src); vn != "" { // Stage C: record `var.<name>`
+				in.varRefs[k] = vn
+			}
 		}
 	}
 
@@ -83,6 +94,16 @@ func nullLabelInputs(body *ts.Node, src []byte) labelInputs {
 		in.attrState = segEmpty
 	} else {
 		in.attrs, in.attrState = classifyList(e, src)
+		if in.attrState == segUnknown {
+			if vn := exprVarName(e, src); vn != "" { // Stage C: `attributes = var.<name>`
+				in.varRefs["attributes"] = vn
+			}
+		}
+	}
+
+	// context: record the address it points at so Stage C can inherit segments.
+	if e := exprs["context"]; e != nil {
+		in.contextRef = exprRefAddress(e, src)
 	}
 
 	// knobs
@@ -277,6 +298,29 @@ func stringLitText(sl *ts.Node, src []byte) string {
 		}
 	}
 	return b.String()
+}
+
+// exprRefAddress returns the canonical reference address of a value expression
+// that is exactly a single reference (e.g. `var.context` -> "var.context",
+// `module.x.context` -> "module.x"), or "" if the expression is not a bare
+// reference. It locates the leading variable_expr and reuses tfRefAddress.
+func exprRefAddress(expr *ts.Node, src []byte) string {
+	ve := tfNamedChild(expr, "variable_expr")
+	if ve == nil {
+		return ""
+	}
+	return tfRefAddress(ve, src)
+}
+
+// exprVarName returns the bare variable name when expr is exactly `var.<name>`,
+// else "". It rejects deeper references like `var.x.y` or `module.x` so only a
+// direct pass-through of a single input variable is treated as a var-ref.
+func exprVarName(expr *ts.Node, src []byte) string {
+	addr := exprRefAddress(expr, src)
+	if name, ok := strings.CutPrefix(addr, "var."); ok && name != "" {
+		return name
+	}
+	return ""
 }
 
 // tfNamedChild returns n's first named child of the given kind, or nil.

@@ -107,14 +107,29 @@ func extractTerraform(rel string, src []byte) Result {
 				s := tfAttrString(bbody, "source", src)
 				label := addr
 				computed := ""
+				var in labelInputs
 				if isNullLabel(s) {
 					label = addr + " [null-label]"
-					computed = composeID(nullLabelInputs(bbody, src))
+					in = nullLabelInputs(bbody, src)
+					computed = composeID(in)
 				}
 				id := defNode(addr, label, loc, computed)
 				refsFrom(id, bbody)
 				if s != "" {
 					res.ModRefs = append(res.ModRefs, ModRef{FromID: id, Source: s, File: rel, Loc: loc})
+				}
+				// Stage C carry: capture every invocation's args so a local
+				// wrapper chain can be followed, and the null-label inputs so
+				// its partial id can be completed from the caller.
+				args, varRefs, ctxRef := moduleArgs(bbody, src)
+				res.ModInvokes = append(res.ModInvokes, ModInvoke{
+					NodeID: id, Dir: scope, Source: s,
+					Args: args, ArgVarRefs: varRefs, ContextRef: ctxRef,
+				})
+				if isNullLabel(s) {
+					res.NullLabels = append(res.NullLabels, NullLabelRef{
+						NodeID: id, Scope: scope, File: rel, Inputs: in,
+					})
 				}
 			}
 		case "variable":
@@ -147,6 +162,58 @@ func extractTerraform(rel string, src []byte) Result {
 		}
 	}
 	return res
+}
+
+// listSep joins/splits a list value carried inside a segVal (Args holds scalars
+// and lists in one map; a list is encoded as its elements joined by listSep).
+const listSep = "\x00"
+
+// moduleArgs reads a module block body into Stage C carry data: literal scalar
+// and list arguments (Args), bare `arg = var.<name>` pass-throughs (varRefs),
+// and a `context =` argument's reference address (ctxRef). Non-literal,
+// non-var-ref arguments are simply omitted (they are unresolvable from here).
+func moduleArgs(body *ts.Node, src []byte) (args map[string]segVal, varRefs map[string]string, ctxRef string) {
+	args = map[string]segVal{}
+	varRefs = map[string]string{}
+	if body == nil {
+		return
+	}
+	for i := uint(0); i < body.NamedChildCount(); i++ {
+		a := body.NamedChild(i)
+		if a == nil || a.Kind() != "attribute" {
+			continue
+		}
+		key := tfChild(a, "identifier", src)
+		if key == "" || a.NamedChildCount() < 2 {
+			continue
+		}
+		e := a.NamedChild(1) // value expression
+		switch key {
+		case "source", "version":
+			continue
+		case "context":
+			ctxRef = exprRefAddress(e, src)
+			continue
+		}
+		if vn := exprVarName(e, src); vn != "" { // arg = var.<name>
+			varRefs[key] = vn
+			continue
+		}
+		// literal scalar?
+		if v, st := classifyScalar(e, src); st != segUnknown {
+			if st == segKnown && v != "" {
+				args[key] = segVal{val: v, state: segKnown}
+			} else {
+				args[key] = segVal{state: segEmpty}
+			}
+			continue
+		}
+		// literal list (e.g. attributes = ["1","2"])?
+		if vals, st := classifyList(e, src); st != segUnknown {
+			args[key] = segVal{val: strings.Join(vals, listSep), state: segKnown}
+		}
+	}
+	return
 }
 
 // isNullLabel reports whether a module source is the cloudposse null-label

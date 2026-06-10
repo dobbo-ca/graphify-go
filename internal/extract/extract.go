@@ -42,14 +42,37 @@ type ModRef struct {
 	FromID, Source, File, Loc string
 }
 
+// NullLabelRef carries a captured cloudposse null-label module so Resolve can
+// fill in segments that come from input variables or an inherited context.
+// NodeID is the module node; Scope is its directory (used to find the caller);
+// File is its source file; Inputs are the locally-captured label fields.
+type NullLabelRef struct {
+	NodeID, Scope, File string
+	Inputs              labelInputs
+}
+
+// ModInvoke carries one `module` block's arguments so Resolve can follow a
+// local wrapper chain. Dir is the invoking directory (its dirScope); Source is
+// the module source. Args holds literal scalar/list arguments by name;
+// ArgVarRefs maps an argument name to the bare variable it passes through
+// (`arg = var.<name>`); ContextRef is the address of a `context =` argument.
+type ModInvoke struct {
+	NodeID, Dir, Source string
+	Args                map[string]segVal
+	ArgVarRefs          map[string]string
+	ContextRef          string
+}
+
 // Result is one file's extraction before cross-file resolution.
 type Result struct {
-	Nodes   []model.Node
-	Edges   []model.Edge
-	Defs    []Def
-	Calls   []Call
-	Imps    []Imp
-	ModRefs []ModRef
+	Nodes      []model.Node
+	Edges      []model.Edge
+	Defs       []Def
+	Calls      []Call
+	Imps       []Imp
+	ModRefs    []ModRef
+	NullLabels []NullLabelRef
+	ModInvokes []ModInvoke
 }
 
 // File extracts rel (a path relative to root). Unsupported extensions return an
