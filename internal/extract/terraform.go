@@ -121,14 +121,13 @@ func extractTerraform(rel string, src []byte) Result {
 				// Stage C carry: capture every invocation's args so a local
 				// wrapper chain can be followed, and the null-label inputs so
 				// its partial id can be completed from the caller.
-				args, varRefs, ctxRef := moduleArgs(bbody, src)
+				args, varRefs := moduleArgs(bbody, src)
 				res.ModInvokes = append(res.ModInvokes, ModInvoke{
-					NodeID: id, Dir: scope, Source: s,
-					Args: args, ArgVarRefs: varRefs, ContextRef: ctxRef,
+					NodeID: id, Dir: scope, Args: args, ArgVarRefs: varRefs,
 				})
 				if isNullLabel(s) {
 					res.NullLabels = append(res.NullLabels, NullLabelRef{
-						NodeID: id, Scope: scope, File: rel, Inputs: in,
+						NodeID: id, Scope: scope, Inputs: in,
 					})
 				}
 			}
@@ -169,10 +168,10 @@ func extractTerraform(rel string, src []byte) Result {
 const listSep = "\x00"
 
 // moduleArgs reads a module block body into Stage C carry data: literal scalar
-// and list arguments (Args), bare `arg = var.<name>` pass-throughs (varRefs),
-// and a `context =` argument's reference address (ctxRef). Non-literal,
-// non-var-ref arguments are simply omitted (they are unresolvable from here).
-func moduleArgs(body *ts.Node, src []byte) (args map[string]segVal, varRefs map[string]string, ctxRef string) {
+// and list arguments (Args) and bare `arg = var.<name>` pass-throughs (varRefs).
+// Non-literal, non-var-ref arguments are simply omitted (they are unresolvable
+// from here).
+func moduleArgs(body *ts.Node, src []byte) (args map[string]segVal, varRefs map[string]string) {
 	args = map[string]segVal{}
 	varRefs = map[string]string{}
 	if body == nil {
@@ -188,11 +187,7 @@ func moduleArgs(body *ts.Node, src []byte) (args map[string]segVal, varRefs map[
 			continue
 		}
 		e := a.NamedChild(1) // value expression
-		switch key {
-		case "source", "version":
-			continue
-		case "context":
-			ctxRef = exprRefAddress(e, src)
+		if key == "source" || key == "version" {
 			continue
 		}
 		if vn := exprVarName(e, src); vn != "" { // arg = var.<name>
