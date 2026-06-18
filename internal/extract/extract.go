@@ -25,8 +25,17 @@ type Def struct {
 }
 
 // Call is an unresolved call site: CallerID invoked a symbol named Callee.
+// IsMember marks an attribute/method call (`x.f()`), which the Python
+// import-guided resolver must skip — the alias evidence only covers bare names.
 type Call struct {
 	CallerID, Callee, File, Loc string
+	IsMember                    bool
+}
+
+// ImportAlias is per-file evidence from a top-level `from M import N [as L]`:
+// the local name L (alias or N) resolves to symbol N in module-stem M.
+type ImportAlias struct {
+	Local, Imported, ModuleStem, Loc string
 }
 
 // Imp is an unresolved import: File imported the module named Spec.
@@ -63,14 +72,15 @@ type ModInvoke struct {
 
 // Result is one file's extraction before cross-file resolution.
 type Result struct {
-	Nodes      []model.Node
-	Edges      []model.Edge
-	Defs       []Def
-	Calls      []Call
-	Imps       []Imp
-	ModRefs    []ModRef
-	NullLabels []NullLabelRef
-	ModInvokes []ModInvoke
+	Nodes         []model.Node
+	Edges         []model.Edge
+	Defs          []Def
+	Calls         []Call
+	Imps          []Imp
+	ModRefs       []ModRef
+	NullLabels    []NullLabelRef
+	ModInvokes    []ModInvoke
+	ImportAliases []ImportAlias
 }
 
 // File extracts rel (a path relative to root). Unsupported extensions return an
@@ -218,6 +228,15 @@ func (b *builder) call(callerID, callee, loc string) {
 		return
 	}
 	b.res.Calls = append(b.res.Calls, Call{CallerID: callerID, Callee: callee, File: b.file, Loc: loc})
+}
+
+// callMember records an attribute/method call (`x.f()`). It is identical to call
+// but flags the site as a member call so the Python import-guided resolver skips it.
+func (b *builder) callMember(callerID, callee, loc string) {
+	if callee == "" || callerID == "" {
+		return
+	}
+	b.res.Calls = append(b.res.Calls, Call{CallerID: callerID, Callee: callee, File: b.file, Loc: loc, IsMember: true})
 }
 
 func (b *builder) imp(spec, loc string) {
