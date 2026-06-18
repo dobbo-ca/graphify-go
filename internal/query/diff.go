@@ -30,9 +30,9 @@ type DiffResult struct {
 }
 
 // Diff compares two loaded graph snapshots and returns the nodes and edges added
-// or removed going from old to new. Edges are compared by a direction-insensitive
-// key (sorted source/target plus relation), so an edge counts as unchanged
-// regardless of which endpoint is listed first.
+// or removed going from old to new. The graph is directed, so edges are compared
+// by a direction-aware key (source, target, relation): reversing an edge counts
+// as one removed and one added.
 func Diff(old, new *Graph) DiffResult {
 	oldNodes := nodeLabels(old)
 	newNodes := nodeLabels(new)
@@ -83,14 +83,10 @@ func nodeLabels(g *Graph) map[string]string {
 	return m
 }
 
-// edgeKey canonicalises an edge so direction doesn't matter: sorted endpoints
-// plus relation, mirroring the rotateKey style used elsewhere in the codebase.
+// edgeKey identifies a directed edge by source, target, and relation. The graph
+// is directed, so the endpoints are not sorted: A->B and B->A are distinct.
 func edgeKey(source, target, relation string) string {
-	a, b := source, target
-	if a > b {
-		a, b = b, a
-	}
-	return a + "\x00" + b + "\x00" + relation
+	return source + "\x00" + target + "\x00" + relation
 }
 
 func edgeKeys(g *Graph) map[string]DiffEdge {

@@ -61,9 +61,9 @@ func TestDiffNoChanges(t *testing.T) {
 	}
 }
 
-// TestDiffEdgeDirectionInsensitive: the same edge with endpoints swapped between
-// snapshots must not register as removed+added — the canonical key sorts them.
-func TestDiffEdgeDirectionInsensitive(t *testing.T) {
+// TestDiffEdgeDirectionAware: the graph is directed, so reversing an edge's
+// endpoints between snapshots registers as one removed (x->y) and one added (y->x).
+func TestDiffEdgeDirectionAware(t *testing.T) {
 	a := `{"directed":true,"nodes":[
  {"id":"x","label":"x()","source_file":"a.go","source_location":"L1"},
  {"id":"y","label":"y()","source_file":"b.go","source_location":"L1"}
@@ -73,10 +73,42 @@ func TestDiffEdgeDirectionInsensitive(t *testing.T) {
  {"id":"y","label":"y()","source_file":"b.go","source_location":"L1"}
 ],"links":[{"source":"y","target":"x","relation":"calls","confidence":"INFERRED"}]}`
 	res := Diff(loadJSON(t, a), loadJSON(t, b))
-	if len(res.NewEdges) != 0 || len(res.RemovedEdges) != 0 {
-		t.Errorf("swapped endpoints should be unchanged, got new=%+v removed=%+v", res.NewEdges, res.RemovedEdges)
+	if got := res.NewEdges; !reflect.DeepEqual(got, []DiffEdge{{Source: "y", Target: "x", Relation: "calls"}}) {
+		t.Errorf("new edges: got %+v, want [y->x]", got)
 	}
-	if res.Summary != "no changes" {
-		t.Errorf("summary: got %q, want %q", res.Summary, "no changes")
+	if got := res.RemovedEdges; !reflect.DeepEqual(got, []DiffEdge{{Source: "x", Target: "y", Relation: "calls"}}) {
+		t.Errorf("removed edges: got %+v, want [x->y]", got)
+	}
+	if want := "1 new edge, 1 edge removed"; res.Summary != want {
+		t.Errorf("summary: got %q, want %q", res.Summary, want)
+	}
+}
+
+// TestDiffMutualRecursionEdgeRemoved: when a node pair has edges in both
+// directions (A->B and B->A) and one is removed, the removal must be reported.
+// A direction-insensitive key would collapse both edges and hide the removal.
+func TestDiffMutualRecursionEdgeRemoved(t *testing.T) {
+	a := `{"directed":true,"nodes":[
+ {"id":"A","label":"A()","source_file":"a.go","source_location":"L1"},
+ {"id":"B","label":"B()","source_file":"b.go","source_location":"L1"}
+],"links":[
+ {"source":"A","target":"B","relation":"calls","confidence":"INFERRED"},
+ {"source":"B","target":"A","relation":"calls","confidence":"INFERRED"}
+]}`
+	b := `{"directed":true,"nodes":[
+ {"id":"A","label":"A()","source_file":"a.go","source_location":"L1"},
+ {"id":"B","label":"B()","source_file":"b.go","source_location":"L1"}
+],"links":[
+ {"source":"A","target":"B","relation":"calls","confidence":"INFERRED"}
+]}`
+	res := Diff(loadJSON(t, a), loadJSON(t, b))
+	if len(res.NewEdges) != 0 {
+		t.Errorf("new edges: got %+v, want none", res.NewEdges)
+	}
+	if got := res.RemovedEdges; !reflect.DeepEqual(got, []DiffEdge{{Source: "B", Target: "A", Relation: "calls"}}) {
+		t.Errorf("removed edges: got %+v, want [B->A]", got)
+	}
+	if want := "1 edge removed"; res.Summary != want {
+		t.Errorf("summary: got %q, want %q", res.Summary, want)
 	}
 }
