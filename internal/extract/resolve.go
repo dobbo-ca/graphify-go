@@ -57,11 +57,20 @@ func Resolve(results []Result, files []string) model.Extraction {
 		out.Edges = append(out.Edges, r.Edges...)
 	}
 
+	// Python import-guided calls: explicit `from M import N [as L]` evidence
+	// resolves a call to the unique (module_stem, symbol) definition with
+	// EXTRACTED confidence. Runs before the generic name pass and marks each
+	// resolved call site so the weaker name pass leaves it alone.
+	resolved := resolveImportGuided(results, &out)
+
 	// Calls: prefer a definition in the same file, else disambiguate among the
 	// definitions sharing the called name (unique global, imported file, or same
 	// package) rather than guessing.
 	for _, r := range results {
 		for _, c := range r.Calls {
+			if resolved[c.CallerID+"\x00"+c.Callee+"\x00"+c.Loc] {
+				continue
+			}
 			tgt := local[c.File+"\x00"+c.Callee]
 			if tgt == "" {
 				tgt = disambiguate(global[c.Callee], c.File, idFile, importedFiles[c.File])
@@ -152,6 +161,64 @@ func Resolve(results []Result, files []string) model.Extraction {
 	// chains, using the module-source edges and invocation args captured above.
 	resolveNullLabels(results, &out)
 	return out
+}
+
+// resolveImportGuided emits EXTRACTED calls edges for Python calls backed by
+// explicit `from M import N [as L]` evidence. It builds a (module_stem, symbol)
+// index from all definitions, then for each per-file alias resolves a matching
+// bare call to the unique definition. Member calls and self-edges are skipped.
+// It returns the set of call sites it resolved (keyed callerID\x00callee\x00loc)
+// so the generic name pass leaves them alone.
+func resolveImportGuided(results []Result, out *model.Extraction) map[string]bool {
+	// (module_stem, symbol) -> def ids, used only when an import names that symbol.
+	index := map[string][]string{}
+	for _, r := range results {
+		for _, d := range r.Defs {
+			stem := defStem(d.File)
+			if stem == "" {
+				continue
+			}
+			index[stem+"\x00"+d.Name] = append(index[stem+"\x00"+d.Name], d.ID)
+		}
+	}
+
+	resolved := map[string]bool{}
+	for _, r := range results {
+		if len(r.ImportAliases) == 0 {
+			continue
+		}
+		aliases := map[string]ImportAlias{}
+		for _, a := range r.ImportAliases {
+			aliases[a.Local] = a // last write wins, mirroring upstream alias dict
+		}
+		for _, c := range r.Calls {
+			if c.IsMember {
+				continue
+			}
+			a, ok := aliases[c.Callee]
+			if !ok {
+				continue
+			}
+			ids := index[a.ModuleStem+"\x00"+a.Imported]
+			if len(ids) != 1 || ids[0] == c.CallerID {
+				continue
+			}
+			resolved[c.CallerID+"\x00"+c.Callee+"\x00"+c.Loc] = true
+			out.Edges = append(out.Edges, model.Edge{
+				Source: c.CallerID, Target: ids[0], Relation: "calls",
+				Confidence: "EXTRACTED", ConfidenceScore: 1.0,
+				SourceFile: c.File, SourceLocation: c.Loc,
+			})
+		}
+	}
+	return resolved
+}
+
+// defStem returns a definition file's bare stem (basename without extension),
+// the key import-guided resolution matches a module stem against.
+func defStem(file string) string {
+	base := filepath.Base(file)
+	return strings.TrimSuffix(base, filepath.Ext(base))
 }
 
 // isLocalSource reports whether a Terraform module source is a local filesystem

@@ -1,6 +1,8 @@
 package extract
 
 import (
+	"strings"
+
 	ts "github.com/tree-sitter/go-tree-sitter"
 	tspy "github.com/tree-sitter/tree-sitter-python/bindings/go"
 
@@ -105,10 +107,60 @@ func (b *builder) pyImports(n *ts.Node, src []byte) {
 			}
 		}
 	case "import_from_statement":
-		if mod := n.ChildByFieldName("module_name"); mod != nil {
-			b.imp(mod.Utf8Text(src), line(n))
+		mod := n.ChildByFieldName("module_name")
+		if mod == nil {
+			return
 		}
+		b.imp(mod.Utf8Text(src), line(n))
+		b.pyImportAliases(n, mod, src)
 	}
+}
+
+// pyImportAliases captures `from M import N [as L]` evidence for the
+// import-guided call resolver. stem is the final component of the module name;
+// each imported name records local -> imported under that stem. `import *`
+// (wildcard_import, no name field) carries no usable alias and is skipped.
+func (b *builder) pyImportAliases(n, mod *ts.Node, src []byte) {
+	stem := pyModuleStem(mod, src)
+	if stem == "" {
+		return
+	}
+	loc := line(n)
+	for i := uint(0); i < n.ChildCount(); i++ {
+		if n.FieldNameForChild(uint32(i)) != "name" {
+			continue
+		}
+		c := n.Child(i)
+		var local, imported string
+		switch c.Kind() {
+		case "dotted_name":
+			imported, local = c.Utf8Text(src), c.Utf8Text(src)
+		case "aliased_import":
+			name, alias := c.ChildByFieldName("name"), c.ChildByFieldName("alias")
+			if name == nil || alias == nil {
+				continue
+			}
+			imported, local = name.Utf8Text(src), alias.Utf8Text(src)
+		default:
+			continue
+		}
+		if local == "" || imported == "" {
+			continue
+		}
+		b.res.ImportAliases = append(b.res.ImportAliases, ImportAlias{
+			Local: local, Imported: imported, ModuleStem: stem, Loc: loc,
+		})
+	}
+}
+
+// pyModuleStem returns the final component of a `from ... import` module name,
+// mirroring upstream _module_stem: `util.math` -> `math`, `.helper` -> `helper`.
+func pyModuleStem(mod *ts.Node, src []byte) string {
+	text := strings.Trim(mod.Utf8Text(src), ".")
+	if i := strings.LastIndex(text, "."); i >= 0 {
+		return text[i+1:]
+	}
+	return text
 }
 
 // pyCalls walks a function body and records each call site. Direct calls
@@ -131,7 +183,7 @@ func (b *builder) pyCalls(body *ts.Node, callerID string, src []byte) {
 			b.call(callerID, fn.Utf8Text(src), line(c))
 		case "attribute":
 			if a := fn.ChildByFieldName("attribute"); a != nil {
-				b.call(callerID, a.Utf8Text(src), line(c))
+				b.callMember(callerID, a.Utf8Text(src), line(c))
 			}
 		}
 		return true
