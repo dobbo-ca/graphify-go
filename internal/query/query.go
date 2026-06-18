@@ -22,6 +22,7 @@ type Graph struct {
 
 	byID map[string]*Node
 	adj  map[string]map[string]bool
+	edge map[[2]string]*Link // directed (source,target) -> link, for relation lookup
 }
 
 // Node mirrors a graph.json node.
@@ -63,7 +64,9 @@ func Load(path string) (*Graph, error) {
 		g.byID[g.Nodes[i].ID] = &g.Nodes[i]
 	}
 	g.adj = map[string]map[string]bool{}
-	for _, l := range g.Links {
+	g.edge = map[[2]string]*Link{}
+	for i := range g.Links {
+		l := &g.Links[i]
 		if g.adj[l.Source] == nil {
 			g.adj[l.Source] = map[string]bool{}
 		}
@@ -72,6 +75,9 @@ func Load(path string) (*Graph, error) {
 		}
 		g.adj[l.Source][l.Target] = true
 		g.adj[l.Target][l.Source] = true
+		if _, ok := g.edge[[2]string{l.Source, l.Target}]; !ok {
+			g.edge[[2]string{l.Source, l.Target}] = l
+		}
 	}
 	return &g, nil
 }

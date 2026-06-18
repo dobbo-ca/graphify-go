@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/dobbo-ca/graphify-go/internal/model"
 	"github.com/dobbo-ca/graphify-go/internal/query"
 	"github.com/dobbo-ca/graphify-go/internal/report"
+	"github.com/dobbo-ca/graphify-go/internal/security"
 )
 
 const defaultGraphPath = "graphify-out/graph.json"
@@ -54,6 +56,8 @@ func main() {
 		err = cmdHook(os.Args[2:])
 	case "query":
 		err = cmdQuery(mustArg(2, "query <pattern>"))
+	case "ask":
+		err = cmdAsk(os.Args[2:])
 	case "explain":
 		err = cmdExplain(mustArg(2, "explain <node>"))
 	case "path":
@@ -244,6 +248,76 @@ func cmdQuery(pattern string) error {
 		fmt.Printf("%-40s %s\n", m.Label, m.Location)
 	}
 	return nil
+}
+
+// cmdAsk answers a natural-language question against the graph using TF-IDF
+// retrieval plus a bounded BFS/DFS traversal, printing the relevant subgraph as
+// a token-budgeted text block. Unlike `query` (regex name match), this is the
+// agent-native one-shot retrieval primitive.
+func cmdAsk(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf(`usage: graphify ask "<question>" [--dfs] [--budget N] [--graph path]`)
+	}
+	question := args[0]
+	dfs := false
+	budget := 2000
+	graphPath := defaultGraphPath
+	rest := args[1:]
+	for i := 0; i < len(rest); i++ {
+		switch {
+		case rest[i] == "--dfs":
+			dfs = true
+		case rest[i] == "--budget" && i+1 < len(rest):
+			n, err := strconv.Atoi(rest[i+1])
+			if err != nil {
+				return fmt.Errorf("--budget must be an integer")
+			}
+			if n <= 0 {
+				return fmt.Errorf("--budget must be a positive integer")
+			}
+			budget = n
+			i++
+		case strings.HasPrefix(rest[i], "--budget="):
+			n, err := strconv.Atoi(strings.TrimPrefix(rest[i], "--budget="))
+			if err != nil {
+				return fmt.Errorf("--budget must be an integer")
+			}
+			if n <= 0 {
+				return fmt.Errorf("--budget must be a positive integer")
+			}
+			budget = n
+		case rest[i] == "--graph" && i+1 < len(rest):
+			graphPath = rest[i+1]
+			i++
+		case strings.HasPrefix(rest[i], "--graph="):
+			graphPath = strings.TrimPrefix(rest[i], "--graph=")
+		}
+	}
+	if graphPath != defaultGraphPath {
+		safe, err := safeGraphPath(graphPath)
+		if err != nil {
+			return err
+		}
+		graphPath = safe
+	}
+	g, err := query.Load(graphPath)
+	if err != nil {
+		return err
+	}
+	fmt.Println(query.Ask(g, question, dfs, 2, budget))
+	return nil
+}
+
+// safeGraphPath contains a user-supplied --graph path: it must resolve inside a
+// graphify-out directory under the current working directory, preventing path
+// traversal that would read arbitrary on-disk JSON (config/credential files).
+func safeGraphPath(path string) (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	base := filepath.Join(cwd, "graphify-out")
+	return security.ValidateGraphPath(path, base)
 }
 
 func cmdExplain(id string) error {
@@ -506,6 +580,7 @@ usage:
   graphify watch [path]        rebuild incrementally as files change (Ctrl-C to stop)
   graphify hook install [path] install git hooks that update the graph after commits
   graphify query <pattern>     find nodes by name (regex, case-insensitive)
+  graphify ask "<question>"    NL retrieval: relevant subgraph as text [--dfs --budget N --graph path]
   graphify explain <node>      show a node and its neighbours
   graphify path <from> <to>    shortest dependency path between two nodes
   graphify affected [file...]  nodes defined in changed files + their dependents
