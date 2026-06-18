@@ -76,6 +76,8 @@ func main() {
 		err = cmdDiff(os.Args[2:])
 	case "validate":
 		err = cmdValidate()
+	case "serve":
+		err = cmdServe(defaultGraphPath)
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -586,6 +588,7 @@ usage:
   graphify affected [file...]  nodes defined in changed files + their dependents
   graphify diff <old> <new>    node/edge delta between two graph.json snapshots
   graphify validate            check graph.json for structural problems
+  graphify serve               MCP stdio server: load graph.json once, answer many queries
   graphify extract <file>      print one file's extracted nodes/edges (debug)
   graphify export <fmt> [path] convert graph.json to graphml, dot, or csv
   graphify version             print version`)
