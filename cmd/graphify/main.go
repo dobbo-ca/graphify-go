@@ -5,6 +5,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -67,6 +68,8 @@ func main() {
 		err = cmdExport(mustArg(2, "export <graphml|dot|csv> [path]"), arg(3, "."))
 	case "affected":
 		err = cmdAffected(os.Args[2:])
+	case "diff":
+		err = cmdDiff(os.Args[2:])
 	case "validate":
 		err = cmdValidate()
 	case "-h", "--help", "help":
@@ -369,6 +372,63 @@ func cmdAffected(files []string) error {
 	return nil
 }
 
+// cmdDiff compares two graph.json snapshots and prints the nodes and edges added
+// or removed between them — the realized delta of a change, complementing the
+// predicted blast radius of `affected`. With --json it emits the full delta as
+// machine-readable JSON instead of a human summary.
+func cmdDiff(args []string) error {
+	var asJSON bool
+	var paths []string
+	for _, a := range args {
+		if a == "--json" {
+			asJSON = true
+			continue
+		}
+		paths = append(paths, a)
+	}
+	if len(paths) != 2 {
+		return fmt.Errorf("usage: graphify diff <old.json> <new.json> [--json]")
+	}
+	oldG, err := query.Load(paths[0])
+	if err != nil {
+		return err
+	}
+	newG, err := query.Load(paths[1])
+	if err != nil {
+		return err
+	}
+	res := query.Diff(oldG, newG)
+	if asJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(res)
+	}
+	fmt.Println(res.Summary)
+	printDiffNodes := func(title string, ns []query.DiffNode) {
+		if len(ns) == 0 {
+			return
+		}
+		fmt.Printf("%s (%d):\n", title, len(ns))
+		for _, n := range ns {
+			fmt.Printf("  %s\n", n.Label)
+		}
+	}
+	printDiffEdges := func(title string, es []query.DiffEdge) {
+		if len(es) == 0 {
+			return
+		}
+		fmt.Printf("%s (%d):\n", title, len(es))
+		for _, e := range es {
+			fmt.Printf("  %s -%s-> %s\n", e.Source, e.Relation, e.Target)
+		}
+	}
+	printDiffNodes("new nodes", res.NewNodes)
+	printDiffNodes("removed nodes", res.RemovedNodes)
+	printDiffEdges("new edges", res.NewEdges)
+	printDiffEdges("removed edges", res.RemovedEdges)
+	return nil
+}
+
 // cmdValidate checks graph.json for structural problems and exits non-zero if
 // any are found, so it can gate CI.
 func cmdValidate() error {
@@ -449,6 +509,7 @@ usage:
   graphify explain <node>      show a node and its neighbours
   graphify path <from> <to>    shortest dependency path between two nodes
   graphify affected [file...]  nodes defined in changed files + their dependents
+  graphify diff <old> <new>    node/edge delta between two graph.json snapshots
   graphify validate            check graph.json for structural problems
   graphify extract <file>      print one file's extracted nodes/edges (debug)
   graphify export <fmt> [path] convert graph.json to graphml, dot, or csv
