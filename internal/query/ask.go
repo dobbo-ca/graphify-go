@@ -338,7 +338,7 @@ func subgraphToText(g *Graph, nodes map[string]bool, edges [][2]string, tokenBud
 			security.SanitizeLabel(confidence), security.SanitizeLabel(nodeLabel(g, v))))
 	}
 	output := strings.Join(lines, "\n")
-	if len(output) > charBudget {
+	if charBudget > 0 && len(output) > charBudget {
 		cut := strings.LastIndex(output[:charBudget], "\n")
 		if cut <= 0 {
 			cut = charBudget

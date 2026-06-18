@@ -24,6 +24,7 @@ import (
 	"github.com/dobbo-ca/graphify-go/internal/model"
 	"github.com/dobbo-ca/graphify-go/internal/query"
 	"github.com/dobbo-ca/graphify-go/internal/report"
+	"github.com/dobbo-ca/graphify-go/internal/security"
 )
 
 const defaultGraphPath = "graphify-out/graph.json"
@@ -271,12 +272,18 @@ func cmdAsk(args []string) error {
 			if err != nil {
 				return fmt.Errorf("--budget must be an integer")
 			}
+			if n <= 0 {
+				return fmt.Errorf("--budget must be a positive integer")
+			}
 			budget = n
 			i++
 		case strings.HasPrefix(rest[i], "--budget="):
 			n, err := strconv.Atoi(strings.TrimPrefix(rest[i], "--budget="))
 			if err != nil {
 				return fmt.Errorf("--budget must be an integer")
+			}
+			if n <= 0 {
+				return fmt.Errorf("--budget must be a positive integer")
 			}
 			budget = n
 		case rest[i] == "--graph" && i+1 < len(rest):
@@ -286,12 +293,31 @@ func cmdAsk(args []string) error {
 			graphPath = strings.TrimPrefix(rest[i], "--graph=")
 		}
 	}
+	if graphPath != defaultGraphPath {
+		safe, err := safeGraphPath(graphPath)
+		if err != nil {
+			return err
+		}
+		graphPath = safe
+	}
 	g, err := query.Load(graphPath)
 	if err != nil {
 		return err
 	}
 	fmt.Println(query.Ask(g, question, dfs, 2, budget))
 	return nil
+}
+
+// safeGraphPath contains a user-supplied --graph path: it must resolve inside a
+// graphify-out directory under the current working directory, preventing path
+// traversal that would read arbitrary on-disk JSON (config/credential files).
+func safeGraphPath(path string) (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	base := filepath.Join(cwd, "graphify-out")
+	return security.ValidateGraphPath(path, base)
 }
 
 func cmdExplain(id string) error {
