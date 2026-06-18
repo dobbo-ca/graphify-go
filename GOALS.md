@@ -59,6 +59,7 @@ Roughly priority order.
 - [x] `graphify export <graphml|dot|csv|callflow-html>` — extra exports plus a Mermaid call-flow architecture page (one flowchart per community).
 - [x] `graphify affected [file...]` — change blast radius: nodes in changed files + their transitive dependents (callers/importers); no args → git diff vs HEAD.
 - [x] `graphify validate` — structural check of `graph.json` (dangling edges, duplicate/empty ids); non-zero exit gates CI.
+- [x] `graphify serve` — agent-first MCP stdio server (JSON-RPC over stdio): loads `graph.json` once into a resident process and answers the 7 upstream tools (`query_graph`, `get_node`, `get_neighbors`, `get_community`, `god_nodes`, `graph_stats`, `shortest_path`) over the existing query/analyze primitives, so an agent issues many parseable queries without re-paying the load cost per shell-out. Stdio-only (HTTP/api-key/hot-reload skipped).
 - [ ] Deferred dep-light commands: `graphify global` (multi-repo registry + merge), PR analysis, `cluster`-only recluster, `diagnostics` (marginal — `build` already clusters and `GRAPH_REPORT.md` already reports stats).
 
 ### Viewer
@@ -74,7 +75,7 @@ Roughly priority order.
 
 The features that need external services or a far larger surface than the
 minimal port targets: LLM-based semantic extraction and the LLM backends,
-MCP server, video/audio transcription, image vision, Office/Postgres/Google
+video/audio transcription, image vision, Office/Postgres/Google
 ingest, Neo4j / Obsidian / SVG exports, and the multi-assistant installers.
 The exotic language extractors without a Go tree-sitter binding stay out too
 (see Language coverage above).
