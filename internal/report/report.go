@@ -89,7 +89,74 @@ func Generate(g *model.Graph, communities map[int][]string, root, builtAtCommit 
 		w("Cohesion: %.2f", scores[cid])
 		w("Nodes (%d): %s%s", len(realLabels(g, nodes)), strings.Join(display, ", "), suffix)
 	}
+
+	var ambiguous []*model.Edge
+	for _, e := range g.Edges() {
+		if e.Confidence == "AMBIGUOUS" {
+			ambiguous = append(ambiguous, e)
+		}
+	}
+	if len(ambiguous) > 0 {
+		w("")
+		w("## Ambiguous Edges - Review These")
+		for _, e := range ambiguous {
+			w("- `%s` --%s--> `%s`  [AMBIGUOUS]", g.Nodes[e.Source].Label, e.Relation, g.Nodes[e.Target].Label)
+			w("  %s · relation: %s", e.SourceFile, e.Relation)
+		}
+	}
+
+	isolated := isolatedNodes(g)
+	thin := 0
+	for _, nodes := range communities {
+		if n := len(realLabels(g, nodes)); n > 0 && n < minCommunitySize {
+			thin++
+		}
+	}
+	ambPct := len(ambiguous) * 100 / max(g.NumEdges(), 1)
+	if len(isolated)+thin > 0 || ambPct > 20 {
+		w("")
+		w("## Knowledge Gaps")
+		if len(isolated) > 0 {
+			labels := make([]string, 0, len(isolated))
+			for _, id := range isolated {
+				labels = append(labels, "`"+g.Nodes[id].Label+"`")
+			}
+			suffix := ""
+			if len(labels) > 5 {
+				suffix = fmt.Sprintf(" (+%d more)", len(labels)-5)
+				labels = labels[:5]
+			}
+			w("- **%d isolated node(s):** %s%s", len(isolated), strings.Join(labels, ", "), suffix)
+			w("  These have <=1 connection - possible missing edges or undocumented components.")
+		}
+		if thin > 0 {
+			w("- **%d thin communities (<%d nodes) omitted from report** - run `graphify query` to explore isolated nodes.", thin, minCommunitySize)
+		}
+		if ambPct > 20 {
+			w("- **High ambiguity: %d%% of edges are AMBIGUOUS.** Review the Ambiguous Edges section above.", ambPct)
+		}
+	}
 	return b.String()
+}
+
+// isolatedNodes returns the IDs of real entities (non-file, non-concept) with at
+// most one connection - candidates for missing edges or undocumented components.
+func isolatedNodes(g *model.Graph) []string {
+	var out []string
+	for _, id := range g.NodeIDs() {
+		n := g.Nodes[id]
+		if g.Degree(id) > 1 {
+			continue
+		}
+		if n.SourceFile == "" || n.Label == base(n.SourceFile) { // concept node or file hub
+			continue
+		}
+		if !strings.Contains(base(n.SourceFile), ".") { // concept node (no real source file)
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
 }
 
 func confidenceBreakdown(g *model.Graph) string {
