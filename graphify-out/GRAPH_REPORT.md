@@ -1,120 +1,112 @@
 # Graph Report - .
 
 ## Summary
-- 882 nodes · 2273 edges · 30 communities
+- 900 nodes · 2329 edges · 29 communities
 - Extraction: 48% EXTRACTED · 51% INFERRED · 0% AMBIGUOUS
 
 ## Graph Freshness
-- Built from commit: `223ed8fc`
+- Built from commit: `427d8d34`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify build .` after code changes to rebuild.
 
 ## God Nodes (most connected - your core abstractions)
-1. `line()` - 79 edges
-2. `MakeID()` - 56 edges
-3. `builder.def()` - 43 edges
-4. `FileFromBytes()` - 41 edges
+1. `line()` - 80 edges
+2. `MakeID()` - 61 edges
+3. `FileFromBytes()` - 50 edges
+4. `builder.def()` - 43 edges
 5. `Resolve()` - 39 edges
 6. `walk()` - 32 edges
 7. `fieldText()` - 29 edges
 8. `newBuilder()` - 21 edges
-9. `newServer()` - 20 edges
-10. `builder.addNode()` - 20 edges
+9. `builder.addNode()` - 21 edges
+10. `newServer()` - 20 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `conceptDir()` --calls--> `MakeID()`  [INFERRED]
-  internal/export/okf.go → internal/idutil/idutil.go  _bridges separate communities_
-- `conceptDoc()` --calls--> `SanitizeLabel()`  [INFERRED]
-  internal/export/okf.go → internal/security/security.go  _bridges separate communities_
-- `OKFFromJSON()` --calls--> `readGraphJSON()`  [INFERRED]
-  internal/export/okf.go → internal/export/formats.go  _bridges separate communities_
-- `OKFFromJSON()` --calls--> `MakeID()`  [INFERRED]
-  internal/export/okf.go → internal/idutil/idutil.go  _bridges separate communities_
-- `relationsByNode()` --calls--> `SanitizeLabel()`  [INFERRED]
-  internal/export/okf.go → internal/security/security.go  _bridges separate communities_
+- `CollectFiles()` --calls--> `ignorer.ignored()`  [INFERRED]
+  internal/detect/detect.go → internal/detect/gitignore.go  _bridges separate communities_
+- `CollectFiles()` --calls--> `newIgnorer()`  [INFERRED]
+  internal/detect/detect.go → internal/detect/gitignore.go  _bridges separate communities_
+- `TestCollectFilesIncludesMCPConfigs()` --calls--> `CollectFiles()`  [INFERRED]
+  internal/detect/detect_test.go → internal/detect/detect.go  _bridges separate communities_
+- `TestCollectFilesSkipsTerraform()` --calls--> `CollectFiles()`  [INFERRED]
+  internal/detect/detect_test.go → internal/detect/detect.go  _bridges separate communities_
+- `TestCollectFilesGitignore()` --calls--> `CollectFiles()`  [INFERRED]
+  internal/detect/gitignore_test.go → internal/detect/detect.go  _bridges separate communities_
 
 ## Import Cycles
 - None detected.
 
-## Communities (30 total)
+## Communities (29 total)
 
 ### Community 0
 Cohesion: 0.04
-Nodes (158): builder.bashCommand(), builder.bashFunc(), builder.bashItems(), commandName(), extractBash(), firstArg(), builder.cCalls(), builder.cFunc() (+150 more)
+Nodes (163): builder.bashCommand(), builder.bashFunc(), builder.bashItems(), commandName(), extractBash(), firstArg(), builder.cCalls(), builder.cFunc() (+155 more)
 
 ### Community 1
 Cohesion: 0.03
-Nodes (116): bytes, Cache, Entry, HashBytes(), HashFile(), Load(), LoadStat(), Save() (+108 more)
+Nodes (79): isSensitive(), mustWrite(), TestCollectFilesIncludesMCPConfigs(), TestCollectFilesSkipsTerraform(), ancestorDirs(), globToRegex(), ignoreFile, ignorer (+71 more)
 
 ### Community 2
 Cohesion: 0.04
-Nodes (76): TestExtractBash(), TestExtractC(), File(), FileFromBytes(), fileStem(), TestExtractAndResolve(), TestExtractJava(), TestExtractJulia() (+68 more)
+Nodes (76): TestExtractBash(), TestExtractC(), File(), FileFromBytes(), TestExtractAndResolve(), jsonHasEdge(), jsonNodes(), TestExtractJSONExtendsArray() (+68 more)
 
 ### Community 3
 Cohesion: 0.05
-Nodes (85): Cycle, GodNode, GodNodes(), ImportCycles(), isConceptNode(), isFileNode(), rotateKey(), Surprise (+77 more)
+Nodes (83): Cycle, GodNode, GodNodes(), ImportCycles(), isConceptNode(), isFileNode(), rotateKey(), Surprise (+75 more)
 
 ### Community 4
 Cohesion: 0.05
-Nodes (28): boot(), crate::util::math, /etc/profile, express, helper.h, json, kotlin.math.sqrt, Psr\Log\LoggerInterface (+20 more)
+Nodes (68): bytes, Cache, Entry, HashBytes(), HashFile(), Load(), LoadStat(), Save() (+60 more)
 
 ### Community 5
-Cohesion: 0.10
-Nodes (46): bufio, github.com/dobbo-ca/graphify-go/internal/query, argInt(), argString(), cmdServe(), communitiesOf(), labelOrID(), mcpServer (+38 more)
+Cohesion: 0.06
+Nodes (66): bufio, encoding/json, github.com/dobbo-ca/graphify-go/internal/query, cmdPath(), argInt(), argString(), cmdServe(), communitiesOf() (+58 more)
 
 ### Community 6
-Cohesion: 0.09
-Nodes (34): encoding/json, fmt, github.com/dobbo-ca/graphify-go/internal/security, linkKey, loadRawGraph(), Merge(), nodeKey, rawGraph (+26 more)
+Cohesion: 0.05
+Nodes (28): boot(), crate::util::math, /etc/profile, express, helper.h, json, kotlin.math.sqrt, Psr\Log\LoggerInterface (+20 more)
 
 ### Community 7
-Cohesion: 0.12
-Nodes (32): classifyList(), classifyScalar(), composeID(), exprRefAddress(), exprVarName(), labelInputs, normalizeSeg(), nullLabelInputs() (+24 more)
+Cohesion: 0.09
+Nodes (40): encoding/csv, encoding/xml, CSVFromJSON(), DOTFromJSON(), dotQuote(), gmlData, gmlEdge, gmlGraph (+32 more)
 
 ### Community 8
 Cohesion: 0.12
-Nodes (24): Affected(), AffectedResult, Graph.collect(), loadJSON(), TestAffectedInheritsContext(), TestAffectedNoMatch(), TestAffectedTransitive(), Diff() (+16 more)
+Nodes (32): classifyList(), classifyScalar(), composeID(), exprRefAddress(), exprVarName(), labelInputs, normalizeSeg(), nullLabelInputs() (+24 more)
 
 ### Community 9
+Cohesion: 0.12
+Nodes (24): Affected(), AffectedResult, Graph.collect(), loadJSON(), TestAffectedInheritsContext(), TestAffectedNoMatch(), TestAffectedTransitive(), Diff() (+16 more)
+
+### Community 10
 Cohesion: 0.16
 Nodes (26): math, Ask(), bfsTraverse(), computeIDF(), dfsTraverse(), Graph.neighbors(), hubThreshold(), isSearchable() (+18 more)
 
-### Community 10
-Cohesion: 0.19
-Nodes (21): concept, concept.link(), conceptDescription(), conceptDir(), conceptDoc(), OKFFromJSON(), parentDir(), relation (+13 more)
-
 ### Community 11
-Cohesion: 0.15
-Nodes (19): encoding/csv, encoding/xml, CSVFromJSON(), DOTFromJSON(), dotQuote(), gmlData, gmlEdge, gmlGraph (+11 more)
+Cohesion: 0.24
+Nodes (16): crate, IntrospectCargo(), loadTOML(), memberManifestPaths(), packageName(), hasEdge(), hasNode(), nodeIDs() (+8 more)
 
 ### Community 12
 Cohesion: 0.24
-Nodes (16): crate, IntrospectCargo(), loadTOML(), memberManifestPaths(), packageName(), hasEdge(), hasNode(), nodeIDs() (+8 more)
+Nodes (15): fmt, linkKey, loadRawGraph(), Merge(), nodeKey, rawGraph, loadMerged(), TestMergeKeepsBothDirectionsAndRelations() (+7 more)
 
 ### Community 13
 Cohesion: 0.28
 Nodes (15): builder.luaAssign(), builder.luaCall(), builder.luaCalls(), builder.luaEnsureType(), builder.luaFunc(), builder.luaMethod(), builder.luaStatement(), builder.luaTopCalls() (+7 more)
 
 ### Community 14
-Cohesion: 0.13
-Nodes (14): builder, builder.callMember(), Call, Def, Imp, ImportAlias, itoa(), ModInvoke (+6 more)
-
-### Community 15
 Cohesion: 0.20
 Nodes (9): Circle, Shapes, Shapes.area(), Shapes.scale(), cube(), MathUtils, MathUtils.square(), LinearAlgebra (+1 more)
 
-### Community 16
-Cohesion: 0.29
-Nodes (6): golang.org/x/text/cases, golang.org/x/text/unicode/norm, clean(), NormalizeID(), TestMakeID(), TestNormalizeIDMatchesMakeID()
-
-### Community 17
+### Community 15
 Cohesion: 0.38
 Nodes (6): defs.svh, add(), alu, compute(), Counter, Counter.step()
 
-### Community 18
+### Community 16
 Cohesion: 0.43
 Nodes (5): aws_instance.web, aws_vpc.main, data.aws_ami.ubuntu, output.instance_id, var.region
 
-### Community 20
+### Community 18
 Cohesion: 0.67
 Nodes (3): aws_s3_bucket.default, module.this [null-label], cloudposse/label/null
 
