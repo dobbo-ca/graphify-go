@@ -68,6 +68,16 @@ var skipFiles = map[string]bool{
 	"go.sum": true, "go.work.sum": true,
 }
 
+// mcpConfigFiles are indexed by basename: their .json extension is not in
+// SupportedExtensions, but they wire up MCP servers an agent can query. The
+// extractor for them lives in internal/extract (mcpconfig.go).
+var mcpConfigFiles = map[string]bool{
+	".mcp.json":                  true,
+	"claude_desktop_config.json": true,
+	"mcp.json":                   true,
+	"mcp_servers.json":           true,
+}
+
 // sensitiveDirs hold secrets; any file under one is skipped.
 var sensitiveDirs = map[string]bool{
 	".ssh": true, ".gnupg": true, ".aws": true, ".gcloud": true,
@@ -110,7 +120,10 @@ func CollectFiles(root string) ([]string, error) {
 			return nil
 		}
 		name := d.Name()
-		if skipFiles[name] || !SupportedExtensions[strings.ToLower(filepath.Ext(name))] {
+		if skipFiles[name] {
+			return nil
+		}
+		if !SupportedExtensions[strings.ToLower(filepath.Ext(name))] && !mcpConfigFiles[name] {
 			return nil
 		}
 		if isSensitive(rel) || ign.ignored(slashRel, false) {

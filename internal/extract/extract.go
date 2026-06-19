@@ -98,6 +98,9 @@ func File(root, rel string) (Result, error) {
 // Unsupported extensions return an empty result.
 func FileFromBytes(rel string, src []byte) Result {
 	rel = filepath.ToSlash(rel)
+	if IsMCPConfigPath(rel) {
+		return extractMCPConfig(rel, src)
+	}
 	switch strings.ToLower(filepath.Ext(rel)) {
 	case ".go":
 		return extractGo(rel, src)

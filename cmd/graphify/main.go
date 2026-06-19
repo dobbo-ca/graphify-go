@@ -465,6 +465,13 @@ func cmdDiff(args []string) error {
 	if len(paths) != 2 {
 		return fmt.Errorf("usage: graphify diff <old.json> <new.json> [--json]")
 	}
+	for i := range paths {
+		safe, err := safeGraphPath(paths[i])
+		if err != nil {
+			return err
+		}
+		paths[i] = safe
+	}
 	oldG, err := query.Load(paths[0])
 	if err != nil {
 		return err
