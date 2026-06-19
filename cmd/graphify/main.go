@@ -74,6 +74,8 @@ func main() {
 		err = cmdAffected(os.Args[2:])
 	case "diff":
 		err = cmdDiff(os.Args[2:])
+	case "merge-driver":
+		err = cmdMergeDriver(os.Args[2:])
 	case "validate":
 		err = cmdValidate()
 	case "serve":
@@ -578,6 +580,20 @@ func cmdDiff(args []string) error {
 	return nil
 }
 
+// cmdMergeDriver is the git merge driver for a committed graph.json. Wired via
+// .gitattributes + a merge driver in .git/config as `graphify merge-driver %O
+// %A %B`, it writes the node/edge union of the two sides back to %A (current).
+// It ignores the base (%O) — a set union needs only the two branch tips — and
+// returns an error on corrupt or oversized input so git surfaces a conflict
+// instead of accepting a poisoned merge.
+func cmdMergeDriver(args []string) error {
+	if len(args) < 3 {
+		return fmt.Errorf("usage: graphify merge-driver <base> <current> <other>")
+	}
+	current, other := args[1], args[2]
+	return query.Merge(current, other)
+}
+
 // cmdValidate checks graph.json for structural problems and exits non-zero if
 // any are found, so it can gate CI.
 func cmdValidate() error {
@@ -660,6 +676,7 @@ usage:
   graphify path <from> <to>    shortest dependency path between two nodes
   graphify affected [file...]  nodes defined in changed files + their dependents
   graphify diff <old> <new>    node/edge delta between two graph.json snapshots
+  graphify merge-driver <base> <current> <other>  git merge driver: union-merge two graph.json files
   graphify validate            check graph.json for structural problems
   graphify serve               MCP stdio server: load graph.json once, answer many queries
   graphify extract <file>      print one file's extracted nodes/edges (debug)
