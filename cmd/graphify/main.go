@@ -1,7 +1,7 @@
 // Command graphify builds a knowledge graph from a source tree and answers
-// queries against it. Build writes graphify-out/{graph.json,graph.html,
-// GRAPH_REPORT.md}; query/path/explain read graph.json so an agent can navigate
-// the codebase without grepping.
+// queries against it. Build writes graphify-out/{graph.json,GRAPH_REPORT.md};
+// query/path/explain read graph.json so an agent can navigate the codebase
+// without grepping.
 package main
 
 import (
@@ -189,7 +189,7 @@ func assemble(root string, files []string, prev cache.Cache, prevStat cache.Stat
 }
 
 // writeOutputs resolves the per-file results into a graph and writes graph.json,
-// graph.html, GRAPH_REPORT.md, and the incremental cache and stat sidecar under
+// GRAPH_REPORT.md, and the incremental cache and stat sidecar under
 // <root>/graphify-out.
 func writeOutputs(root string, files []string, results []extract.Result, newCache cache.Cache, newStat cache.StatIndex) (*model.Graph, map[int][]string, error) {
 	g := graph.Build(extract.Resolve(results, files))
@@ -201,9 +201,6 @@ func writeOutputs(root string, files []string, results []extract.Result, newCach
 		return nil, nil, err
 	}
 	if err := export.ToJSON(g, communities, filepath.Join(outDir, "graph.json"), commit); err != nil {
-		return nil, nil, err
-	}
-	if err := export.ToHTML(g, communities, filepath.Join(outDir, "graph.html")); err != nil {
 		return nil, nil, err
 	}
 	md := report.Generate(g, communities, root, commit)

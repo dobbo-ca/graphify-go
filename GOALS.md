@@ -25,13 +25,12 @@ simplest possible implementation, security-first, find performance wins.
 - [x] Whole-corpus call + import resolution (calls resolve to definitions; relative imports resolve to files).
 - [x] Louvain community detection (gonum) with oversized-community splitting.
 - [x] Analysis: god nodes, surprising connections, file-level import cycles.
-- [x] Outputs: `graph.json` (NetworkX node-link, upstream-compatible), `GRAPH_REPORT.md`, `graph.html`.
+- [x] Outputs: `graph.json` (NetworkX node-link, upstream-compatible), `GRAPH_REPORT.md`.
 - [x] `query` / `explain` / `path` commands for graph-first navigation.
 - [x] Security: SSRF URL guard, graph-path containment, file-size caps, label sanitisation, sensitive-file skip.
 - [x] CI: `ci.yml` (build/vet/test) + `graph.yml` (regenerate + commit graph on merge to main).
 - [x] Claude skill (`skills/graphify/SKILL.md`) + "use the graph, not grep" block in `CLAUDE.md`.
 - [x] Release + Homebrew: `release.yml` (Uplift → cgo build on native macOS/Linux runners → GitHub release → repository_dispatch to `dobbo-ca/homebrew-taps`), `.cliff.toml`, `graphify version`. Formula template added to homebrew-taps.
-- [x] HTML viewer: node-level by default (matching the Python original) up to 5000 nodes — degree-sized nodes, live search, click-to-inspect panel with relation-grouped clickable neighbours, confidence-styled edges, community legend show/hide, neighbourhood highlight; off-screen-solve-then-freeze (no spin). Past 5000 nodes it degrades to a directory-named community overview that drills into a community's node-level subgraph (where Python errors out instead). See `docs/viewer-gaps.md`.
 
 ## Follow-ups
 
@@ -61,10 +60,6 @@ Roughly priority order.
 - [x] `graphify validate` — structural check of `graph.json` (dangling edges, duplicate/empty ids); non-zero exit gates CI.
 - [x] `graphify serve` — agent-first MCP stdio server (JSON-RPC over stdio): loads `graph.json` once into a resident process and answers the 7 upstream tools (`query_graph`, `get_node`, `get_neighbors`, `get_community`, `god_nodes`, `graph_stats`, `shortest_path`) over the existing query/analyze primitives, so an agent issues many parseable queries without re-paying the load cost per shell-out. Stdio-only (HTTP/api-key/hot-reload skipped).
 - [ ] Deferred dep-light commands: `graphify global` (multi-repo registry + merge), PR analysis, `cluster`-only recluster, `diagnostics` (marginal — `build` already clusters and `GRAPH_REPORT.md` already reports stats).
-
-### Viewer
-- [x] Drill-down from a community circle (meta view) to that community's node-level subgraph.
-- [x] Tune `metaThreshold` — raised 500 → 5000 to match the Python original's `MAX_NODES_FOR_VIZ`, so node-level is the default for real repos and the meta overview is only a >5000 fallback.
 
 ### Operational (release pipeline)
 - [ ] Confirm the GH App (`GH_PUB_APP_CLIENT_ID` / `GH_PUB_APP_PEM`) is installed on **graphify-go** and **homebrew-taps** and visible to graphify-go (needs org admin). Without it, `release.yml` and the tap dispatch can't run.
