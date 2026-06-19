@@ -55,7 +55,7 @@ Roughly priority order.
 - [x] cloudposse null-label awareness: tag + computed_name search + context-chain reconstruction
 
 ### New commands (in-spirit parity push)
-- [x] `graphify export <graphml|dot|csv|callflow-html>` — extra exports plus a Mermaid call-flow architecture page (one flowchart per community).
+- [x] `graphify export <graphml|dot|csv>` — extra exports for downstream tooling.
 - [x] `graphify affected [file...]` — change blast radius: nodes in changed files + their transitive dependents (callers/importers); no args → git diff vs HEAD.
 - [x] `graphify validate` — structural check of `graph.json` (dangling edges, duplicate/empty ids); non-zero exit gates CI.
 - [x] `graphify serve` — agent-first MCP stdio server (JSON-RPC over stdio): loads `graph.json` once into a resident process and answers the 7 upstream tools (`query_graph`, `get_node`, `get_neighbors`, `get_community`, `god_nodes`, `graph_stats`, `shortest_path`) over the existing query/analyze primitives, so an agent issues many parseable queries without re-paying the load cost per shell-out. Stdio-only (HTTP/api-key/hot-reload skipped).

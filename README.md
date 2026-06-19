@@ -47,7 +47,7 @@ graphify explain <node>      # show a node and its neighbours (calls, called-by,
 graphify path <from> <to>    # shortest dependency path between two nodes
 graphify affected [file...]  # nodes defined in changed files + everything that depends on them
 graphify validate            # check graph.json for structural problems
-graphify export <fmt> [path] # convert graph.json to graphml, dot, csv, or callflow-html
+graphify export <fmt> [path] # convert graph.json to graphml, dot, or csv
 graphify extract <file>      # print one file's extracted nodes/edges (debug)
 ```
 
