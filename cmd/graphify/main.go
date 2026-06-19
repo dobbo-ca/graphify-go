@@ -96,11 +96,14 @@ type assembleStats struct{ parsed, reused, dropped int }
 // assemble produces one extraction result per file, in files order (so graph
 // output stays deterministic), re-parsing only files whose content hash differs
 // from prev. Files unchanged since prev reuse their cached result, skipping the
-// expensive tree-sitter parse. It also returns the cache to persist and counts
-// for the summary line. Files that fail to read are skipped with a warning.
-func assemble(root string, files []string, prev cache.Cache) ([]extract.Result, cache.Cache, assembleStats) {
+// expensive tree-sitter parse. The stat sidecar lets it skip even reading and
+// hashing files whose size+mtime are unchanged. It also returns the cache and
+// stat index to persist and counts for the summary line. Files that fail to read
+// are skipped with a warning.
+func assemble(root string, files []string, prev cache.Cache, prevStat cache.StatIndex) ([]extract.Result, cache.Cache, cache.StatIndex, assembleStats) {
 	type slot struct {
 		entry  cache.Entry
+		stat   cache.StatEntry
 		ok     bool
 		reused bool
 	}
@@ -120,18 +123,30 @@ func assemble(root string, files []string, prev cache.Cache) ([]extract.Result, 
 		go func() {
 			defer wg.Done()
 			for i := range idx {
-				src, err := os.ReadFile(filepath.Join(root, files[i]))
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "  warning: skipped %s (%v)\n", files[i], err)
+				key := filepath.ToSlash(files[i])
+				ps, psOK := prevStat[key]
+				h, statEntry, src, ok := cache.HashFile(filepath.Join(root, files[i]), ps, psOK)
+				if !ok {
+					fmt.Fprintf(os.Stderr, "  warning: skipped %s\n", files[i])
 					continue
 				}
-				h := cache.HashBytes(src)
-				if e, ok := prev[filepath.ToSlash(files[i])]; ok && e.Hash == h {
-					slots[i] = slot{entry: e, ok: true, reused: true}
+				if e, ok := prev[key]; ok && e.Hash == h {
+					slots[i] = slot{entry: e, stat: statEntry, ok: true, reused: true}
 					continue
+				}
+				// Not a cache hit, so we must parse. If the stat fastpath skipped
+				// the read (src == nil), read now — the cached result is absent or
+				// stale and the bytes are needed to re-parse.
+				if src == nil {
+					b, err := os.ReadFile(filepath.Join(root, files[i]))
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "  warning: skipped %s (%v)\n", files[i], err)
+						continue
+					}
+					src = b
 				}
 				res := extract.FileFromBytes(files[i], src)
-				slots[i] = slot{entry: cache.Entry{Hash: h, Result: res}, ok: true}
+				slots[i] = slot{entry: cache.Entry{Hash: h, Result: res}, stat: statEntry, ok: true}
 			}
 		}()
 	}
@@ -143,13 +158,20 @@ func assemble(root string, files []string, prev cache.Cache) ([]extract.Result, 
 
 	results := make([]extract.Result, 0, len(files))
 	newCache := make(cache.Cache, len(files))
+	newStat := make(cache.StatIndex, len(files))
 	var stats assembleStats
 	for i, s := range slots {
 		if !s.ok {
 			continue
 		}
+		key := filepath.ToSlash(files[i])
 		results = append(results, s.entry.Result)
-		newCache[filepath.ToSlash(files[i])] = s.entry
+		newCache[key] = s.entry
+		// Skip files HashFile could not stat (empty hash) so the index keeps
+		// only entries that can match on a later run.
+		if s.stat.Hash != "" {
+			newStat[key] = s.stat
+		}
 		if s.reused {
 			stats.reused++
 		} else {
@@ -161,12 +183,13 @@ func assemble(root string, files []string, prev cache.Cache) ([]extract.Result, 
 			stats.dropped++
 		}
 	}
-	return results, newCache, stats
+	return results, newCache, newStat, stats
 }
 
 // writeOutputs resolves the per-file results into a graph and writes graph.json,
-// graph.html, GRAPH_REPORT.md, and the incremental cache under <root>/graphify-out.
-func writeOutputs(root string, files []string, results []extract.Result, newCache cache.Cache) (*model.Graph, map[int][]string, error) {
+// graph.html, GRAPH_REPORT.md, and the incremental cache and stat sidecar under
+// <root>/graphify-out.
+func writeOutputs(root string, files []string, results []extract.Result, newCache cache.Cache, newStat cache.StatIndex) (*model.Graph, map[int][]string, error) {
 	g := graph.Build(extract.Resolve(results, files))
 	communities := cluster.Cluster(g)
 	commit := gitHead(root)
@@ -188,6 +211,9 @@ func writeOutputs(root string, files []string, results []extract.Result, newCach
 	if err := cache.Save(filepath.Join(outDir, cache.FileName), newCache); err != nil {
 		return nil, nil, err
 	}
+	if err := cache.SaveStat(filepath.Join(outDir, cache.StatFileName), newStat); err != nil {
+		return nil, nil, err
+	}
 	return g, communities, nil
 }
 
@@ -199,8 +225,8 @@ func cmdBuild(root string) error {
 	if len(files) == 0 {
 		return fmt.Errorf("no supported source files found under %s", root)
 	}
-	results, newCache, _ := assemble(root, files, nil)
-	g, communities, err := writeOutputs(root, files, results, newCache)
+	results, newCache, newStat, _ := assemble(root, files, nil, nil)
+	g, communities, err := writeOutputs(root, files, results, newCache, newStat)
 	if err != nil {
 		return err
 	}
@@ -222,8 +248,9 @@ func cmdUpdate(root string) error {
 		return fmt.Errorf("no supported source files found under %s", root)
 	}
 	prev := cache.Load(filepath.Join(root, "graphify-out", cache.FileName))
-	results, newCache, stats := assemble(root, files, prev)
-	g, communities, err := writeOutputs(root, files, results, newCache)
+	prevStat := cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName))
+	results, newCache, newStat, stats := assemble(root, files, prev, prevStat)
+	g, communities, err := writeOutputs(root, files, results, newCache, newStat)
 	if err != nil {
 		return err
 	}

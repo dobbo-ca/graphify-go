@@ -157,16 +157,18 @@ func watchTick(root string) (bool, error) {
 		return false, err
 	}
 	prev := cache.Load(filepath.Join(root, "graphify-out", cache.FileName))
+	prevStat := cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName))
 	seen := map[string]bool{}
 	for _, f := range files {
 		slash := filepath.ToSlash(f)
 		seen[slash] = true
-		src, err := os.ReadFile(filepath.Join(root, f))
-		if err != nil {
+		ps, psOK := prevStat[slash]
+		h, _, _, ok := cache.HashFile(filepath.Join(root, f), ps, psOK)
+		if !ok {
 			return true, nil // unreadable now but collected — treat as a change
 		}
 		e, ok := prev[slash]
-		if !ok || e.Hash != cache.HashBytes(src) {
+		if !ok || e.Hash != h {
 			return true, nil
 		}
 	}
