@@ -20,16 +20,31 @@ const hookMarker = "# graphify-managed hook"
 // managedGitHooks fire an incremental rebuild after history changes.
 var managedGitHooks = []string{"post-commit", "post-merge", "post-checkout"}
 
-// cmdHook handles `graphify hook install [path]`, wiring git hooks that keep the
-// graph fresh by running `graphify update` after commits, merges, and checkouts.
+// cmdHook handles `graphify hook <install|uninstall|status> [path]`, managing
+// the git hooks that keep the graph fresh by running `graphify update` after
+// commits, merges, and checkouts.
 func cmdHook(args []string) error {
-	if len(args) == 0 || args[0] != "install" {
-		return fmt.Errorf("usage: graphify hook install [path]")
+	if len(args) == 0 {
+		return fmt.Errorf("usage: graphify hook <install|uninstall|status> [path]")
 	}
 	root := "."
 	if len(args) > 1 {
 		root = args[1]
 	}
+	switch args[0] {
+	case "install":
+		return hookInstall(root)
+	case "uninstall":
+		return hookUninstall(root)
+	case "status":
+		return hookStatus(root)
+	default:
+		return fmt.Errorf("usage: graphify hook <install|uninstall|status> [path]")
+	}
+}
+
+// hookInstall writes graphify's update hooks, skipping any hook a user wrote.
+func hookInstall(root string) error {
 	hooksDir := filepath.Join(root, ".git", "hooks")
 	if fi, err := os.Stat(filepath.Dir(hooksDir)); err != nil || !fi.IsDir() {
 		return fmt.Errorf("%s has no .git directory (git worktrees and submodules are not supported by hook install)", root)
@@ -63,11 +78,48 @@ func cmdHook(args []string) error {
 	return nil
 }
 
+// hookUninstall removes the graphify-managed hooks. The scripts are whole-file
+// graphify-owned, so a present marker means we wrote the file and can delete it;
+// hooks the user wrote (no marker) are left untouched.
+func hookUninstall(root string) error {
+	hooksDir := filepath.Join(root, ".git", "hooks")
+	for _, h := range managedGitHooks {
+		path := filepath.Join(hooksDir, h)
+		existing, err := os.ReadFile(path)
+		if err != nil {
+			continue // no such hook — nothing to remove
+		}
+		if !strings.Contains(string(existing), hookMarker) {
+			fmt.Fprintf(os.Stderr, "  warning: %s was not written by graphify — skipping\n", h)
+			continue
+		}
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+		fmt.Printf("removed %s\n", h)
+	}
+	return nil
+}
+
+// hookStatus reports, per managed hook, whether the graphify hook is installed,
+// in machine-checkable output.
+func hookStatus(root string) error {
+	hooksDir := filepath.Join(root, ".git", "hooks")
+	for _, h := range managedGitHooks {
+		state := "not installed"
+		if existing, err := os.ReadFile(filepath.Join(hooksDir, h)); err == nil && strings.Contains(string(existing), hookMarker) {
+			state = "installed"
+		}
+		fmt.Printf("%s: %s\n", h, state)
+	}
+	return nil
+}
+
 // cmdWatch handles `graphify watch [path]`: it does one incremental update, then
 // polls the tree and rebuilds whenever a source file's content changes. It is
 // poll-based (no native filesystem-event dependency); Ctrl-C stops it.
 func cmdWatch(root string) error {
-	if err := cmdUpdate(root); err != nil {
+	if err := cmdUpdate([]string{root}); err != nil {
 		return err
 	}
 	fmt.Println("watching for changes (Ctrl-C to stop)…")
@@ -88,7 +140,7 @@ func cmdWatch(root string) error {
 				continue
 			}
 			if changed {
-				if err := cmdUpdate(root); err != nil {
+				if err := cmdUpdate([]string{root}); err != nil {
 					fmt.Fprintln(os.Stderr, "graphify:", err)
 				}
 			}
@@ -105,16 +157,18 @@ func watchTick(root string) (bool, error) {
 		return false, err
 	}
 	prev := cache.Load(filepath.Join(root, "graphify-out", cache.FileName))
+	prevStat := cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName))
 	seen := map[string]bool{}
 	for _, f := range files {
 		slash := filepath.ToSlash(f)
 		seen[slash] = true
-		src, err := os.ReadFile(filepath.Join(root, f))
-		if err != nil {
+		ps, psOK := prevStat[slash]
+		h, _, _, ok := cache.HashFile(filepath.Join(root, f), ps, psOK)
+		if !ok {
 			return true, nil // unreadable now but collected — treat as a change
 		}
 		e, ok := prev[slash]
-		if !ok || e.Hash != cache.HashBytes(src) {
+		if !ok || e.Hash != h {
 			return true, nil
 		}
 	}

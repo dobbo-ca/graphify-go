@@ -1,7 +1,7 @@
 // Package export writes the assembled graph to disk. graph.json is the primary
 // artifact (committed by CI, read by the query commands and the Claude skill);
 // it uses the same NetworkX node-link shape as the Python original so existing
-// tooling keeps working. graph.html is a small optional viewer for humans.
+// tooling keeps working.
 package export
 
 import (

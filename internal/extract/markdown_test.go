@@ -1,0 +1,150 @@
+package extract
+
+import "testing"
+
+// TestExtractMarkdown resolves a small OKF-style markdown bundle and checks that
+// each file becomes one concept node carrying its frontmatter `type`, that
+// markdown links become `references` edges (absolute /tables/... and relative),
+// that http(s) links are ignored, and that a directory's index.md `contains` its
+// siblings.
+func TestExtractMarkdown(t *testing.T) {
+	root := "testdata/mdproj"
+	files := []string{"index.md", "glossary.md", "tables/index.md", "tables/orders.md"}
+
+	var results []Result
+	for _, f := range files {
+		r, err := File(root, f)
+		if err != nil {
+			t.Fatalf("File(%s): %v", f, err)
+		}
+		results = append(results, r)
+	}
+	ext := Resolve(results, files)
+
+	// One concept node per file, with the frontmatter `type` as file_type.
+	type want struct{ id, fileType, label string }
+	wantNodes := []want{
+		{"index", "bundle", "Analytics Knowledge Bundle"},
+		{"glossary", "glossary", "Business Glossary"},
+		{"tables_index", "index", "Tables"},
+		{"tables_orders", "table", "orders"},
+	}
+	byID := map[string]struct {
+		fileType, label string
+	}{}
+	for _, n := range ext.Nodes {
+		byID[n.ID] = struct{ fileType, label string }{n.FileType, n.Label}
+	}
+	if len(ext.Nodes) != len(wantNodes) {
+		t.Errorf("node count = %d, want %d (one concept per file)", len(ext.Nodes), len(wantNodes))
+	}
+	for _, w := range wantNodes {
+		got, ok := byID[w.id]
+		if !ok {
+			t.Errorf("missing concept node %q", w.id)
+			continue
+		}
+		if got.fileType != w.fileType {
+			t.Errorf("node %q file_type = %q, want %q (frontmatter type)", w.id, got.fileType, w.fileType)
+		}
+		if got.label != w.label {
+			t.Errorf("node %q label = %q, want %q (frontmatter title)", w.id, got.label, w.label)
+		}
+	}
+
+	has := func(src, rel, tgt string) bool {
+		for _, e := range ext.Edges {
+			if e.Relation == rel && e.Source == src && e.Target == tgt {
+				return true
+			}
+		}
+		return false
+	}
+
+	tests := []struct {
+		name          string
+		src, rel, tgt string
+		wantPresent   bool
+	}{
+		{"absolute link becomes references edge", "index", "references", "tables_orders", true},
+		{"relative link becomes references edge", "index", "references", "glossary", true},
+		{"cross-dir absolute link resolves", "tables_orders", "references", "glossary", true},
+		{"index.md contains sibling", "tables_index", "contains", "tables_orders", true},
+		{"external http link is ignored", "index", "references", "tree_sitter_github_io", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := has(tc.src, tc.rel, tc.tgt); got != tc.wantPresent {
+				t.Errorf("edge %s --%s--> %s present=%v, want %v", tc.src, tc.rel, tc.tgt, got, tc.wantPresent)
+			}
+		})
+	}
+
+	// description and tags ride along on ComputedName as searchable metadata.
+	var orders string
+	for _, n := range ext.Nodes {
+		if n.ID == "tables_orders" {
+			orders = n.ComputedName
+		}
+	}
+	if orders == "" {
+		t.Error("tables_orders ComputedName empty; expected description/tags metadata")
+	}
+}
+
+// TestSplitFrontmatter covers frontmatter parsing edge cases: no frontmatter, a
+// well-formed block, quoted scalars, and an unterminated block (whole source is
+// body, no keys).
+func TestSplitFrontmatter(t *testing.T) {
+	tests := []struct {
+		name     string
+		src      string
+		wantType string
+		wantBody string
+	}{
+		{"no frontmatter", "# Title\n\nbody", "", "# Title\n\nbody"},
+		{"typed block", "---\ntype: table\n---\n# T\nbody", "table", "# T\nbody"},
+		{"quoted scalar", "---\ntype: \"table\"\n---\nbody", "table", "body"},
+		{"unterminated", "---\ntype: table\nbody without close", "", "---\ntype: table\nbody without close"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fm, body := splitFrontmatter(tc.src)
+			if fm["type"] != tc.wantType {
+				t.Errorf("type = %q, want %q", fm["type"], tc.wantType)
+			}
+			if body != tc.wantBody {
+				t.Errorf("body = %q, want %q", body, tc.wantBody)
+			}
+		})
+	}
+}
+
+// TestResolveMDTarget covers link-target resolution: absolute vs relative,
+// anchors stripped, external schemes ignored, extensionless targets, and
+// off-corpus targets.
+func TestResolveMDTarget(t *testing.T) {
+	corpus := map[string]bool{
+		"index.md":         true,
+		"tables/orders.md": true,
+	}
+	tests := []struct {
+		name, from, target, want string
+	}{
+		{"absolute with ext", "index.md", "/tables/orders.md", "tables/orders.md"},
+		{"relative from subdir", "tables/orders.md", "../index.md", "index.md"},
+		{"anchor stripped", "index.md", "/tables/orders.md#cols", "tables/orders.md"},
+		{"extensionless absolute", "index.md", "/tables/orders", "tables/orders.md"},
+		{"http ignored", "index.md", "https://example.com", ""},
+		{"mailto ignored", "index.md", "mailto:a@b.com", ""},
+		{"in-page anchor only", "index.md", "#section", ""},
+		{"off corpus", "index.md", "/missing.md", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := resolveMDTarget(tc.from, tc.target, corpus); got != tc.want {
+				t.Errorf("resolveMDTarget(%q, %q) = %q, want %q", tc.from, tc.target, got, tc.want)
+			}
+		})
+	}
+}

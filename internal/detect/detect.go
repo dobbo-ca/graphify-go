@@ -13,44 +13,47 @@ import (
 
 // SupportedExtensions are the file suffixes this port can extract.
 var SupportedExtensions = map[string]bool{
-	".go":     true,
-	".js":     true,
-	".jsx":    true,
-	".mjs":    true,
-	".cjs":    true,
-	".ts":     true,
-	".tsx":    true,
-	".tf":     true,
-	".tfvars": true,
-	".hcl":    true,
-	".py":     true,
-	".rs":     true,
-	".c":      true,
-	".h":      true,
-	".cpp":    true,
-	".cc":     true,
-	".cxx":    true,
-	".hpp":    true,
-	".hh":     true,
-	".hxx":    true,
-	".java":   true,
-	".cs":     true,
-	".rb":     true,
-	".php":    true,
-	".phtml":  true,
-	".sh":     true,
-	".bash":   true,
-	".scala":  true,
-	".sc":     true,
-	".jl":     true,
-	".v":      true,
-	".sv":     true,
-	".svh":    true,
-	".vh":     true,
-	".kt":     true,
-	".kts":    true,
-	".lua":    true,
-	".zig":    true,
+	".go":       true,
+	".js":       true,
+	".jsx":      true,
+	".mjs":      true,
+	".cjs":      true,
+	".ts":       true,
+	".tsx":      true,
+	".tf":       true,
+	".tfvars":   true,
+	".hcl":      true,
+	".py":       true,
+	".rs":       true,
+	".c":        true,
+	".h":        true,
+	".cpp":      true,
+	".cc":       true,
+	".cxx":      true,
+	".hpp":      true,
+	".hh":       true,
+	".hxx":      true,
+	".java":     true,
+	".cs":       true,
+	".rb":       true,
+	".php":      true,
+	".phtml":    true,
+	".sh":       true,
+	".bash":     true,
+	".scala":    true,
+	".sc":       true,
+	".jl":       true,
+	".v":        true,
+	".sv":       true,
+	".svh":      true,
+	".vh":       true,
+	".kt":       true,
+	".kts":      true,
+	".lua":      true,
+	".zig":      true,
+	".md":       true,
+	".mdx":      true,
+	".markdown": true,
 }
 
 var skipDirs = map[string]bool{
@@ -66,6 +69,16 @@ var skipDirs = map[string]bool{
 var skipFiles = map[string]bool{
 	"package-lock.json": true, "yarn.lock": true, "pnpm-lock.yaml": true,
 	"go.sum": true, "go.work.sum": true,
+}
+
+// mcpConfigFiles are indexed by basename: their .json extension is not in
+// SupportedExtensions, but they wire up MCP servers an agent can query. The
+// extractor for them lives in internal/extract (mcpconfig.go).
+var mcpConfigFiles = map[string]bool{
+	".mcp.json":                  true,
+	"claude_desktop_config.json": true,
+	"mcp.json":                   true,
+	"mcp_servers.json":           true,
 }
 
 // sensitiveDirs hold secrets; any file under one is skipped.
@@ -110,7 +123,10 @@ func CollectFiles(root string) ([]string, error) {
 			return nil
 		}
 		name := d.Name()
-		if skipFiles[name] || !SupportedExtensions[strings.ToLower(filepath.Ext(name))] {
+		if skipFiles[name] {
+			return nil
+		}
+		if !SupportedExtensions[strings.ToLower(filepath.Ext(name))] && !mcpConfigFiles[name] {
 			return nil
 		}
 		if isSensitive(rel) || ign.ignored(slashRel, false) {
