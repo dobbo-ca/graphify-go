@@ -105,6 +105,29 @@ func TestMergePreservesNodeAttributes(t *testing.T) {
 	}
 }
 
+func TestMergePreservesProvenanceAndHyperedges(t *testing.T) {
+	// built_at_commit and hyperedges are top-level fields the canonical writer
+	// emits and the spec promises to preserve. They must survive a merge.
+	current := writeFile(t, `{"directed":true,"multigraph":false,"graph":{},
+"nodes":[{"id":"a","label":"a()"}],"links":[],
+"hyperedges":[{"id":"h1"}],"built_at_commit":"abc123"}`)
+	other := writeFile(t, `{"directed":true,"multigraph":false,"graph":{},
+"nodes":[{"id":"b","label":"b()"}],"links":[],
+"hyperedges":[],"built_at_commit":"def456"}`)
+	if err := Merge(current, other); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"hyperedges": [`, `"id": "h1"`, `"built_at_commit": "abc123"`} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("merged output lost top-level field %q:\n%s", want, data)
+		}
+	}
+}
+
 func TestMergeRejectsCorruptInput(t *testing.T) {
 	current := writeFile(t, `{"directed":true,"nodes":[],"links":[]}`)
 	other := writeFile(t, `{not json`)

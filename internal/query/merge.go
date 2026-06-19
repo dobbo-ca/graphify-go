@@ -19,11 +19,13 @@ const (
 // merge round-trips every node/edge attribute (community, confidence_score, …)
 // without this package having to model them all.
 type rawGraph struct {
-	Directed   bool              `json:"directed"`
-	Multigraph bool              `json:"multigraph"`
-	Graph      json.RawMessage   `json:"graph"`
-	Nodes      []json.RawMessage `json:"nodes"`
-	Links      []json.RawMessage `json:"links"`
+	Directed      bool              `json:"directed"`
+	Multigraph    bool              `json:"multigraph"`
+	Graph         json.RawMessage   `json:"graph"`
+	Nodes         []json.RawMessage `json:"nodes"`
+	Links         []json.RawMessage `json:"links"`
+	Hyperedges    json.RawMessage   `json:"hyperedges,omitempty"`
+	BuiltAtCommit json.RawMessage   `json:"built_at_commit,omitempty"`
 }
 
 // nodeKey and linkKey extract just the dedup-relevant fields from a raw entry.
@@ -51,7 +53,10 @@ func Merge(currentPath, otherPath string) error {
 		return err
 	}
 
-	out := rawGraph{Directed: cur.Directed, Multigraph: cur.Multigraph, Graph: cur.Graph}
+	out := rawGraph{
+		Directed: cur.Directed, Multigraph: cur.Multigraph, Graph: cur.Graph,
+		Hyperedges: cur.Hyperedges, BuiltAtCommit: cur.BuiltAtCommit,
+	}
 
 	seenNode := map[string]bool{}
 	for _, src := range [][]json.RawMessage{cur.Nodes, oth.Nodes} {
