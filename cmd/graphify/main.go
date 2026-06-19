@@ -47,9 +47,9 @@ func main() {
 		fmt.Printf("graphify %s (commit %s, built %s)\n", version, commit, date)
 		return
 	case "build":
-		err = cmdBuild(arg(2, "."))
+		err = cmdBuild(os.Args[2:])
 	case "update":
-		err = cmdUpdate(arg(2, "."))
+		err = cmdUpdate(os.Args[2:])
 	case "watch":
 		err = cmdWatch(arg(2, "."))
 	case "hook":
@@ -217,7 +217,8 @@ func writeOutputs(root string, files []string, results []extract.Result, newCach
 	return g, communities, nil
 }
 
-func cmdBuild(root string) error {
+func cmdBuild(args []string) error {
+	root, cargo := parseBuildArgs(args)
 	files, err := detect.CollectFiles(root)
 	if err != nil {
 		return err
@@ -226,6 +227,12 @@ func cmdBuild(root string) error {
 		return fmt.Errorf("no supported source files found under %s", root)
 	}
 	results, newCache, newStat, _ := assemble(root, files, nil, nil)
+	if cargo {
+		results, err = withCargo(root, results)
+		if err != nil {
+			return err
+		}
+	}
 	g, communities, err := writeOutputs(root, files, results, newCache, newStat)
 	if err != nil {
 		return err
@@ -235,11 +242,37 @@ func cmdBuild(root string) error {
 	return nil
 }
 
+// parseBuildArgs splits build/update arguments into the target path (default ".")
+// and whether the opt-in --cargo crate-dependency pass was requested.
+func parseBuildArgs(args []string) (root string, cargo bool) {
+	root = "."
+	for _, a := range args {
+		if a == "--cargo" {
+			cargo = true
+			continue
+		}
+		root = a
+	}
+	return root, cargo
+}
+
+// withCargo runs the Cargo manifest introspection pass and appends its crate
+// nodes/edges to the per-file results so they flow through the normal resolve and
+// graph-build path. It is opt-in (--cargo) so it never touches non-Rust corpora.
+func withCargo(root string, results []extract.Result) ([]extract.Result, error) {
+	res, err := extract.IntrospectCargo(root)
+	if err != nil {
+		return nil, err
+	}
+	return append(results, res), nil
+}
+
 // cmdUpdate rebuilds the graph incrementally: it re-parses only files whose
 // content changed since the last build/update, reusing cached results for the
 // rest, then resolves and writes the same outputs as build. With no existing
 // cache it transparently degrades to a full build.
-func cmdUpdate(root string) error {
+func cmdUpdate(args []string) error {
+	root, cargo := parseBuildArgs(args)
 	files, err := detect.CollectFiles(root)
 	if err != nil {
 		return err
@@ -250,6 +283,12 @@ func cmdUpdate(root string) error {
 	prev := cache.Load(filepath.Join(root, "graphify-out", cache.FileName))
 	prevStat := cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName))
 	results, newCache, newStat, stats := assemble(root, files, prev, prevStat)
+	if cargo {
+		results, err = withCargo(root, results)
+		if err != nil {
+			return err
+		}
+	}
 	g, communities, err := writeOutputs(root, files, results, newCache, newStat)
 	if err != nil {
 		return err
@@ -611,8 +650,8 @@ func usage() {
 	fmt.Println(`graphify - code knowledge graph
 
 usage:
-  graphify build [path]        build graph.json + report under <path>/graphify-out
-  graphify update [path]       rebuild incrementally, re-parsing only changed files
+  graphify build [path] [--cargo]   build graph.json + report under <path>/graphify-out (--cargo adds Rust crate-dependency edges)
+  graphify update [path] [--cargo]  rebuild incrementally, re-parsing only changed files
   graphify watch [path]        rebuild incrementally as files change (Ctrl-C to stop)
   graphify hook <install|uninstall|status> [path]  manage git hooks that update the graph after commits
   graphify query <pattern>     find nodes by name (regex, case-insensitive)
