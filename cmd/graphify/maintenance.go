@@ -119,7 +119,7 @@ func hookStatus(root string) error {
 // polls the tree and rebuilds whenever a source file's content changes. It is
 // poll-based (no native filesystem-event dependency); Ctrl-C stops it.
 func cmdWatch(root string) error {
-	if err := cmdUpdate(root); err != nil {
+	if err := cmdUpdate([]string{root}); err != nil {
 		return err
 	}
 	fmt.Println("watching for changes (Ctrl-C to stop)…")
@@ -140,7 +140,7 @@ func cmdWatch(root string) error {
 				continue
 			}
 			if changed {
-				if err := cmdUpdate(root); err != nil {
+				if err := cmdUpdate([]string{root}); err != nil {
 					fmt.Fprintln(os.Stderr, "graphify:", err)
 				}
 			}

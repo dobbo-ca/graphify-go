@@ -23,7 +23,7 @@ func TestIncrementalUpdate(t *testing.T) {
 	write("a.go", "package p\n\nfunc A() { B() }\n")
 	write("b.go", "package p\n\nfunc B() {}\n")
 
-	if err := cmdBuild(root); err != nil {
+	if err := cmdBuild([]string{root}); err != nil {
 		t.Fatalf("build: %v", err)
 	}
 	// build writes the stat sidecar with an entry per collected file.
@@ -46,7 +46,7 @@ func TestIncrementalUpdate(t *testing.T) {
 		t.Errorf("unchanged update: got %+v, want 0 reparsed / %d reused / 0 removed", stats, len(files))
 	}
 
-	if err := cmdUpdate(root); err != nil {
+	if err := cmdUpdate([]string{root}); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	updated, err := os.ReadFile(graphPath)
@@ -66,7 +66,7 @@ func TestIncrementalUpdate(t *testing.T) {
 	if stats.parsed != 1 || stats.reused != len(files)-1 {
 		t.Errorf("one-file change: got %+v, want 1 reparsed / %d reused", stats, len(files)-1)
 	}
-	if err := cmdUpdate(root); err != nil {
+	if err := cmdUpdate([]string{root}); err != nil {
 		t.Fatalf("update after change: %v", err)
 	}
 	changed, _ := os.ReadFile(graphPath)

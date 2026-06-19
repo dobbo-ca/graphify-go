@@ -144,7 +144,7 @@ func TestWatchTick(t *testing.T) {
 		}
 	}
 	write("a.go", "package p\n\nfunc A() {}\n")
-	if err := cmdBuild(root); err != nil {
+	if err := cmdBuild([]string{root}); err != nil {
 		t.Fatalf("build: %v", err)
 	}
 
@@ -157,7 +157,7 @@ func TestWatchTick(t *testing.T) {
 		t.Error("edited file: want changed=true")
 	}
 
-	if err := cmdUpdate(root); err != nil {
+	if err := cmdUpdate([]string{root}); err != nil {
 		t.Fatal(err)
 	}
 	write("c.go", "package p\n\nfunc C() {}\n")
