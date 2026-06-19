@@ -22,6 +22,7 @@ var SupportedExtensions = map[string]bool{
 	".tsx":      true,
 	".tf":       true,
 	".tfvars":   true,
+	".json":     true,
 	".hcl":      true,
 	".py":       true,
 	".rs":       true,
