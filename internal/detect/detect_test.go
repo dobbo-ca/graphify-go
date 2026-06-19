@@ -30,9 +30,10 @@ func TestCollectFilesSkipsTerraform(t *testing.T) {
 	}
 }
 
-// MCP config files carry a .json extension that is not in SupportedExtensions,
-// but they must still be collected (indexed by basename) while other .json
-// files (e.g. package.json) are left out.
+// MCP config files carry a .json extension that is matched by basename; general
+// .json files (e.g. package.json) are also collected now that .json is a
+// supported extension, and the extractor decides per-file whether it is a
+// config/manifest worth indexing.
 func TestCollectFilesIncludesMCPConfigs(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, ".mcp.json"), `{"mcpServers": {}}`)
@@ -48,13 +49,10 @@ func TestCollectFilesIncludesMCPConfigs(t *testing.T) {
 	for _, f := range files {
 		got[filepath.ToSlash(f)] = true
 	}
-	for _, want := range []string{".mcp.json", "mcp_servers.json", "sub/claude_desktop_config.json"} {
+	for _, want := range []string{".mcp.json", "mcp_servers.json", "sub/claude_desktop_config.json", "package.json"} {
 		if !got[want] {
 			t.Errorf("expected %q to be collected, got %v", want, files)
 		}
-	}
-	if got["package.json"] {
-		t.Error("package.json should not be collected")
 	}
 }
 

@@ -113,6 +113,8 @@ func FileFromBytes(rel string, src []byte) Result {
 		return extractJS(rel, src, tstsx.LanguageTypescript())
 	case ".tf", ".tfvars", ".hcl":
 		return extractTerraform(rel, src)
+	case ".json":
+		return extractJSON(rel, src)
 	case ".py":
 		return extractPython(rel, src)
 	case ".rs":
