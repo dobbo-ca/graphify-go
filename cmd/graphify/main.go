@@ -69,7 +69,7 @@ func main() {
 	case "extract":
 		err = cmdExtract(mustArg(2, "extract <file>"))
 	case "export":
-		err = cmdExport(mustArg(2, "export <graphml|dot|csv> [path]"), arg(3, "."))
+		err = cmdExport(mustArg(2, "export <graphml|dot|csv|okf> [path]"), arg(3, "."))
 	case "affected":
 		err = cmdAffected(os.Args[2:])
 	case "diff":
@@ -470,8 +470,14 @@ func cmdExport(format, root string) error {
 			return err
 		}
 		fmt.Println("wrote " + nodes + " and " + edges)
+	case "okf":
+		bundle := filepath.Join(outDir, "okf")
+		if err := export.OKFFromJSON(jsonPath, bundle); err != nil {
+			return err
+		}
+		fmt.Println("wrote OKF bundle to " + bundle)
 	default:
-		return fmt.Errorf("unknown export format %q (want: graphml, dot, csv)", format)
+		return fmt.Errorf("unknown export format %q (want: graphml, dot, csv, okf)", format)
 	}
 	return nil
 }
@@ -671,6 +677,6 @@ usage:
   graphify validate            check graph.json for structural problems
   graphify serve               MCP stdio server: load graph.json once, answer many queries
   graphify extract <file>      print one file's extracted nodes/edges (debug)
-  graphify export <fmt> [path] convert graph.json to graphml, dot, or csv
+  graphify export <fmt> [path] convert graph.json to graphml, dot, csv, or okf
   graphify version             print version`)
 }
