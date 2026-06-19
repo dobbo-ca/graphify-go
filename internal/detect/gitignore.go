@@ -7,17 +7,18 @@ import (
 	"strings"
 )
 
-// ignorer answers whether a path is excluded by the .gitignore files in a tree.
-// It mirrors the subset of gitignore semantics that matters for graphing a
-// repo: per-directory .gitignore files, negation (!), directory-only patterns
-// (trailing /), anchoring (a leading or embedded /), and the *, ?, ** globs.
-// Patterns from a deeper .gitignore override those from a shallower one, and
-// within one file the last matching pattern wins — matching git. Because the
-// walk prunes ignored directories (git never descends into them), evaluating
-// each entry against its ancestor .gitignore files is sufficient.
+// ignorer answers whether a path is excluded by the .gitignore (and
+// .graphifyignore) files in a tree. It mirrors the subset of gitignore
+// semantics that matters for graphing a repo: per-directory .gitignore files,
+// negation (!), directory-only patterns (trailing /), anchoring (a leading or
+// embedded /), and the *, ?, ** globs. Patterns from a deeper .gitignore
+// override those from a shallower one, and within one file the last matching
+// pattern wins — matching git. Because the walk prunes ignored directories (git
+// never descends into them), evaluating each entry against its ancestor
+// .gitignore files is sufficient.
 type ignorer struct {
 	root  string
-	cache map[string]*ignoreFile // dir (slash-rel to root, "" = root) -> parsed .gitignore (nil = none)
+	cache map[string]*ignoreFile // dir (slash-rel to root, "" = root) -> parsed ignore rules (nil = none)
 }
 
 type ignoreFile struct {
@@ -36,18 +37,30 @@ func newIgnorer(root string) *ignorer {
 	return &ignorer{root: root, cache: map[string]*ignoreFile{}}
 }
 
-// load returns the parsed .gitignore for the directory dir (slash-relative to
-// root), reading and caching it on first use. A missing file caches as nil.
+// load returns the parsed ignore rules for the directory dir (slash-relative to
+// root), reading and caching them on first use. Both .gitignore and
+// .graphifyignore are read; .graphifyignore rules are appended after the
+// .gitignore rules so they win on conflict via last-match-wins — letting a repo
+// exclude neutrally-named sensitive files (e.g. prod-dump.sql) from the graph
+// artifacts without touching .gitignore. A directory with neither file caches
+// as nil.
 func (g *ignorer) load(dir string) *ignoreFile {
 	if f, ok := g.cache[dir]; ok {
 		return f
 	}
-	data, err := os.ReadFile(filepath.Join(g.root, filepath.FromSlash(dir), ".gitignore"))
-	if err != nil {
-		g.cache[dir] = nil
-		return nil
+	var f *ignoreFile
+	for _, name := range []string{".gitignore", ".graphifyignore"} {
+		data, err := os.ReadFile(filepath.Join(g.root, filepath.FromSlash(dir), name))
+		if err != nil {
+			continue
+		}
+		parsed := parseIgnore(dir, string(data))
+		if f == nil {
+			f = parsed
+		} else {
+			f.rules = append(f.rules, parsed.rules...)
+		}
 	}
-	f := parseIgnore(dir, string(data))
 	g.cache[dir] = f
 	return f
 }
