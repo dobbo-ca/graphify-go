@@ -118,6 +118,109 @@ func less(a, b []string) bool {
 	return len(a) < len(b)
 }
 
+// RemapToPrevious relabels communities so their integer IDs stay stable across
+// incremental rebuilds. It greedily matches each new community to the previous
+// assignment that overlaps it most (one-to-one, by intersection size with an
+// (oldID, newID) tie-break), then assigns fresh IDs to the unmatched communities
+// in deterministic order (size desc, then lexical tie-break, reusing less). This
+// keeps a per-node community diff meaningful when the grouping is unchanged.
+func RemapToPrevious(communities map[int][]string, prevNodeCommunity map[string]int) map[int][]string {
+	if len(communities) == 0 {
+		return map[int][]string{}
+	}
+
+	newSets := make(map[int]map[string]bool, len(communities))
+	for cid, nodes := range communities {
+		set := make(map[string]bool, len(nodes))
+		for _, n := range nodes {
+			set[n] = true
+		}
+		newSets[cid] = set
+	}
+	oldSets := map[int]map[string]bool{}
+	for node, oldCID := range prevNodeCommunity {
+		if oldSets[oldCID] == nil {
+			oldSets[oldCID] = map[string]bool{}
+		}
+		oldSets[oldCID][node] = true
+	}
+
+	type overlap struct{ count, oldCID, newCID int }
+	var overlaps []overlap
+	for oldCID, oldNodes := range oldSets {
+		for newCID, newNodes := range newSets {
+			c := 0
+			for n := range newNodes {
+				if oldNodes[n] {
+					c++
+				}
+			}
+			if c > 0 {
+				overlaps = append(overlaps, overlap{c, oldCID, newCID})
+			}
+		}
+	}
+	sort.Slice(overlaps, func(i, j int) bool {
+		if overlaps[i].count != overlaps[j].count {
+			return overlaps[i].count > overlaps[j].count
+		}
+		if overlaps[i].oldCID != overlaps[j].oldCID {
+			return overlaps[i].oldCID < overlaps[j].oldCID
+		}
+		return overlaps[i].newCID < overlaps[j].newCID
+	})
+
+	newToFinal := map[int]int{}
+	usedOldIDs := map[int]bool{}
+	matchedNewIDs := map[int]bool{}
+	for _, o := range overlaps {
+		if usedOldIDs[o.oldCID] || matchedNewIDs[o.newCID] {
+			continue
+		}
+		newToFinal[o.newCID] = o.oldCID
+		usedOldIDs[o.oldCID] = true
+		matchedNewIDs[o.newCID] = true
+	}
+
+	var unmatched []int
+	for cid := range communities {
+		if !matchedNewIDs[cid] {
+			unmatched = append(unmatched, cid)
+		}
+	}
+	sort.Slice(unmatched, func(i, j int) bool {
+		a, b := communities[unmatched[i]], communities[unmatched[j]]
+		if len(a) != len(b) {
+			return len(a) > len(b)
+		}
+		return less(sortedCopy(a), sortedCopy(b))
+	})
+	nextID := 0
+	for _, newCID := range unmatched {
+		for usedOldIDs[nextID] {
+			nextID++
+		}
+		newToFinal[newCID] = nextID
+		usedOldIDs[nextID] = true
+		nextID++
+	}
+
+	remapped := make(map[int][]string, len(communities))
+	for newCID, nodes := range communities {
+		sorted := sortedCopy(nodes)
+		remapped[newToFinal[newCID]] = sorted
+	}
+	return remapped
+}
+
+// sortedCopy returns a lexically sorted copy of nodes, leaving the input intact.
+func sortedCopy(nodes []string) []string {
+	out := make([]string, len(nodes))
+	copy(out, nodes)
+	sort.Strings(out)
+	return out
+}
+
 // Cohesion is the ratio of actual intra-community edges to the maximum possible.
 func Cohesion(g *model.Graph, nodes []string) float64 {
 	n := len(nodes)
