@@ -81,6 +81,7 @@ type Result struct {
 	NullLabels    []NullLabelRef
 	ModInvokes    []ModInvoke
 	ImportAliases []ImportAlias
+	MDRefs        []MDRef
 }
 
 // File extracts rel (a path relative to root). Unsupported extensions return an
@@ -142,6 +143,8 @@ func FileFromBytes(rel string, src []byte) Result {
 		return extractLua(rel, src)
 	case ".zig":
 		return extractZig(rel, src)
+	case ".md", ".mdx", ".markdown":
+		return extractMarkdown(rel, src)
 	}
 	return Result{}
 }

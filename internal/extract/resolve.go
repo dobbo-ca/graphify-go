@@ -157,10 +157,112 @@ func Resolve(results []Result, files []string) model.Extraction {
 		}
 	}
 
+	// Markdown links: resolve each [text](target) to the concept node of the
+	// markdown file it points at and emit a `references` edge. Directory
+	// structure (an index.md owning its siblings) yields `contains` edges.
+	resolveMarkdown(results, files, corpus, &out)
+
 	// Stage C: complete partial cloudposse null-label ids across local wrapper
 	// chains, using the module-source edges and invocation args captured above.
 	resolveNullLabels(results, &out)
 	return out
+}
+
+// mdExts are the markdown suffixes a link target may resolve to in the corpus.
+var mdExts = []string{".md", ".mdx", ".markdown"}
+
+// resolveMarkdown stitches markdown link references into `references` edges and
+// adds the `contains` edges implied by directory structure (a directory's
+// index.md owns the other markdown concepts in that directory). Link targets are
+// resolved against the bundle root for a leading '/', otherwise relative to the
+// linking file's directory; http(s)/mailto/in-page (#anchor) targets are ignored.
+func resolveMarkdown(results []Result, files []string, corpus map[string]bool, out *model.Extraction) {
+	for _, r := range results {
+		for _, m := range r.MDRefs {
+			if tgt := resolveMDTarget(m.File, m.Target, corpus); tgt != "" {
+				out.Edges = append(out.Edges, model.Edge{
+					Source: m.FromID, Target: idutil.MakeID(strings.TrimSuffix(tgt, path.Ext(tgt))),
+					Relation: "references", Confidence: "EXTRACTED",
+					SourceFile: m.File, SourceLocation: m.Loc,
+				})
+			}
+		}
+	}
+
+	// dir index.md --contains--> each sibling markdown concept in that directory.
+	for _, f := range files {
+		sf := filepath.ToSlash(f)
+		if !isMarkdown(sf) || strings.EqualFold(stemName(sf), "index") {
+			continue
+		}
+		dir := path.Dir(sf)
+		var idx string
+		for _, ext := range mdExts {
+			if cand := path.Join(dir, "index"+ext); corpus[cand] {
+				idx = cand
+				break
+			}
+		}
+		if idx == "" {
+			continue
+		}
+		out.Edges = append(out.Edges, model.Edge{
+			Source:   idutil.MakeID(strings.TrimSuffix(idx, path.Ext(idx))),
+			Target:   idutil.MakeID(strings.TrimSuffix(sf, path.Ext(sf))),
+			Relation: "contains", Confidence: "EXTRACTED", SourceFile: idx,
+		})
+	}
+}
+
+// resolveMDTarget maps a markdown link target to a markdown file in the corpus,
+// returning its slash path, or "" when the link is external (http/mailto),
+// in-page (#anchor), or points outside the corpus.
+func resolveMDTarget(fromFile, target string, corpus map[string]bool) string {
+	if i := strings.IndexByte(target, '#'); i >= 0 {
+		target = target[:i] // drop in-page anchor
+	}
+	if target == "" || isExternalLink(target) {
+		return ""
+	}
+	var base string
+	if strings.HasPrefix(target, "/") {
+		base = path.Clean(strings.TrimPrefix(target, "/"))
+	} else {
+		base = path.Clean(path.Join(path.Dir(filepath.ToSlash(fromFile)), target))
+	}
+	if corpus[base] {
+		return base
+	}
+	for _, ext := range mdExts {
+		if corpus[base+ext] {
+			return base + ext
+		}
+	}
+	return ""
+}
+
+// isExternalLink reports whether a markdown link target points off-corpus
+// (an absolute URL or a mail link) rather than at another bundle file.
+func isExternalLink(target string) bool {
+	lower := strings.ToLower(target)
+	return strings.HasPrefix(lower, "http://") ||
+		strings.HasPrefix(lower, "https://") ||
+		strings.HasPrefix(lower, "mailto:")
+}
+
+func isMarkdown(p string) bool {
+	for _, ext := range mdExts {
+		if strings.EqualFold(path.Ext(p), ext) {
+			return true
+		}
+	}
+	return false
+}
+
+// stemName returns a file's base name without its extension.
+func stemName(p string) string {
+	b := path.Base(p)
+	return strings.TrimSuffix(b, path.Ext(b))
 }
 
 // resolveImportGuided emits EXTRACTED calls edges for Python calls backed by
