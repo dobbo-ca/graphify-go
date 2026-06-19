@@ -41,7 +41,7 @@ as GitHub releases + a Homebrew formula on every merge to `main`.
 graphify build [path]        # build graph.json + GRAPH_REPORT.md + graph.html under <path>/graphify-out
 graphify update [path]       # rebuild incrementally, re-parsing only changed files
 graphify watch [path]        # rebuild incrementally as files change (Ctrl-C to stop)
-graphify hook install [path] # install git hooks that update the graph after commits
+graphify hook <install|uninstall|status> [path] # manage git hooks that update the graph after commits
 graphify query <pattern>     # find nodes by name (regex, case-insensitive)
 graphify explain <node>      # show a node and its neighbours (calls, called-by, imports, contains)
 graphify path <from> <to>    # shortest dependency path between two nodes

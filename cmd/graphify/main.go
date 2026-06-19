@@ -587,7 +587,7 @@ usage:
   graphify build [path]        build graph.json + report under <path>/graphify-out
   graphify update [path]       rebuild incrementally, re-parsing only changed files
   graphify watch [path]        rebuild incrementally as files change (Ctrl-C to stop)
-  graphify hook install [path] install git hooks that update the graph after commits
+  graphify hook <install|uninstall|status> [path]  manage git hooks that update the graph after commits
   graphify query <pattern>     find nodes by name (regex, case-insensitive)
   graphify ask "<question>"    NL retrieval: relevant subgraph as text [--dfs --budget N --graph path]
   graphify explain <node>      show a node and its neighbours
