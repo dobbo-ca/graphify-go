@@ -115,3 +115,71 @@ func TestImportCyclesNoneWhenAcyclic(t *testing.T) {
 		t.Errorf("expected no cycles in acyclic graph, got %v", cycles)
 	}
 }
+
+// semanticGraph builds two prose notes that both link to one LLM-derived
+// concept hub (file_type semantic_concept, no source file), plus a second
+// concept. The concept hub should surface as a god node, and a note->concept
+// edge should be eligible as a surprising connection.
+func semanticGraph() *model.Graph {
+	g := model.New()
+	g.AddNode(model.Node{ID: "note_a", Label: "Note A", FileType: "document", SourceFile: "learnings/a.md"})
+	g.AddNode(model.Node{ID: "note_b", Label: "Note B", FileType: "document", SourceFile: "learnings/b.md"})
+	g.AddNode(model.Node{ID: "concept_appconfig", Label: "AppConfig", FileType: "semantic_concept"})
+	g.AddNode(model.Node{ID: "concept_flux", Label: "Flux", FileType: "semantic_concept"})
+	sem := func(s, t string) {
+		g.AddEdge(model.Edge{Source: s, Target: t, Relation: "cites", Confidence: "INFERRED", ConfidenceScore: 0.8})
+	}
+	sem("note_a", "concept_appconfig")
+	sem("note_b", "concept_appconfig")
+	sem("note_a", "concept_flux")
+	return g
+}
+
+func TestGodNodesIncludesSemanticConcepts(t *testing.T) {
+	gods := GodNodes(semanticGraph(), 10)
+	found := false
+	for _, n := range gods {
+		if n.ID == "concept_appconfig" {
+			found = true
+			if n.Degree != 2 {
+				t.Errorf("AppConfig concept degree = %d, want 2", n.Degree)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("semantic concept hub not surfaced as a god node; got %+v", gods)
+	}
+}
+
+func TestSurprisingIncludesNoteToConcept(t *testing.T) {
+	g := semanticGraph()
+	// Each note in its own community so a note->concept edge bridges them.
+	communities := map[int][]string{0: {"note_a", "concept_flux"}, 1: {"note_b"}, 2: {"concept_appconfig"}}
+	s := Surprising(g, communities, 5)
+	if len(s) == 0 {
+		t.Fatalf("no surprising connections surfaced for a semantically enriched graph")
+	}
+}
+
+// fileHubNoteGraph mirrors the wiki corpus: prose-note nodes whose label is the
+// file basename (so they look like file hubs) link to a shared concept. The
+// note->concept semantic edge is the insight and must still surface as a
+// surprising connection even though the note is a "file hub".
+func fileHubNoteGraph() *model.Graph {
+	g := model.New()
+	g.AddNode(model.Node{ID: "na", Label: "a.md", FileType: "document", SourceFile: "learnings/a.md"})
+	g.AddNode(model.Node{ID: "nb", Label: "b.md", FileType: "document", SourceFile: "learnings/b.md"})
+	g.AddNode(model.Node{ID: "c1", Label: "Shared Concept", FileType: "semantic_concept"})
+	g.AddEdge(model.Edge{Source: "na", Target: "c1", Relation: "conceptually_related_to", Confidence: "INFERRED", ConfidenceScore: 0.9})
+	g.AddEdge(model.Edge{Source: "nb", Target: "c1", Relation: "conceptually_related_to", Confidence: "INFERRED", ConfidenceScore: 0.9})
+	return g
+}
+
+func TestSurprisingIncludesSemanticEdgeFromFileHubNote(t *testing.T) {
+	g := fileHubNoteGraph()
+	communities := map[int][]string{0: {"na"}, 1: {"nb", "c1"}}
+	s := Surprising(g, communities, 5)
+	if len(s) == 0 {
+		t.Fatalf("note->concept semantic edge not surfaced as surprising")
+	}
+}

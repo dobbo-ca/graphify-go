@@ -190,9 +190,19 @@ func assemble(root string, files []string, prev cache.Cache, prevStat cache.Stat
 
 // writeOutputs resolves the per-file results into a graph and writes graph.json,
 // GRAPH_REPORT.md, and the incremental cache and stat sidecar under
-// <root>/graphify-out.
-func writeOutputs(root string, files []string, results []extract.Result, newCache cache.Cache, newStat cache.StatIndex) (*model.Graph, map[int][]string, error) {
-	g := graph.Build(extract.Resolve(results, files))
+// <root>/graphify-out. When sem.enabled, an additive LLM enrichment pass runs
+// between resolve and graph-build so communities reflect concepts; it never
+// alters the deterministic core.
+func writeOutputs(root string, files []string, results []extract.Result, newCache cache.Cache, newStat cache.StatIndex, sem semanticOpts) (*model.Graph, map[int][]string, error) {
+	ext := extract.Resolve(results, files)
+	if sem.enabled {
+		var err error
+		ext, err = enrich(root, ext, sem)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	g := graph.Build(ext)
 	communities := cluster.Cluster(g)
 	commit := gitHead(root)
 
@@ -217,7 +227,11 @@ func writeOutputs(root string, files []string, results []extract.Result, newCach
 }
 
 func cmdBuild(args []string) error {
-	root, cargo := parseBuildArgs(args)
+	opts, err := parseBuildOpts(args)
+	if err != nil {
+		return err
+	}
+	root := opts.root
 	files, err := detect.CollectFiles(root)
 	if err != nil {
 		return err
@@ -226,13 +240,13 @@ func cmdBuild(args []string) error {
 		return fmt.Errorf("no supported source files found under %s", root)
 	}
 	results, newCache, newStat, _ := assemble(root, files, nil, nil)
-	if cargo {
+	if opts.cargo {
 		results, err = withCargo(root, results)
 		if err != nil {
 			return err
 		}
 	}
-	g, communities, err := writeOutputs(root, files, results, newCache, newStat)
+	g, communities, err := writeOutputs(root, files, results, newCache, newStat, opts.semanticOpts())
 	if err != nil {
 		return err
 	}
@@ -241,18 +255,56 @@ func cmdBuild(args []string) error {
 	return nil
 }
 
+// buildOpts holds the parsed build/update arguments.
+type buildOpts struct {
+	root     string
+	cargo    bool
+	semantic bool   // --semantic: run the opt-in LLM enrichment pass
+	backend  string // --backend: which semantic backend (e.g. "bedrock")
+}
+
+// semanticOpts projects the build options onto the enrichment-stage options.
+func (o buildOpts) semanticOpts() semanticOpts {
+	return semanticOpts{enabled: o.semantic, backend: o.backend}
+}
+
 // parseBuildArgs splits build/update arguments into the target path (default ".")
-// and whether the opt-in --cargo crate-dependency pass was requested.
+// and whether the opt-in --cargo crate-dependency pass was requested. It exists
+// for callers that do not support semantic enrichment; build uses parseBuildOpts.
 func parseBuildArgs(args []string) (root string, cargo bool) {
-	root = "."
-	for _, a := range args {
-		if a == "--cargo" {
-			cargo = true
-			continue
+	opts, _ := parseBuildOpts(args)
+	return opts.root, opts.cargo
+}
+
+// parseBuildOpts parses the full build flag set: the target path (default "."),
+// --cargo, --semantic, and --backend <name> (or --backend=<name>). --semantic
+// requires an explicit --backend; omitting it is an error so the costly LLM pass
+// is never run against an unspecified provider.
+func parseBuildOpts(args []string) (buildOpts, error) {
+	opts := buildOpts{root: "."}
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--cargo":
+			opts.cargo = true
+		case a == "--semantic":
+			opts.semantic = true
+		case a == "--backend":
+			if i+1 >= len(args) {
+				return opts, fmt.Errorf("--backend requires a value (e.g. --backend bedrock)")
+			}
+			opts.backend = args[i+1]
+			i++
+		case strings.HasPrefix(a, "--backend="):
+			opts.backend = strings.TrimPrefix(a, "--backend=")
+		default:
+			opts.root = a
 		}
-		root = a
 	}
-	return root, cargo
+	if opts.semantic && opts.backend == "" {
+		return opts, fmt.Errorf("--semantic requires an explicit --backend (e.g. --backend bedrock)")
+	}
+	return opts, nil
 }
 
 // withCargo runs the Cargo manifest introspection pass and appends its crate
@@ -288,7 +340,7 @@ func cmdUpdate(args []string) error {
 			return err
 		}
 	}
-	g, communities, err := writeOutputs(root, files, results, newCache, newStat)
+	g, communities, err := writeOutputs(root, files, results, newCache, newStat, semanticOpts{})
 	if err != nil {
 		return err
 	}
