@@ -39,6 +39,14 @@ func GodNodes(g *model.Graph, topN int) []GodNode {
 	return out
 }
 
+// semanticRelations are the LLM-inferred edge relations the enrichment stage
+// emits. They are treated as insights in their own right by Surprising.
+var semanticRelations = map[string]bool{
+	"cites":                   true,
+	"conceptually_related_to": true,
+	"semantically_similar_to": true,
+}
+
 // Surprise is a non-obvious cross-file connection.
 type Surprise struct {
 	Source, Target string
@@ -65,10 +73,19 @@ func Surprising(g *model.Graph, communities map[int][]string, topN int) []Surpri
 			continue
 		}
 		u, v := e.Source, e.Target
-		if isConceptNode(g, u) || isConceptNode(g, v) || isFileNode(g, u) || isFileNode(g, v) {
+		// A semantic edge (LLM-inferred relation into a concept) is itself the
+		// insight: a prose note linking to a concept is meaningful even when the
+		// note looks like a file hub (its label is the file basename). So the
+		// file-hub exclusion, which suppresses mechanical AST edges, is skipped
+		// for semantic edges; the extract-concept exclusion still applies.
+		sem := semanticRelations[e.Relation]
+		if isConceptNode(g, u) || isConceptNode(g, v) {
 			continue
 		}
-		uf, vf := g.Nodes[u].SourceFile, g.Nodes[v].SourceFile
+		if !sem && (isFileNode(g, u) || isFileNode(g, v)) {
+			continue
+		}
+		uf, vf := entityLoc(g, u), entityLoc(g, v)
 		if uf == "" || vf == "" || uf == vf {
 			continue
 		}
@@ -184,7 +201,36 @@ func isFileNode(g *model.Graph, id string) bool {
 	return false
 }
 
+// semanticEntityTypes are LLM-derived node file_types that, despite having no
+// source file, are meaningful abstractions — a concept linked to many notes is a
+// core abstraction, not a mechanical external-dependency stub. They are analysed
+// as real entities (eligible for god nodes and surprising connections). Corpora
+// built without --semantic never carry these types, so this never changes their
+// output.
+var semanticEntityTypes = map[string]bool{
+	"semantic_concept": true,
+	"rationale":        true,
+}
+
+// entityLoc returns a "where" key for the surprising-connection cross-file
+// check. For a normal node that is its source file; for a semantic entity
+// (which has none) it is the node id, so a note→concept edge is treated as
+// cross-location and an edge between two distinct concepts counts as well.
+func entityLoc(g *model.Graph, id string) string {
+	n := g.Nodes[id]
+	if n.SourceFile != "" {
+		return n.SourceFile
+	}
+	if semanticEntityTypes[n.FileType] {
+		return "concept:" + id
+	}
+	return ""
+}
+
 func isConceptNode(g *model.Graph, id string) bool {
+	if semanticEntityTypes[g.Nodes[id].FileType] {
+		return false
+	}
 	src := g.Nodes[id].SourceFile
 	if src == "" {
 		return true
