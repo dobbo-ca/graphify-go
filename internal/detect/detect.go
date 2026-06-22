@@ -139,6 +139,12 @@ func CollectFiles(root string) ([]string, error) {
 	return files, err
 }
 
+// IsSensitive reports whether rel names a file likely to hold secrets (a key,
+// credential, or a file under a sensitive directory). Exposed so later stages
+// (e.g. the semantic enrichment pass) can re-apply the same skip heuristic
+// before any file content leaves the process.
+func IsSensitive(rel string) bool { return isSensitive(rel) }
+
 func isSensitive(rel string) bool {
 	parts := strings.Split(filepath.ToSlash(rel), "/")
 	for _, p := range parts[:len(parts)-1] { // parents only — a root file named "credentials" is handled by name patterns
