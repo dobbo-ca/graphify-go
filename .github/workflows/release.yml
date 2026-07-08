@@ -1,23 +1,34 @@
 name: Release
 
 on:
-  workflow_dispatch:
   push:
     branches: [main]
+    tags: ['[0-9]+.[0-9]+.[0-9]+', 'v[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        options: [auto, beta, release]
+        default: auto
+      dry_run:
+        type: boolean
+        default: false
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
-  # Bump the semver tag from conventional commits and refresh the changelog.
-  semantic-release:
+  # Resolve the next version from conventional commits via git-cliff.
+  # push to main -> beta (X.Y.Z-beta.<run#>) ; push semver tag -> release.
+  # Guard: skip beta tags the bot pushes (they match the tags glob but contain '-').
+  version:
+    if: ${{ !(github.ref_type == 'tag' && contains(github.ref_name, '-')) }}
     runs-on: ubuntu-latest
-    # Don't react to the changelog/graph commits the bots push.
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
     outputs:
-      new_version: ${{ steps.uplift.outputs.new_version }}
-      version_changed: ${{ steps.uplift.outputs.version_changed }}
+      new_version: ${{ steps.bump.outputs.version }}
+      version_changed: ${{ steps.bump.outputs.changed }}
+      is_beta: ${{ steps.bump.outputs.is_beta }}
+      is_release: ${{ steps.bump.outputs.is_release }}
     steps:
       - name: Generate GitHub App Token
         id: app-token
@@ -34,64 +45,18 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
-      - name: Setup Uplift
-        uses: gembaadvantage/uplift-action@v2
+      - name: Resolve version
+        id: bump
+        uses: dobbo-ca/.github/actions/semver-bump@v1
         with:
-          version: latest
-          install-only: true
-          # args is required by the action's schema even when only installing;
-          # uplift is actually run in the next step.
-          args: version
-
-      - name: Run Uplift
-        id: uplift
-        run: |
-          BEFORE_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          uplift release --fetch-all --skip-changelog
-          AFTER_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          if [ -n "$AFTER_TAG" ] && [ "$AFTER_TAG" != "$BEFORE_TAG" ]; then
-            echo "new_version=$AFTER_TAG" >> $GITHUB_OUTPUT
-            echo "version_changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "version_changed=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Generate Changelog
-        if: steps.uplift.outputs.version_changed == 'true'
-        uses: orhun/git-cliff-action@v4
-        with:
-          config: .cliff.toml
-          args: --verbose --current
-        env:
-          OUTPUT: CHANGELOG.md
-          GITHUB_REPO: ${{ github.repository }}
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-
-      - name: Commit Changelog
-        if: steps.uplift.outputs.version_changed == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md
-          git commit -m "docs: update changelog for ${{ steps.uplift.outputs.new_version }} [skip ci]" || echo "nothing to commit"
-          # The graph workflow can push to main concurrently. Rebase and retry so
-          # the changelog commit is never silently lost to a non-fast-forward
-          # rejection. Only touches CHANGELOG.md, so the rebase cannot conflict.
-          for attempt in 1 2 3 4 5; do
-            if git push origin main; then
-              exit 0
-            fi
-            echo "push rejected (attempt $attempt) — rebasing onto origin/main"
-            git pull --rebase --autostash origin main
-          done
-          echo "failed to push changelog after 5 attempts" >&2
-          exit 1
+          mode: ${{ inputs.mode || 'auto' }}
+          dry-run: ${{ inputs.dry_run || false }}
 
   # graphify uses cgo (tree-sitter), so binaries are built on native OS runners
   # rather than cross-compiled from one host. Homebrew only needs darwin+linux.
   build-darwin:
-    needs: semantic-release
-    if: needs.semantic-release.outputs.version_changed == 'true'
+    needs: version
+    if: needs.version.outputs.version_changed == 'true'
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -102,7 +67,7 @@ jobs:
           go-version: "1.25"
       - name: Build darwin archives
         env:
-          VERSION: ${{ needs.semantic-release.outputs.new_version }}
+          VERSION: ${{ needs.version.outputs.new_version }}
         run: |
           for arch in arm64 amd64; do
             CC="clang"
@@ -123,8 +88,8 @@ jobs:
             graphify-go-*.tar.gz.sha256
 
   build-linux:
-    needs: semantic-release
-    if: needs.semantic-release.outputs.version_changed == 'true'
+    needs: version
+    if: needs.version.outputs.version_changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -137,7 +102,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
       - name: Build linux archives
         env:
-          VERSION: ${{ needs.semantic-release.outputs.new_version }}
+          VERSION: ${{ needs.version.outputs.new_version }}
         run: |
           for arch in amd64 arm64; do
             CC="gcc"
@@ -158,11 +123,19 @@ jobs:
             graphify-go-*.tar.gz.sha256
 
   release:
-    needs: [semantic-release, build-darwin, build-linux]
-    if: needs.semantic-release.outputs.version_changed == 'true'
+    needs: [version, build-darwin, build-linux]
+    if: ${{ needs.version.outputs.version_changed == 'true' && inputs.dry_run != true && !(github.ref_type == 'tag' && contains(github.ref_name, '-')) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - run: git fetch --tags --force
+      - name: Install git-cliff
+        uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff@2.13.1
+      - name: Generate release notes
+        run: git cliff --config .cliff.toml --latest --strip header -o CHANGELOG.md || echo "(no notes)" > CHANGELOG.md
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -174,16 +147,17 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.semantic-release.outputs.new_version }}
-          name: ${{ needs.semantic-release.outputs.new_version }}
+          tag_name: ${{ needs.version.outputs.new_version }}
+          name: ${{ needs.version.outputs.new_version }}
           body_path: CHANGELOG.md
+          prerelease: ${{ needs.version.outputs.is_beta == 'true' }}
           files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   update-homebrew:
-    needs: [semantic-release, release]
-    if: needs.semantic-release.outputs.version_changed == 'true'
+    needs: [version, release]
+    if: ${{ needs.version.outputs.is_release == 'true' && inputs.dry_run != true }}
     runs-on: ubuntu-latest
     steps:
       - name: Generate GitHub App Token
@@ -214,7 +188,7 @@ jobs:
           client-payload: |
             {
               "formula": "graphify-go",
-              "version": "${{ needs.semantic-release.outputs.new_version }}",
+              "version": "${{ needs.version.outputs.new_version }}",
               "darwin_amd64_sha": "${{ steps.checksums.outputs.darwin_amd64 }}",
               "darwin_arm64_sha": "${{ steps.checksums.outputs.darwin_arm64 }}",
               "linux_amd64_sha": "${{ steps.checksums.outputs.linux_amd64 }}",

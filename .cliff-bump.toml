@@ -1,0 +1,23 @@
+# Release-gating config used ONLY by `git cliff --bumped-version`.
+# tag_pattern excludes prerelease tags (X.Y.Z-beta.N) so beta tags never become
+# the bump base; v? makes it prefix-agnostic (bare 0.4.0 and v0.4.0 both work).
+# Gate (Proscia TEC-3571): feat->minor, fix/perf/revert/chore->patch, !->major,
+# docs/style/refactor/test/ci/build-> no release.
+[git]
+tag_pattern = "^v?[0-9]+\\.[0-9]+\\.[0-9]+$"
+conventional_commits = true
+filter_unconventional = true
+commit_parsers = [
+  { message = "^feat", group = "feat" },
+  { message = "^fix", group = "fix" },
+  { message = "^perf", group = "perf" },
+  { message = "^revert", group = "revert" },
+  { message = "^chore", group = "chore" },
+  { message = "^docs", skip = true },
+  { message = "^style", skip = true },
+  { message = "^refactor", skip = true },
+  { message = "^test", skip = true },
+  { message = "^ci", skip = true },
+  { message = "^build", skip = true },
+  { message = ".*", skip = true },
+]
