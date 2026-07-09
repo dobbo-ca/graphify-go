@@ -60,13 +60,9 @@ func main() {
 	case "ask":
 		err = cmdAsk(os.Args[2:])
 	case "explain":
-		err = cmdExplain(mustArg(2, "explain <node>"))
+		err = cmdExplain(os.Args[2:])
 	case "path":
-		if len(os.Args) < 4 {
-			err = fmt.Errorf("usage: graphify path <from> <to>")
-		} else {
-			err = cmdPath(os.Args[2], os.Args[3])
-		}
+		err = cmdPath(os.Args[2:])
 	case "extract":
 		err = cmdExtract(mustArg(2, "extract <file>"))
 	case "export":
@@ -537,12 +533,16 @@ func safeGraphPath(path string) (string, error) {
 	return security.ValidateGraphPath(path, base)
 }
 
-func cmdExplain(id string) error {
-	g, err := load()
+func cmdExplain(args []string) error {
+	positionals, graphPath := parseGraphFlag(args)
+	if len(positionals) != 1 {
+		return fmt.Errorf(`usage: graphify explain <node> [--graph path]`)
+	}
+	g, err := loadGraphAt(graphPath)
 	if err != nil {
 		return err
 	}
-	ex, err := query.Explain(g, id)
+	ex, err := query.Explain(g, positionals[0])
 	if err != nil {
 		return err
 	}
@@ -556,12 +556,16 @@ func cmdExplain(id string) error {
 	return nil
 }
 
-func cmdPath(from, to string) error {
-	g, err := load()
+func cmdPath(args []string) error {
+	positionals, graphPath := parseGraphFlag(args)
+	if len(positionals) != 2 {
+		return fmt.Errorf("usage: graphify path <from> <to> [--graph path]")
+	}
+	g, err := loadGraphAt(graphPath)
 	if err != nil {
 		return err
 	}
-	nodes, err := query.Path(g, from, to)
+	nodes, err := query.Path(g, positionals[0], positionals[1])
 	if err != nil {
 		return err
 	}
@@ -571,6 +575,39 @@ func cmdPath(from, to string) error {
 	}
 	fmt.Println(strings.Join(parts, " -> "))
 	return nil
+}
+
+// parseGraphFlag splits args into positionals and an optional --graph <path>
+// (or --graph=<path>) override, defaulting to defaultGraphPath. It lets explain
+// and path accept an alternate graph.json the way ask and diff already do.
+func parseGraphFlag(args []string) (positionals []string, graphPath string) {
+	graphPath = defaultGraphPath
+	for i := 0; i < len(args); i++ {
+		switch {
+		case args[i] == "--graph" && i+1 < len(args):
+			graphPath = args[i+1]
+			i++
+		case strings.HasPrefix(args[i], "--graph="):
+			graphPath = strings.TrimPrefix(args[i], "--graph=")
+		default:
+			positionals = append(positionals, args[i])
+		}
+	}
+	return positionals, graphPath
+}
+
+// loadGraphAt loads a graph from a user-supplied --graph path, applying the same
+// containment guard as ask/diff when it differs from the default so an alternate
+// path cannot escape graphify-out to read arbitrary on-disk JSON.
+func loadGraphAt(graphPath string) (*query.Graph, error) {
+	if graphPath != defaultGraphPath {
+		safe, err := safeGraphPath(graphPath)
+		if err != nil {
+			return nil, err
+		}
+		graphPath = safe
+	}
+	return query.Load(graphPath)
 }
 
 func cmdExtract(file string) error {
@@ -846,8 +883,8 @@ usage:
   graphify hook <install|uninstall|status> [path]  manage git hooks that update the graph after commits
   graphify query <pattern>     find nodes by name (regex, case-insensitive)
   graphify ask "<question>"    NL retrieval: relevant subgraph as text [--dfs --budget N --graph path]
-  graphify explain <node>      show a node and its neighbours
-  graphify path <from> <to>    shortest dependency path between two nodes
+  graphify explain <node>      show a node and its neighbours [--graph path]
+  graphify path <from> <to>    shortest dependency path between two nodes [--graph path]
   graphify affected [file...]  nodes defined in changed files + their dependents [--depth N --relation R]
   graphify diff <old> <new>    node/edge delta between two graph.json snapshots
   graphify merge-driver <base> <current> <other>  git merge driver: union-merge two graph.json files
