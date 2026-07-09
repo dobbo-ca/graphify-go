@@ -86,6 +86,33 @@ func TestIsSensitiveSourceExemption(t *testing.T) {
 	}
 }
 
+// Two generic keywords sitting directly adjacent (only a separator between them)
+// must both be detected: the trailing keyword ends the stem and names the secret
+// store, so the data file is dropped. Regression for the RE2 boundary emulation —
+// a consuming boundary class plus non-overlapping FindAll ate the shared
+// separator and lost the trailing keyword, keeping the secret store. Mirrors
+// upstream _generic_keyword_hit (finditer over zero-width lookarounds).
+func TestIsSensitiveAdjacentKeywords(t *testing.T) {
+	dropped := []string{
+		"aws_secret_credentials.json", // >2 words, trailing keyword ends the stem
+		"foo_secret_password.txt",     // >2 words, trailing keyword ends the stem
+	}
+	for _, name := range dropped {
+		if !isSensitive(name) {
+			t.Errorf("isSensitive(%q) = false, want true (trailing keyword names a secret store)", name)
+		}
+	}
+	// A trailing keyword in a genuine source file is still exempt (it is a module).
+	kept := []string{
+		"aws_secret_credentials.go", // same shape but real source -> exempt
+	}
+	for _, name := range kept {
+		if isSensitive(name) {
+			t.Errorf("isSensitive(%q) = true, want false (real source, not a secret store)", name)
+		}
+	}
+}
+
 // CollectFiles must keep source files whose names merely contain a secret keyword
 // and still drop a genuine secret store (credentials.json) that shares a supported
 // extension — exercising the real isSensitive path end-to-end.

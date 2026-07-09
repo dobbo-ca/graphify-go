@@ -109,14 +109,17 @@ var secretProneDataExts = map[string]bool{
 	".properties": true, ".env": true, ".txt": true,
 }
 
-// genericKeywordPattern matches a generic secret keyword in a filename. Unlike
-// sensitivePatterns it does NOT unconditionally drop the file: a genuine source
-// file whose name merely contains the keyword (password_reset.go,
-// passwords_controller.rb) is a module, not a secret store, so it is exempt in
-// isSensitive Stage 3. RE2 has no lookbehind, so the word boundaries are emulated
-// with (^|[^a-zA-Z0-9]) and ($|[^a-zA-Z]); group 1 captures the keyword plus its
-// optional plural "s" so its end position can be tested against the stem end.
-var genericKeywordPattern = regexp.MustCompile(`(?i)(?:^|[^a-zA-Z0-9])((?:credential|secret|passwd|password|private_key)s?)(?:$|[^a-zA-Z])`)
+// genericKeywordPattern matches a generic secret keyword core (plus an optional
+// plural "s") in a filename. Unlike sensitivePatterns it does NOT unconditionally
+// drop the file: a genuine source file whose name merely contains the keyword
+// (password_reset.go, passwords_controller.rb) is a module, not a secret store,
+// so it is exempt in isSensitive Stage 3. RE2 has no lookbehind, so upstream's
+// zero-width word boundaries ((?<![a-zA-Z0-9]) / (?![a-zA-Z])) are emulated in
+// genericKeywordHit by checking the chars adjacent to each match by hand. The
+// pattern matches only the bare keyword (no surrounding separators) so
+// FindAllStringIndex advances exactly like the upstream finditer and does not
+// consume the boundary shared by two adjacent keywords (aws_secret_credentials).
+var genericKeywordPattern = regexp.MustCompile(`(?i)(?:credential|secret|passwd|password|private_key)s?`)
 
 // wordSplit separates a filename stem into words for the load-bearing check
 // (mirrors the upstream _WORD_SPLIT of [-_\s]+).
@@ -132,14 +135,26 @@ func genericKeywordHit(name string) bool {
 	// Stem = name up to the first dot, ignoring leading dots so dotfiles like
 	// ".secret" keep their keyword.
 	stem := strings.SplitN(strings.TrimLeft(name, "."), ".", 2)[0]
-	matches := genericKeywordPattern.FindAllStringSubmatchIndex(stem, -1)
-	if len(matches) == 0 {
-		return false
-	}
-	for _, m := range matches {
-		if m[3] == len(stem) { // keyword+s ends the stem -> names the contents
+	hit := false
+	for _, m := range genericKeywordPattern.FindAllStringIndex(stem, -1) {
+		start, end := m[0], m[1]
+		// Emulate upstream's zero-width lookarounds: the keyword must not be
+		// preceded by an alphanumeric ((?<![a-zA-Z0-9])) nor followed by a letter
+		// ((?![a-zA-Z])). ASCII-only, matching the upstream character classes; a
+		// leading byte of a multibyte rune is >=0x80 and reads as a boundary.
+		if start > 0 && isASCIIAlnum(stem[start-1]) {
+			continue
+		}
+		if end < len(stem) && isASCIIAlpha(stem[end]) {
+			continue
+		}
+		hit = true
+		if end == len(stem) { // keyword+s ends the stem -> names the contents
 			return true
 		}
+	}
+	if !hit {
+		return false
 	}
 	// Short name like secret_store / password_reset (<=2 words): still load-bearing.
 	words := 0
@@ -149,6 +164,14 @@ func genericKeywordHit(name string) bool {
 		}
 	}
 	return words <= 2
+}
+
+func isASCIIAlnum(b byte) bool {
+	return isASCIIAlpha(b) || (b >= '0' && b <= '9')
+}
+
+func isASCIIAlpha(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
 }
 
 // CollectFiles returns the supported source files under root, relative to root,
