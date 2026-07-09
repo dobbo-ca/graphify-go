@@ -55,6 +55,9 @@ var SupportedExtensions = map[string]bool{
 	".md":       true,
 	".mdx":      true,
 	".markdown": true,
+	".vue":      true,
+	".svelte":   true,
+	".astro":    true,
 }
 
 var skipDirs = map[string]bool{

@@ -147,6 +147,10 @@ func FileFromBytes(rel string, src []byte) Result {
 		return extractZig(rel, src)
 	case ".md", ".mdx", ".markdown":
 		return extractMarkdown(rel, src)
+	case ".vue", ".svelte":
+		return extractComponent(rel, src, false)
+	case ".astro":
+		return extractComponent(rel, src, true)
 	}
 	return Result{}
 }
