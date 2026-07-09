@@ -48,21 +48,58 @@ func (b *builder) javaType(n *ts.Node, src []byte) {
 	}
 	for i := uint(0); i < body.ChildCount(); i++ {
 		m := body.Child(i)
-		if m.Kind() != "method_declaration" && m.Kind() != "constructor_declaration" {
+		switch m.Kind() {
+		case "method_declaration", "constructor_declaration":
+			b.javaMember(typeID, name, m, src)
+		case "enum_constant":
+			b.javaEnumConstant(typeID, m, src)
+		}
+	}
+}
+
+// javaMember records a method/constructor scoped under ownerID (a type or an
+// enum constant with an anonymous body), labelled ownerName.method(). It is
+// registered under the bare method name so `x.method()` call sites resolve.
+func (b *builder) javaMember(ownerID, ownerName string, m *ts.Node, src []byte) {
+	mname := fieldText(m, "name", src)
+	if mname == "" {
+		return
+	}
+	mid := idutil.MakeID(ownerID, mname)
+	b.addNode(mid, ownerName+"."+mname+"()", line(m))
+	b.res.Edges = append(b.res.Edges, model.Edge{
+		Source: ownerID, Target: mid, Relation: "contains",
+		Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
+	})
+	b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
+	b.javaCalls(m.ChildByFieldName("body"), mid, src)
+}
+
+// javaEnumConstant records an enum constant as a `case_of` the enum type. A
+// constant with an anonymous class body (`MONDAY { void greet(){} }`) descends
+// so the body's methods attach to the constant rather than being dropped.
+func (b *builder) javaEnumConstant(typeID string, n *ts.Node, src []byte) {
+	cname := fieldText(n, "name", src)
+	if cname == "" {
+		return
+	}
+	cid := idutil.MakeID(typeID, cname)
+	b.addNode(cid, cname, line(n))
+	b.res.Edges = append(b.res.Edges, model.Edge{
+		Source: typeID, Target: cid, Relation: "case_of",
+		Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(n),
+	})
+	for i := uint(0); i < n.ChildCount(); i++ {
+		body := n.Child(i)
+		if body.Kind() != "class_body" {
 			continue
 		}
-		mname := fieldText(m, "name", src)
-		if mname == "" {
-			continue
+		for j := uint(0); j < body.ChildCount(); j++ {
+			m := body.Child(j)
+			if m.Kind() == "method_declaration" || m.Kind() == "constructor_declaration" {
+				b.javaMember(cid, cname, m, src)
+			}
 		}
-		mid := idutil.MakeID(b.stem, name, mname)
-		b.addNode(mid, name+"."+mname+"()", line(m))
-		b.res.Edges = append(b.res.Edges, model.Edge{
-			Source: typeID, Target: mid, Relation: "contains",
-			Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
-		})
-		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
-		b.javaCalls(m.ChildByFieldName("body"), mid, src)
 	}
 }
 

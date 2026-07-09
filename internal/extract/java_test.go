@@ -67,3 +67,47 @@ func TestExtractJava(t *testing.T) {
 		t.Error("no external import edges (expected util.Math)")
 	}
 }
+
+// TestExtractJavaEnum checks that enum constants become nodes linked to the enum
+// type by a `case_of` edge, and that a constant's anonymous class body still
+// contributes its methods (attached to the constant).
+func TestExtractJavaEnum(t *testing.T) {
+	src := []byte(`enum Color {
+  RED,
+  GREEN {
+    void greet() {}
+  };
+}`)
+	res := extractJava("Color.java", src)
+
+	id2label := map[string]string{}
+	labels := map[string]bool{}
+	for _, n := range res.Nodes {
+		id2label[n.ID] = n.Label
+		labels[n.Label] = true
+	}
+	for _, want := range []string{"Color", "RED", "GREEN", "GREEN.greet()"} {
+		if !labels[want] {
+			t.Errorf("missing node label %q", want)
+		}
+	}
+
+	has := func(srcLabel, rel, tgtLabel string) bool {
+		for _, e := range res.Edges {
+			if e.Relation == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
+				return true
+			}
+		}
+		return false
+	}
+	if !has("Color", "case_of", "RED") {
+		t.Error("expected Color --case_of--> RED")
+	}
+	if !has("Color", "case_of", "GREEN") {
+		t.Error("expected Color --case_of--> GREEN")
+	}
+	// Anonymous-body method attaches to the constant, not the enum type.
+	if !has("GREEN", "contains", "GREEN.greet()") {
+		t.Error("expected GREEN --contains--> GREEN.greet")
+	}
+}
