@@ -109,6 +109,18 @@ var secretProneDataExts = map[string]bool{
 	".properties": true, ".env": true, ".txt": true,
 }
 
+// documentExts are DOC_EXTENSIONS entries this port ALSO lists in
+// SupportedExtensions because Go extracts markdown structurally. Upstream
+// classifies these as FileType.DOCUMENT (not FileType.CODE), so they must NOT
+// qualify for the source-code exemption in isSensitive: a secret-keyword doc
+// (credentials.md, password.mdx) is a document, not a module, and must be
+// dropped. Mirrors the intersection of upstream DOC_EXTENSIONS with this port's
+// SupportedExtensions — the other DOC_EXTENSIONS (.qmd/.txt/.rst/.html/.yaml/
+// .yml) are not in SupportedExtensions, so they never reach the code path.
+var documentExts = map[string]bool{
+	".md": true, ".mdx": true, ".markdown": true,
+}
+
 // genericKeywordPattern matches a generic secret keyword core (plus an optional
 // plural "s") in a filename. Unlike sensitivePatterns it does NOT unconditionally
 // drop the file: a genuine source file whose name merely contains the keyword
@@ -240,11 +252,15 @@ func isSensitive(rel string) bool {
 	// .rb/.py named passwords_controller or secret_store is a module, not a secret
 	// store. Data/config formats (.json, .yaml, ...) are deliberately NOT exempt,
 	// because credentials.json / secrets.yaml are exactly the secret stores this
-	// stage must catch. The specific Stage 2 patterns (.env, .pem, id_rsa) still
-	// apply to everything regardless of extension.
+	// stage must catch. Document formats (.md/.mdx/.markdown) are likewise NOT
+	// exempt: this port lists them in SupportedExtensions to extract markdown
+	// structurally, but upstream classifies them as FileType.DOCUMENT, so a
+	// secret-keyword doc (credentials.md, password.mdx) must be dropped. The
+	// specific Stage 2 patterns (.env, .pem, id_rsa) still apply to everything
+	// regardless of extension.
 	if genericKeywordHit(name) {
 		ext := strings.ToLower(filepath.Ext(name))
-		isSourceCode := SupportedExtensions[ext] && !secretProneDataExts[ext]
+		isSourceCode := SupportedExtensions[ext] && !documentExts[ext] && !secretProneDataExts[ext]
 		return !isSourceCode
 	}
 	return false

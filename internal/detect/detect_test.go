@@ -78,6 +78,13 @@ func TestIsSensitiveSourceExemption(t *testing.T) {
 		".env",
 		"id_rsa",
 		"server.pem",
+		// Document formats carry a supported extension (markdown is extracted
+		// structurally) but upstream classifies them as FileType.DOCUMENT, not
+		// CODE, so a secret-keyword doc is NOT exempt and must be dropped.
+		"secret_notes.md",
+		"credentials.md",
+		"password.mdx",
+		"secrets.markdown",
 	}
 	for _, name := range dropped {
 		if !isSensitive(name) {
