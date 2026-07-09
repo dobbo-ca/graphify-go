@@ -5,6 +5,7 @@
 package detect
 
 import (
+	"fmt"
 	"io/fs"
 	"path/filepath"
 	"regexp"
@@ -199,14 +200,31 @@ func isASCIIAlpha(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
 }
 
-// CollectFiles returns the supported source files under root, relative to root,
-// in sorted order for deterministic output.
-func CollectFiles(root string) ([]string, error) {
-	var files []string
+// WalkReport carries the diagnostics CollectFilesReport gathers alongside the
+// file list: directory-read errors hit mid-walk (which would otherwise silently
+// truncate the enumeration into a partial graph.json) and a count of files that
+// were walked past but not collected because no extractor handles their
+// extension. Mirrors upstream detect.py's walk_errors / unclassified surfacing.
+type WalkReport struct {
+	Files      []string // collected source files, relative to root, in WalkDir order
+	WalkErrors []string // "<path>: <error>" for each entry the walk could not read
+	Skipped    int      // files seen but dropped for an unsupported extension / no extractor
+}
+
+// CollectFilesReport walks root exactly like CollectFiles but additionally
+// records the directory-read errors it hits (instead of silently swallowing
+// them) and counts the files it skips for lacking a supported extension. The
+// returned Files slice is identical to CollectFiles' output.
+func CollectFilesReport(root string) (WalkReport, error) {
+	var rep WalkReport
 	ign := newIgnorer(root)
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil // unreadable entry — skip, don't abort the whole walk
+			// Record the failing entry instead of swallowing it: an unreadable
+			// directory (permissions, or a delete racing a concurrent scan)
+			// otherwise silently truncates the file list. Keep walking siblings.
+			rep.WalkErrors = append(rep.WalkErrors, fmt.Sprintf("%s: %v", path, err))
+			return nil
 		}
 		rel, relErr := filepath.Rel(root, path)
 		if relErr != nil {
@@ -230,15 +248,23 @@ func CollectFiles(root string) ([]string, error) {
 			return nil
 		}
 		if !SupportedExtensions[strings.ToLower(filepath.Ext(name))] && !mcpConfigFiles[name] {
+			rep.Skipped++ // seen but no extractor handles this type
 			return nil
 		}
 		if isSensitive(rel) || ign.ignored(slashRel, false) {
 			return nil
 		}
-		files = append(files, rel)
+		rep.Files = append(rep.Files, rel)
 		return nil
 	})
-	return files, err
+	return rep, err
+}
+
+// CollectFiles returns the supported source files under root, relative to root,
+// in sorted order for deterministic output.
+func CollectFiles(root string) ([]string, error) {
+	rep, err := CollectFilesReport(root)
+	return rep.Files, err
 }
 
 // CollectManifests returns the package-manifest files under root (relative to

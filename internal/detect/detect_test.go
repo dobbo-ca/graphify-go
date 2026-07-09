@@ -3,6 +3,8 @@ package detect
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -146,6 +148,78 @@ func TestCollectFilesKeepsKeywordNamedSource(t *testing.T) {
 	}
 	if got["credentials.json"] {
 		t.Errorf("expected credentials.json to be dropped as a secret store, got %v", files)
+	}
+}
+
+// An unreadable directory must be recorded in the walk-errors report rather than
+// silently swallowed — swallowing it truncates the enumeration into a partial
+// graph.json with no trace. The walk must still continue past the failure and
+// collect readable siblings. Skipped when running as root (root bypasses the
+// permission bits) or on Windows (chmod 000 does not restrict directory reads
+// there). Mirrors upstream detect.py's walk_errors surfacing.
+func TestCollectFilesReportsWalkError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 000 does not restrict directory reads on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("running as root bypasses directory permission bits")
+	}
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "main.go"), `package p`)
+	locked := filepath.Join(root, "locked")
+	mustWrite(t, filepath.Join(locked, "hidden.go"), `package p`)
+	if err := os.Chmod(locked, 0o000); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) }) // restore so TempDir cleanup can remove it
+
+	rep, err := CollectFilesReport(root)
+	if err != nil {
+		t.Fatalf("CollectFilesReport: %v", err)
+	}
+	if len(rep.WalkErrors) == 0 {
+		t.Fatalf("expected a walk error for the unreadable dir, got none")
+	}
+	found := false
+	for _, we := range rep.WalkErrors {
+		if strings.Contains(we, "locked") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a walk error mentioning %q, got %v", "locked", rep.WalkErrors)
+	}
+	// The walk must continue past the failure: the readable sibling is still collected.
+	got := map[string]bool{}
+	for _, f := range rep.Files {
+		got[filepath.ToSlash(f)] = true
+	}
+	if !got["main.go"] {
+		t.Errorf("expected main.go collected despite the unreadable sibling dir, got %v", rep.Files)
+	}
+}
+
+// Files walked past but not collected because no extractor handles their
+// extension must be counted (previously they left no trace at all), mirroring
+// upstream detect.py's `unclassified` count. Supported files are not counted;
+// deliberately-skipped lock files are not counted.
+func TestCollectFilesReportCountsSkipped(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "main.go"), `package p`)      // collected
+	mustWrite(t, filepath.Join(root, "notes.unknownext"), `x`)     // no extractor -> counted
+	mustWrite(t, filepath.Join(root, "image.png"), `x`)            // no extractor -> counted
+	mustWrite(t, filepath.Join(root, "Makefile"), `all:`)          // extensionless -> counted
+	mustWrite(t, filepath.Join(root, "go.sum"), `x`)               // lock file -> NOT counted
+
+	rep, err := CollectFilesReport(root)
+	if err != nil {
+		t.Fatalf("CollectFilesReport: %v", err)
+	}
+	if rep.Skipped != 3 {
+		t.Errorf("expected 3 skipped (no-extractor) files, got %d", rep.Skipped)
+	}
+	if len(rep.Files) != 1 || filepath.ToSlash(rep.Files[0]) != "main.go" {
+		t.Errorf("expected only main.go collected, got %v", rep.Files)
 	}
 }
 

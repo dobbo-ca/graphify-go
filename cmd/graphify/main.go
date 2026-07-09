@@ -283,16 +283,31 @@ func skippedFiles(files []string, newCache cache.Cache) map[string]bool {
 	return skipped
 }
 
+// warnWalkReport prints a non-fatal stderr warning for each directory the detect
+// walk could not read (its files are missing from this run) and a note counting
+// files seen but skipped for lacking an extractor. Silent otherwise. Mirrors
+// upstream detect.py's walk_errors / unclassified surfacing.
+func warnWalkReport(rep detect.WalkReport) {
+	for _, we := range rep.WalkErrors {
+		fmt.Fprintf(os.Stderr, "[graphify] WARNING: could not scan %s; its files are missing from this run's enumeration.\n", we)
+	}
+	if rep.Skipped > 0 {
+		fmt.Fprintf(os.Stderr, "[graphify] note: %d file(s) skipped (no extractor for their type).\n", rep.Skipped)
+	}
+}
+
 func cmdBuild(args []string) error {
 	opts, err := parseBuildOpts(args)
 	if err != nil {
 		return err
 	}
 	root := opts.root
-	files, err := detect.CollectFiles(root)
+	rep, err := detect.CollectFilesReport(root)
 	if err != nil {
 		return err
 	}
+	files := rep.Files
+	warnWalkReport(rep)
 	if len(files) == 0 {
 		return fmt.Errorf("no supported source files found under %s", root)
 	}
@@ -412,10 +427,12 @@ func withManifests(root string, results []extract.Result) ([]extract.Result, err
 // cache it transparently degrades to a full build.
 func cmdUpdate(args []string) error {
 	root, cargo, noManifests, force, noCluster := parseBuildArgs(args)
-	files, err := detect.CollectFiles(root)
+	rep, err := detect.CollectFilesReport(root)
 	if err != nil {
 		return err
 	}
+	files := rep.Files
+	warnWalkReport(rep)
 	if len(files) == 0 {
 		return fmt.Errorf("no supported source files found under %s", root)
 	}
