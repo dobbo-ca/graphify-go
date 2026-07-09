@@ -25,7 +25,7 @@ var byExt = map[string]string{
 	".rs": "rust",
 	// JS/TS module graph
 	".js": "jsts", ".jsx": "jsts", ".mjs": "jsts", ".cjs": "jsts",
-	".ts": "jsts", ".tsx": "jsts",
+	".ts": "jsts", ".mts": "jsts", ".cts": "jsts", ".tsx": "jsts",
 	// Python
 	".py": "py",
 	// JVM interop (Java/Kotlin/Scala)

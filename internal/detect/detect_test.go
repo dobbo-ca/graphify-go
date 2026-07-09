@@ -223,6 +223,39 @@ func TestCollectFilesReportCountsSkipped(t *testing.T) {
 	}
 }
 
+// .mts/.cts are TypeScript module/CommonJS source and must be collected, while
+// an extensionless file is collected only when its first line is a shebang
+// naming an interpreter that has a Go extractor (bash, python, ...). A plain
+// extensionless file and an interpreter with no extractor (perl) stay skipped.
+func TestCollectFilesShebangAndMts(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "mod.mts"), `export const x = 1;`)
+	mustWrite(t, filepath.Join(root, "cmod.cts"), `export const y = 2;`)
+	mustWrite(t, filepath.Join(root, "deploy"), "#!/usr/bin/env bash\necho hi\n")
+	mustWrite(t, filepath.Join(root, "run.py.helper"), "") // has an (unsupported) ext, not extensionless
+	mustWrite(t, filepath.Join(root, "notes"), "just some text, no shebang\n")
+	mustWrite(t, filepath.Join(root, "oldscript"), "#!/usr/bin/perl\nprint 1;\n") // perl: no Go extractor
+
+	files, err := CollectFiles(root)
+	if err != nil {
+		t.Fatalf("CollectFiles: %v", err)
+	}
+	got := map[string]bool{}
+	for _, f := range files {
+		got[filepath.ToSlash(f)] = true
+	}
+	for _, want := range []string{"mod.mts", "cmod.cts", "deploy"} {
+		if !got[want] {
+			t.Errorf("expected %q to be collected, got %v", want, files)
+		}
+	}
+	for _, notWant := range []string{"run.py.helper", "notes", "oldscript"} {
+		if got[notWant] {
+			t.Errorf("did not expect %q to be collected, got %v", notWant, files)
+		}
+	}
+}
+
 func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

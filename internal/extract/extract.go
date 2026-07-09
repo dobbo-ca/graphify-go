@@ -15,6 +15,7 @@ import (
 	tsjs "github.com/tree-sitter/tree-sitter-javascript/bindings/go"
 	tstsx "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
 
+	"github.com/dobbo-ca/graphify-go/internal/detect"
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
@@ -102,14 +103,20 @@ func FileFromBytes(rel string, src []byte) Result {
 	if IsMCPConfigPath(rel) {
 		return extractMCPConfig(rel, src)
 	}
-	switch strings.ToLower(filepath.Ext(rel)) {
+	ext := strings.ToLower(filepath.Ext(rel))
+	if ext == "" {
+		// Extensionless script: route by the interpreter its shebang names, the
+		// same way detect.CollectFiles decided to collect it.
+		ext = detect.ShebangExt(src)
+	}
+	switch ext {
 	case ".go":
 		return extractGo(rel, src)
 	case ".js", ".jsx", ".mjs", ".cjs":
 		return extractJS(rel, src, tsjs.Language())
 	case ".tsx":
 		return extractJS(rel, src, tstsx.LanguageTSX())
-	case ".ts":
+	case ".ts", ".mts", ".cts":
 		return extractJS(rel, src, tstsx.LanguageTypescript())
 	case ".tf", ".tfvars", ".hcl":
 		return extractTerraform(rel, src)

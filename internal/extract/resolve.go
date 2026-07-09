@@ -12,7 +12,7 @@ import (
 
 // jsResolveExts are tried in order when resolving a relative JS/TS import to a
 // file in the corpus.
-var jsResolveExts = []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".d.ts"}
+var jsResolveExts = []string{".ts", ".mts", ".cts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".d.ts"}
 
 // Resolve stitches per-file results into one extraction. It adds the call edges
 // and import edges that need a whole-corpus view: calls resolve to definitions

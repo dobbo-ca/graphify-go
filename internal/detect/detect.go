@@ -5,8 +5,10 @@
 package detect
 
 import (
+	"bytes"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -20,6 +22,8 @@ var SupportedExtensions = map[string]bool{
 	".mjs":      true,
 	".cjs":      true,
 	".ts":       true,
+	".mts":      true,
+	".cts":      true,
 	".tsx":      true,
 	".tf":       true,
 	".tfvars":   true,
@@ -84,6 +88,84 @@ var mcpConfigFiles = map[string]bool{
 	"claude_desktop_config.json": true,
 	"mcp.json":                   true,
 	"mcp_servers.json":           true,
+}
+
+// shebangExtractorExt maps a shebang interpreter's basename to the file
+// extension whose extractor should handle an extensionless script. Only
+// interpreters that have a real Go extractor are listed — upstream's other
+// shebang code interpreters (perl, Rscript, fish, tcsh) have no extractor here,
+// so their scripts are left unindexed rather than mis-parsed. The mapped
+// extension is one the extract dispatch already understands. Mirrors the
+// extractor-backed subset of detect.py's _SHEBANG_CODE_INTERPRETERS.
+var shebangExtractorExt = map[string]string{
+	"python":  ".py",
+	"python3": ".py",
+	"python2": ".py",
+	"node":    ".js",
+	"nodejs":  ".js",
+	"ruby":    ".rb",
+	"bash":    ".sh",
+	"sh":      ".sh",
+	"dash":    ".sh",
+	"zsh":     ".sh",
+	"ksh":     ".sh",
+	"lua":     ".lua",
+	"php":     ".php",
+	"julia":   ".jl",
+}
+
+// ShebangExt returns the extractor extension (e.g. ".sh", ".py") for a script
+// whose leading line is a shebang naming an interpreter with a Go extractor, or
+// "" when src has no such shebang. src need only hold the first line. It lets
+// the extract dispatch route an extensionless script the same way CollectFiles
+// decided to collect it.
+func ShebangExt(src []byte) string {
+	return shebangExtractorExt[shebangInterpreter(src)]
+}
+
+// shebangInterpreter parses the interpreter basename from a leading shebang
+// line, resolving the common `/usr/bin/env [flag|VAR=val ...] <interp>` form. It
+// returns "" when src does not start with "#!" or no interpreter token is found.
+func shebangInterpreter(src []byte) string {
+	if !bytes.HasPrefix(src, []byte("#!")) {
+		return ""
+	}
+	line := src[2:]
+	if i := bytes.IndexByte(line, '\n'); i >= 0 {
+		line = line[:i]
+	}
+	fields := strings.Fields(string(line))
+	if len(fields) == 0 {
+		return ""
+	}
+	interp := filepath.Base(fields[0])
+	if interp == "env" {
+		// Skip env(1) flags (-S, -i, ...) and inline NAME=value assignments to
+		// reach the interpreter token.
+		interp = ""
+		for _, f := range fields[1:] {
+			if strings.HasPrefix(f, "-") || strings.Contains(f, "=") {
+				continue
+			}
+			interp = filepath.Base(f)
+			break
+		}
+	}
+	return interp
+}
+
+// shebangExtOfFile reads the leading bytes of path and returns the extractor
+// extension for its shebang interpreter, or "" if the file has no recognised
+// shebang or cannot be read.
+func shebangExtOfFile(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	var buf [256]byte
+	n, _ := f.Read(buf[:])
+	return ShebangExt(buf[:n])
 }
 
 // packageManifestFiles are indexed by basename: package manifests declaring a
@@ -247,9 +329,14 @@ func CollectFilesReport(root string) (WalkReport, error) {
 		if skipFiles[name] {
 			return nil
 		}
-		if !SupportedExtensions[strings.ToLower(filepath.Ext(name))] && !mcpConfigFiles[name] {
-			rep.Skipped++ // seen but no extractor handles this type
-			return nil
+		ext := strings.ToLower(filepath.Ext(name))
+		if !SupportedExtensions[ext] && !mcpConfigFiles[name] {
+			// An extensionless file may still be a script: sniff its first line
+			// for a shebang naming an interpreter that has a Go extractor.
+			if ext != "" || shebangExtOfFile(path) == "" {
+				rep.Skipped++ // seen but no extractor handles this type
+				return nil
+			}
 		}
 		if isSensitive(rel) || ign.ignored(slashRel, false) {
 			return nil
