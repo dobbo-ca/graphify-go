@@ -624,20 +624,47 @@ func cmdExport(format, root string) error {
 
 // cmdAffected prints the graph nodes defined in the given files and everything
 // that transitively depends on them. With no files it derives them from the
-// working tree's uncommitted changes (git diff against HEAD).
-func cmdAffected(files []string) error {
+// working tree's uncommitted changes (git diff against HEAD). --depth N bounds
+// the reverse-dependency walk (default: unbounded); --relation R (repeatable)
+// restricts which edge kinds count as "depends-on".
+func cmdAffected(args []string) error {
 	g, err := load()
 	if err != nil {
 		return err
 	}
+	var files, relations []string
+	depth := 0 // unbounded — preserve the historical whole-closure behaviour
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--depth" && i+1 < len(args):
+			depth, err = strconv.Atoi(args[i+1])
+			if err != nil {
+				return fmt.Errorf("--depth must be an integer")
+			}
+			i++
+		case strings.HasPrefix(a, "--depth="):
+			depth, err = strconv.Atoi(strings.TrimPrefix(a, "--depth="))
+			if err != nil {
+				return fmt.Errorf("--depth must be an integer")
+			}
+		case a == "--relation" && i+1 < len(args):
+			relations = append(relations, args[i+1])
+			i++
+		case strings.HasPrefix(a, "--relation="):
+			relations = append(relations, strings.TrimPrefix(a, "--relation="))
+		default:
+			files = append(files, a)
+		}
+	}
 	if len(files) == 0 {
 		files = gitChangedFiles(".")
 		if len(files) == 0 {
-			return fmt.Errorf("no files given and no uncommitted changes detected (usage: graphify affected [file...])")
+			return fmt.Errorf("no files given and no uncommitted changes detected (usage: graphify affected [file...] [--depth N] [--relation R])")
 		}
 		fmt.Printf("changed files (from git): %s\n", strings.Join(files, ", "))
 	}
-	res := query.Affected(g, files)
+	res := query.Affected(g, files, query.AffectedOptions{Depth: depth, Relations: relations})
 	if len(res.Changed) == 0 {
 		fmt.Println("no graph nodes are defined in those files")
 		return nil
@@ -811,7 +838,7 @@ usage:
   graphify ask "<question>"    NL retrieval: relevant subgraph as text [--dfs --budget N --graph path]
   graphify explain <node>      show a node and its neighbours
   graphify path <from> <to>    shortest dependency path between two nodes
-  graphify affected [file...]  nodes defined in changed files + their dependents
+  graphify affected [file...]  nodes defined in changed files + their dependents [--depth N --relation R]
   graphify diff <old> <new>    node/edge delta between two graph.json snapshots
   graphify merge-driver <base> <current> <other>  git merge driver: union-merge two graph.json files
   graphify validate            check graph.json for structural problems

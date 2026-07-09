@@ -43,7 +43,7 @@ const affectedJSON = `{"directed":true,"multigraph":false,"graph":{},
 
 func TestAffectedTransitive(t *testing.T) {
 	g := loadJSON(t, affectedJSON)
-	res := Affected(g, []string{"util.go"})
+	res := Affected(g, []string{"util.go"}, AffectedOptions{})
 
 	if len(res.Changed) != 1 || res.Changed[0].ID != "add" {
 		t.Fatalf("changed: got %+v, want [add]", res.Changed)
@@ -78,7 +78,7 @@ const inheritsJSON = `{"directed":true,"multigraph":false,"graph":{},
 
 func TestAffectedInheritsContext(t *testing.T) {
 	g := loadJSON(t, inheritsJSON)
-	res := Affected(g, []string{"child.tf"})
+	res := Affected(g, []string{"child.tf"}, AffectedOptions{})
 
 	if len(res.Changed) != 1 || res.Changed[0].ID != "module_this" {
 		t.Fatalf("changed: got %+v, want [module_this]", res.Changed)
@@ -94,8 +94,54 @@ func TestAffectedInheritsContext(t *testing.T) {
 
 func TestAffectedNoMatch(t *testing.T) {
 	g := loadJSON(t, affectedJSON)
-	res := Affected(g, []string{"nonexistent.go"})
+	res := Affected(g, []string{"nonexistent.go"}, AffectedOptions{})
 	if len(res.Changed) != 0 || len(res.Impacted) != 0 {
 		t.Errorf("expected empty result for unknown file, got %+v", res)
+	}
+}
+
+// impacted returns the impacted node IDs as a set for terse assertions.
+func impacted(res AffectedResult) map[string]bool {
+	got := map[string]bool{}
+	for _, n := range res.Impacted {
+		got[n.ID] = true
+	}
+	return got
+}
+
+// TestAffectedDepth: changing util.go (add) reaches compute at depth 1 and run
+// at depth 2. Depth 1 keeps only the direct dependent; depth 2 (and unbounded)
+// reach the transitive caller.
+func TestAffectedDepth(t *testing.T) {
+	g := loadJSON(t, affectedJSON)
+
+	d1 := impacted(Affected(g, []string{"util.go"}, AffectedOptions{Depth: 1}))
+	if !d1["compute"] {
+		t.Errorf("depth 1 should include compute (direct dependent), got %v", d1)
+	}
+	if d1["run"] {
+		t.Errorf("depth 1 must exclude run (2 hops away), got %v", d1)
+	}
+
+	d2 := impacted(Affected(g, []string{"util.go"}, AffectedOptions{Depth: 2}))
+	if !d2["compute"] || !d2["run"] {
+		t.Errorf("depth 2 should include compute and run, got %v", d2)
+	}
+}
+
+// TestAffectedRelation: with a --relation filter, only edges of the named kind
+// are followed. Filtering to "imports" (an unused relation here) yields no
+// impact even though "calls" edges exist.
+func TestAffectedRelation(t *testing.T) {
+	g := loadJSON(t, affectedJSON)
+
+	calls := impacted(Affected(g, []string{"util.go"}, AffectedOptions{Relations: []string{"calls"}}))
+	if !calls["compute"] || !calls["run"] {
+		t.Errorf("relation=calls should include compute and run, got %v", calls)
+	}
+
+	imports := impacted(Affected(g, []string{"util.go"}, AffectedOptions{Relations: []string{"imports"}}))
+	if len(imports) != 0 {
+		t.Errorf("relation=imports should yield no impact (no imports edges), got %v", imports)
 	}
 }
