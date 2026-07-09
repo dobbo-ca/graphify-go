@@ -59,24 +59,71 @@ func (b *builder) ktType(n *ts.Node, src []byte) {
 		}
 		for j := uint(0); j < body.ChildCount(); j++ {
 			m := body.Child(j)
-			if m.Kind() != "function_declaration" {
-				continue
+			switch m.Kind() {
+			case "function_declaration":
+				b.ktMember(typeID, name, m, src)
+			case "enum_entry":
+				b.ktEnumEntry(typeID, m, src)
 			}
-			mname := fieldText(m, "name", src)
-			if mname == "" {
-				continue
-			}
-			mid := idutil.MakeID(b.stem, name, mname)
-			b.addNode(mid, name+"."+mname+"()", line(m))
-			b.res.Edges = append(b.res.Edges, model.Edge{
-				Source: typeID, Target: mid, Relation: "contains",
-				Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
-			})
-			// Register under the bare method name so `x.method()` call sites resolve.
-			b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
-			b.ktCalls(ktBody(m), mid, src)
 		}
 	}
+}
+
+// ktMember records a method scoped under ownerID (a type or an enum entry with
+// an anonymous body), labelled ownerName.method(). It is registered under the
+// bare method name so `x.method()` call sites resolve.
+func (b *builder) ktMember(ownerID, ownerName string, m *ts.Node, src []byte) {
+	mname := fieldText(m, "name", src)
+	if mname == "" {
+		return
+	}
+	mid := idutil.MakeID(ownerID, mname)
+	b.addNode(mid, ownerName+"."+mname+"()", line(m))
+	b.res.Edges = append(b.res.Edges, model.Edge{
+		Source: ownerID, Target: mid, Relation: "contains",
+		Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
+	})
+	b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
+	b.ktCalls(ktBody(m), mid, src)
+}
+
+// ktEnumEntry records an enum entry as a `case_of` the enum type. An entry with
+// an anonymous class body (`GREEN { fun greet(){} }`) descends so the body's
+// methods attach to the entry rather than being dropped.
+func (b *builder) ktEnumEntry(typeID string, n *ts.Node, src []byte) {
+	cname := ktEntryName(n, src)
+	if cname == "" {
+		return
+	}
+	cid := idutil.MakeID(typeID, cname)
+	b.addNode(cid, cname, line(n))
+	b.res.Edges = append(b.res.Edges, model.Edge{
+		Source: typeID, Target: cid, Relation: "case_of",
+		Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(n),
+	})
+	for i := uint(0); i < n.ChildCount(); i++ {
+		body := n.Child(i)
+		if body.Kind() != "class_body" {
+			continue
+		}
+		for j := uint(0); j < body.ChildCount(); j++ {
+			if m := body.Child(j); m.Kind() == "function_declaration" {
+				b.ktMember(cid, cname, m, src)
+			}
+		}
+	}
+}
+
+// ktEntryName returns an enum entry's name: its first identifier child. The
+// grammar exposes it as a plain `simple_identifier`/`identifier` rather than a
+// named field.
+func ktEntryName(n *ts.Node, src []byte) string {
+	for i := uint(0); i < n.ChildCount(); i++ {
+		if c := n.Child(i); c.Kind() == "simple_identifier" || c.Kind() == "identifier" {
+			return c.Utf8Text(src)
+		}
+	}
+	return ""
 }
 
 // ktImport records the dotted path of an `import` directive as an import spec.
