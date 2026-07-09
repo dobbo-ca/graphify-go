@@ -253,6 +253,39 @@ func (b *builder) imp(spec, loc string) {
 	}
 }
 
+// addRationale records a rationale node (an explanatory docstring or a
+// `# NOTE:` / `// NOTE:`-style comment) plus a rationale_for edge from it to
+// parentID. Mirrors upstream _add_rationale: the node id keys on the source line
+// so repeated captures on one line collapse to a single node, and the label is
+// the first 80 runes with embedded newlines flattened to spaces.
+func (b *builder) addRationale(text string, lineNum int, parentID string) {
+	rid := idutil.MakeID(b.stem, "rationale", itoa(lineNum))
+	loc := "L" + itoa(lineNum)
+	if !b.seen[rid] {
+		b.seen[rid] = true
+		b.res.Nodes = append(b.res.Nodes, model.Node{
+			ID: rid, Label: rationaleLabel(text), FileType: "rationale",
+			SourceFile: b.file, SourceLocation: loc,
+		})
+	}
+	b.res.Edges = append(b.res.Edges, model.Edge{
+		Source: rid, Target: parentID, Relation: "rationale_for",
+		Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: loc,
+	})
+}
+
+// rationaleLabel trims a rationale's display text to the first 80 runes with any
+// embedded newlines flattened to spaces (mirrors upstream label construction).
+func rationaleLabel(text string) string {
+	if r := []rune(text); len(r) > 80 {
+		text = string(r[:80])
+	}
+	text = strings.ReplaceAll(text, "\r\n", " ")
+	text = strings.ReplaceAll(text, "\r", " ")
+	text = strings.ReplaceAll(text, "\n", " ")
+	return strings.TrimSpace(text)
+}
+
 // walk visits every descendant of n, calling fn on each. fn returns false to
 // stop descending into that node's children. n may be nil (e.g. an empty block
 // body, or a missing tree-sitter child), in which case there is nothing to do.
