@@ -88,13 +88,67 @@ var sensitiveDirs = map[string]bool{
 	"secrets": true, ".secrets": true, "credentials": true,
 }
 
-// sensitivePatterns match filenames likely to contain secrets.
+// sensitivePatterns match filenames that specifically name a secret store
+// (extensions, exact credential-store names). These are specific and always
+// apply, regardless of extension.
 var sensitivePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(^|[\\/])\.(env|envrc)(\.|$)`),
 	regexp.MustCompile(`(?i)\.(pem|key|p12|pfx|cert|crt|der|p8)$`),
-	regexp.MustCompile(`(?i)(^|[^a-zA-Z0-9])(credential|secret|passwd|password|private_key)s?($|[^a-zA-Z])`),
 	regexp.MustCompile(`(id_rsa|id_dsa|id_ecdsa|id_ed25519)(\.pub)?$`),
 	regexp.MustCompile(`(?i)(\.netrc|\.pgpass|\.htpasswd)$`),
+}
+
+// secretProneDataExts are data/serialization extensions that commonly ARE secret
+// stores when their name hits a generic keyword (credentials.json, secrets.yaml).
+// They stay subject to the generic-keyword drop even though .json routes through
+// the code path for manifest parsing — only real programming-language source is
+// exempt. Mirrors the upstream _SECRET_PRONE_DATA_EXTS set.
+var secretProneDataExts = map[string]bool{
+	".json": true, ".yaml": true, ".yml": true, ".toml": true, ".ini": true,
+	".cfg": true, ".conf": true, ".config": true, ".xml": true,
+	".properties": true, ".env": true, ".txt": true,
+}
+
+// genericKeywordPattern matches a generic secret keyword in a filename. Unlike
+// sensitivePatterns it does NOT unconditionally drop the file: a genuine source
+// file whose name merely contains the keyword (password_reset.go,
+// passwords_controller.rb) is a module, not a secret store, so it is exempt in
+// isSensitive Stage 3. RE2 has no lookbehind, so the word boundaries are emulated
+// with (^|[^a-zA-Z0-9]) and ($|[^a-zA-Z]); group 1 captures the keyword plus its
+// optional plural "s" so its end position can be tested against the stem end.
+var genericKeywordPattern = regexp.MustCompile(`(?i)(?:^|[^a-zA-Z0-9])((?:credential|secret|passwd|password|private_key)s?)(?:$|[^a-zA-Z])`)
+
+// wordSplit separates a filename stem into words for the load-bearing check
+// (mirrors the upstream _WORD_SPLIT of [-_\s]+).
+var wordSplit = regexp.MustCompile(`[-_\s]+`)
+
+// genericKeywordHit reports whether a generic secret keyword appears load-bearing
+// in the filename. Secret-store files name their contents, and in English
+// compounds the content noun comes last: "api_token", "oauth_password". A keyword
+// that neither ends the stem nor sits in a short (<=2 word) name is a topic word
+// in a descriptive slug ("password-policy-discussion.md") and must not silently
+// drop the file. Mirrors upstream _generic_keyword_hit.
+func genericKeywordHit(name string) bool {
+	// Stem = name up to the first dot, ignoring leading dots so dotfiles like
+	// ".secret" keep their keyword.
+	stem := strings.SplitN(strings.TrimLeft(name, "."), ".", 2)[0]
+	matches := genericKeywordPattern.FindAllStringSubmatchIndex(stem, -1)
+	if len(matches) == 0 {
+		return false
+	}
+	for _, m := range matches {
+		if m[3] == len(stem) { // keyword+s ends the stem -> names the contents
+			return true
+		}
+	}
+	// Short name like secret_store / password_reset (<=2 words): still load-bearing.
+	words := 0
+	for _, w := range wordSplit.Split(stem, -1) {
+		if w != "" {
+			words++
+		}
+	}
+	return words <= 2
 }
 
 // CollectFiles returns the supported source files under root, relative to root,
@@ -157,6 +211,18 @@ func isSensitive(rel string) bool {
 		if p.MatchString(name) {
 			return true
 		}
+	}
+	// Stage 3: generic secret keywords, only when load-bearing in the name. Do NOT
+	// let a bare keyword silently drop a genuine programming-language source file: a
+	// .rb/.py named passwords_controller or secret_store is a module, not a secret
+	// store. Data/config formats (.json, .yaml, ...) are deliberately NOT exempt,
+	// because credentials.json / secrets.yaml are exactly the secret stores this
+	// stage must catch. The specific Stage 2 patterns (.env, .pem, id_rsa) still
+	// apply to everything regardless of extension.
+	if genericKeywordHit(name) {
+		ext := strings.ToLower(filepath.Ext(name))
+		isSourceCode := SupportedExtensions[ext] && !secretProneDataExts[ext]
+		return !isSourceCode
 	}
 	return false
 }

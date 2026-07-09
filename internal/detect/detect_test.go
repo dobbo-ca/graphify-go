@@ -56,6 +56,65 @@ func TestCollectFilesIncludesMCPConfigs(t *testing.T) {
 	}
 }
 
+// A generic secret keyword in a filename must not drop a genuine source file
+// (password_reset.go is a module, not a secret store), while specific credential
+// stores (credentials.json, secrets.yaml, .env, id_rsa, *.pem) must still be
+// dropped. Mirrors the upstream _is_sensitive / _generic_keyword_hit refinement.
+func TestIsSensitiveSourceExemption(t *testing.T) {
+	kept := []string{
+		"password_reset.go",
+		"passwords_controller.rb",
+		"credentials_controller.rb",
+		"secret_store.py",
+	}
+	for _, name := range kept {
+		if isSensitive(name) {
+			t.Errorf("isSensitive(%q) = true, want false (real source, not a secret store)", name)
+		}
+	}
+	dropped := []string{
+		"credentials.json",
+		"secrets.yaml",
+		".env",
+		"id_rsa",
+		"server.pem",
+	}
+	for _, name := range dropped {
+		if !isSensitive(name) {
+			t.Errorf("isSensitive(%q) = false, want true (secret store)", name)
+		}
+	}
+}
+
+// CollectFiles must keep source files whose names merely contain a secret keyword
+// and still drop a genuine secret store (credentials.json) that shares a supported
+// extension — exercising the real isSensitive path end-to-end.
+func TestCollectFilesKeepsKeywordNamedSource(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "password_reset.go"), `package p`)
+	mustWrite(t, filepath.Join(root, "passwords_controller.rb"), `class PasswordsController; end`)
+	mustWrite(t, filepath.Join(root, "credentials_controller.rb"), `class CredentialsController; end`)
+	mustWrite(t, filepath.Join(root, "secret_store.py"), `x = 1`)
+	mustWrite(t, filepath.Join(root, "credentials.json"), `{"password": "hunter2"}`)
+
+	files, err := CollectFiles(root)
+	if err != nil {
+		t.Fatalf("CollectFiles: %v", err)
+	}
+	got := map[string]bool{}
+	for _, f := range files {
+		got[filepath.ToSlash(f)] = true
+	}
+	for _, want := range []string{"password_reset.go", "passwords_controller.rb", "credentials_controller.rb", "secret_store.py"} {
+		if !got[want] {
+			t.Errorf("expected %q to be collected, got %v", want, files)
+		}
+	}
+	if got["credentials.json"] {
+		t.Errorf("expected credentials.json to be dropped as a secret store, got %v", files)
+	}
+}
+
 func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
