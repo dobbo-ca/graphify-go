@@ -194,7 +194,7 @@ func assemble(root string, files []string, prev cache.Cache, prevStat cache.Stat
 // <root>/graphify-out. When sem.enabled, an additive LLM enrichment pass runs
 // between resolve and graph-build so communities reflect concepts; it never
 // alters the deterministic core.
-func writeOutputs(root string, files []string, results []extract.Result, newCache cache.Cache, newStat cache.StatIndex, sem semanticOpts, force bool) (*model.Graph, map[int][]string, error) {
+func writeOutputs(root string, files []string, results []extract.Result, newCache cache.Cache, newStat cache.StatIndex, sem semanticOpts, force, noCluster bool) (*model.Graph, map[int][]string, error) {
 	ext := extract.Resolve(results, files)
 	if sem.enabled {
 		var err error
@@ -204,7 +204,13 @@ func writeOutputs(root string, files []string, results []extract.Result, newCach
 		}
 	}
 	g := graph.Build(ext)
-	communities := cluster.Cluster(g)
+	// --no-cluster writes the raw extraction: skip Louvain community detection so
+	// every node lands with no community assignment (mirrors upstream update
+	// --no-cluster). An empty map flows through NodeCommunity as "no community".
+	communities := map[int][]string{}
+	if !noCluster {
+		communities = cluster.Cluster(g)
+	}
 	commit := gitHead(root)
 
 	outDir := filepath.Join(root, "graphify-out")
@@ -307,7 +313,7 @@ func cmdBuild(args []string) error {
 			return err
 		}
 	}
-	g, communities, err := writeOutputs(root, files, results, newCache, newStat, opts.semanticOpts(), opts.force)
+	g, communities, err := writeOutputs(root, files, results, newCache, newStat, opts.semanticOpts(), opts.force, opts.noCluster)
 	if err != nil {
 		return err
 	}
@@ -324,6 +330,7 @@ type buildOpts struct {
 	semantic    bool   // --semantic: run the opt-in LLM enrichment pass
 	backend     string // --backend: which semantic backend (e.g. "bedrock")
 	force       bool   // --force: overwrite graph.json even when the rebuild has fewer nodes
+	noCluster   bool   // --no-cluster: skip community detection, write the raw extraction
 }
 
 // semanticOpts projects the build options onto the enrichment-stage options.
@@ -333,12 +340,13 @@ func (o buildOpts) semanticOpts() semanticOpts {
 
 // parseBuildArgs splits build/update arguments into the target path (default "."),
 // whether the opt-in --cargo crate-dependency pass was requested, whether
-// --no-manifests disabled the default package-manifest pass, and whether --force
-// was given to bypass the anti-shrink guard. It exists for callers that do not
-// support semantic enrichment; build uses parseBuildOpts.
-func parseBuildArgs(args []string) (root string, cargo, noManifests, force bool) {
+// --no-manifests disabled the default package-manifest pass, whether --force
+// was given to bypass the anti-shrink guard, and whether --no-cluster skipped
+// community detection. It exists for callers that do not support semantic
+// enrichment; build uses parseBuildOpts.
+func parseBuildArgs(args []string) (root string, cargo, noManifests, force, noCluster bool) {
 	opts, _ := parseBuildOpts(args)
-	return opts.root, opts.cargo, opts.noManifests, opts.force
+	return opts.root, opts.cargo, opts.noManifests, opts.force, opts.noCluster
 }
 
 // parseBuildOpts parses the full build flag set: the target path (default "."),
@@ -356,6 +364,8 @@ func parseBuildOpts(args []string) (buildOpts, error) {
 			opts.noManifests = true
 		case a == "--force":
 			opts.force = true
+		case a == "--no-cluster":
+			opts.noCluster = true
 		case a == "--semantic":
 			opts.semantic = true
 		case a == "--backend":
@@ -405,7 +415,7 @@ func withManifests(root string, results []extract.Result) ([]extract.Result, err
 // rest, then resolves and writes the same outputs as build. With no existing
 // cache it transparently degrades to a full build.
 func cmdUpdate(args []string) error {
-	root, cargo, noManifests, force := parseBuildArgs(args)
+	root, cargo, noManifests, force, noCluster := parseBuildArgs(args)
 	files, err := detect.CollectFiles(root)
 	if err != nil {
 		return err
@@ -428,7 +438,7 @@ func cmdUpdate(args []string) error {
 			return err
 		}
 	}
-	g, communities, err := writeOutputs(root, files, results, newCache, newStat, semanticOpts{}, force)
+	g, communities, err := writeOutputs(root, files, results, newCache, newStat, semanticOpts{}, force, noCluster)
 	if err != nil {
 		return err
 	}
@@ -830,8 +840,8 @@ func usage() {
 	fmt.Println(`graphify - code knowledge graph
 
 usage:
-  graphify build [path] [--cargo] [--force]   build graph.json + report under <path>/graphify-out (--cargo adds Rust crate-dependency edges; --force overwrites even if the rebuild has fewer nodes, also GRAPHIFY_FORCE=1)
-  graphify update [path] [--cargo] [--force]  rebuild incrementally, re-parsing only changed files
+  graphify build [path] [--cargo] [--force] [--no-cluster]   build graph.json + report under <path>/graphify-out (--cargo adds Rust crate-dependency edges; --force overwrites even if the rebuild has fewer nodes, also GRAPHIFY_FORCE=1; --no-cluster skips community detection)
+  graphify update [path] [--cargo] [--force] [--no-cluster]  rebuild incrementally, re-parsing only changed files
   graphify watch [path]        rebuild incrementally as files change (Ctrl-C to stop)
   graphify hook <install|uninstall|status> [path]  manage git hooks that update the graph after commits
   graphify query <pattern>     find nodes by name (regex, case-insensitive)
