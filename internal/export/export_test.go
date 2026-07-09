@@ -259,6 +259,60 @@ func TestToJSON(t *testing.T) {
 	}
 }
 
+func TestToJSONEdgeWeight(t *testing.T) {
+	g := model.New()
+	g.AddNode(model.Node{ID: "a", Label: "a", FileType: "code", SourceFile: "pkg/a.go"})
+	g.AddNode(model.Node{ID: "b", Label: "b", FileType: "code", SourceFile: "pkg/b.go"})
+	// One edge carries a non-zero weight, the other leaves it unset.
+	g.AddEdge(model.Edge{Source: "a", Target: "b", Relation: "calls", Confidence: "EXTRACTED", Weight: 3.5})
+	g.AddEdge(model.Edge{Source: "b", Target: "a", Relation: "calls", Confidence: "EXTRACTED"})
+
+	path := filepath.Join(t.TempDir(), "graph.json")
+	if err := ToJSON(g, map[int][]string{}, path, "c1", false); err != nil {
+		t.Fatalf("ToJSON: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	// A weighted edge serializes its weight; an unweighted edge omits the field.
+	var out jsonGraph
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(out.Links) != 2 {
+		t.Fatalf("got %d links, want 2", len(out.Links))
+	}
+	for _, l := range out.Links {
+		want := 0.0
+		if l.Source == "a" {
+			want = 3.5
+		}
+		if l.Weight != want {
+			t.Errorf("link %s->%s weight = %v, want %v", l.Source, l.Target, l.Weight, want)
+		}
+	}
+
+	// omitempty: the unweighted edge must not emit a "weight" key at all, so
+	// existing consumers and round-trips are unaffected.
+	var raw struct {
+		Links []map[string]any `json:"links"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("unmarshal raw: %v", err)
+	}
+	for _, l := range raw.Links {
+		_, hasWeight := l["weight"]
+		if l["source"] == "a" && !hasWeight {
+			t.Errorf("weighted edge is missing the weight key: %v", l)
+		}
+		if l["source"] == "b" && hasWeight {
+			t.Errorf("unweighted edge must omit the weight key: %v", l)
+		}
+	}
+}
+
 func TestToJSONComputedName(t *testing.T) {
 	g := model.New()
 	g.AddNode(model.Node{ID: "m1", Label: "module.this [null-label]", FileType: "code", SourceFile: "main.tf", SourceLocation: "L1", ComputedName: "eg-prod-app"})

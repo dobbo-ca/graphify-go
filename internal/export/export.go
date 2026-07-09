@@ -51,6 +51,7 @@ type jsonLink struct {
 	Confidence      string  `json:"confidence"`
 	SourceFile      string  `json:"source_file,omitempty"`
 	SourceLocation  string  `json:"source_location,omitempty"`
+	Weight          float64 `json:"weight,omitempty"`
 	ConfidenceScore float64 `json:"confidence_score"`
 }
 
@@ -109,7 +110,7 @@ func ToJSON(g *model.Graph, communities map[int][]string, path, builtAtCommit st
 		out.Links = append(out.Links, jsonLink{
 			Source: e.Source, Target: e.Target, Relation: e.Relation,
 			Confidence: e.Confidence, SourceFile: e.SourceFile,
-			SourceLocation: e.SourceLocation, ConfidenceScore: score,
+			SourceLocation: e.SourceLocation, Weight: e.Weight, ConfidenceScore: score,
 		})
 	}
 
