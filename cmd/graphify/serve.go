@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -308,15 +309,31 @@ func (s *mcpServer) toolGraphStats(map[string]any) string {
 
 func (s *mcpServer) toolShortestPath(args map[string]any) string {
 	src, tgt := argString(args, "source"), argString(args, "target")
-	nodes, err := query.Path(s.g, src, tgt)
+	res, err := query.PathEdges(s.g, src, tgt, argInt(args, "max_hops", 8))
 	if err != nil {
+		var same *query.SameNodeError
+		var over *query.MaxHopsError
+		if errors.As(err, &same) || errors.As(err, &over) {
+			return err.Error() // advisory, not a hard error
+		}
 		return "Error: " + err.Error()
 	}
-	parts := make([]string, len(nodes))
-	for i := range nodes {
-		parts[i] = security.SanitizeLabel(labelOrID(&nodes[i]))
+	var b strings.Builder
+	fmt.Fprintf(&b, "Shortest path (%d hops):\n  ", len(res.Edges))
+	b.WriteString(security.SanitizeLabel(labelOrID(&res.Nodes[0])))
+	for i, e := range res.Edges {
+		next := security.SanitizeLabel(labelOrID(&res.Nodes[i+1]))
+		conf := ""
+		if e.Confidence != "" {
+			conf = " [" + e.Confidence + "]"
+		}
+		if e.Forward {
+			fmt.Fprintf(&b, " --%s%s--> %s", e.Relation, conf, next)
+		} else {
+			fmt.Fprintf(&b, " <--%s%s-- %s", e.Relation, conf, next)
+		}
 	}
-	return fmt.Sprintf("Shortest path (%d hops):\n  %s", len(nodes)-1, strings.Join(parts, " -> "))
+	return b.String()
 }
 
 // labelOrID returns a node's label, falling back to its id.
@@ -382,10 +399,11 @@ func toolDefs() []map[string]any {
 			"description": "Return summary statistics: node count, edge count, communities, confidence breakdown.",
 			"inputSchema": obj(map[string]any{})},
 		{"name": "shortest_path",
-			"description": "Find the shortest path between two concepts in the knowledge graph.",
+			"description": "Find the shortest path between two concepts in the knowledge graph. Each hop is annotated with its relation and confidence.",
 			"inputSchema": obj(map[string]any{
-				"source": map[string]any{"type": "string", "description": "Source concept label or keyword"},
-				"target": map[string]any{"type": "string", "description": "Target concept label or keyword"},
+				"source":   map[string]any{"type": "string", "description": "Source concept label or keyword"},
+				"target":   map[string]any{"type": "string", "description": "Target concept label or keyword"},
+				"max_hops": map[string]any{"type": "integer", "description": "Reject paths longer than this many hops (default 8)"},
 			}, "source", "target")},
 	}
 }

@@ -151,8 +151,9 @@ func TestToolShortestPath(t *testing.T) {
 	if !strings.Contains(out, "Shortest path (2 hops):") {
 		t.Errorf("wrong hop count:\n%s", out)
 	}
-	if !strings.Contains(out, "authValidate() -> checkToken() -> log()") {
-		t.Errorf("wrong path rendering:\n%s", out)
+	// Each hop carries its relation and confidence, oriented with the edge.
+	if !strings.Contains(out, "authValidate() --calls [INFERRED]--> checkToken() --calls [EXTRACTED]--> log()") {
+		t.Errorf("missing per-hop relation/confidence annotation:\n%s", out)
 	}
 }
 
@@ -160,6 +161,27 @@ func TestToolShortestPathNoNode(t *testing.T) {
 	s := newServer(t)
 	if out := s.toolShortestPath(map[string]any{"source": "nope", "target": "log"}); !strings.Contains(out, "Error:") {
 		t.Errorf("got %q, want error for unknown source", out)
+	}
+}
+
+func TestToolShortestPathSameNode(t *testing.T) {
+	s := newServer(t)
+	// Both queries resolve to auth_validate: advise instead of a zero-hop path.
+	out := s.toolShortestPath(map[string]any{"source": "authValidate", "target": "authValidate"})
+	if strings.Contains(out, "Shortest path") {
+		t.Errorf("same-node input must not render a path:\n%s", out)
+	}
+	if !strings.Contains(out, "both resolved to the same node") || !strings.Contains(out, "auth_validate") {
+		t.Errorf("missing same-node advisory:\n%s", out)
+	}
+}
+
+func TestToolShortestPathMaxHops(t *testing.T) {
+	s := newServer(t)
+	// The path is 2 hops; max_hops=1 must reject it.
+	out := s.toolShortestPath(map[string]any{"source": "authValidate", "target": "log", "max_hops": float64(1)})
+	if !strings.Contains(out, "path exceeds max_hops=1 (2 hops found)") {
+		t.Errorf("missing max_hops rejection:\n%s", out)
 	}
 }
 
