@@ -301,6 +301,12 @@ func cmdBuild(args []string) error {
 			return err
 		}
 	}
+	if !opts.noManifests {
+		results, err = withManifests(root, results)
+		if err != nil {
+			return err
+		}
+	}
 	g, communities, err := writeOutputs(root, files, results, newCache, newStat, opts.semanticOpts(), opts.force)
 	if err != nil {
 		return err
@@ -312,11 +318,12 @@ func cmdBuild(args []string) error {
 
 // buildOpts holds the parsed build/update arguments.
 type buildOpts struct {
-	root     string
-	cargo    bool
-	semantic bool   // --semantic: run the opt-in LLM enrichment pass
-	backend  string // --backend: which semantic backend (e.g. "bedrock")
-	force    bool   // --force: overwrite graph.json even when the rebuild has fewer nodes
+	root        string
+	cargo       bool
+	noManifests bool   // --no-manifests: skip the default package-manifest pass
+	semantic    bool   // --semantic: run the opt-in LLM enrichment pass
+	backend     string // --backend: which semantic backend (e.g. "bedrock")
+	force       bool   // --force: overwrite graph.json even when the rebuild has fewer nodes
 }
 
 // semanticOpts projects the build options onto the enrichment-stage options.
@@ -325,12 +332,13 @@ func (o buildOpts) semanticOpts() semanticOpts {
 }
 
 // parseBuildArgs splits build/update arguments into the target path (default "."),
-// whether the opt-in --cargo crate-dependency pass was requested, and whether
-// --force was given to bypass the anti-shrink guard. It exists for callers that do
-// not support semantic enrichment; build uses parseBuildOpts.
-func parseBuildArgs(args []string) (root string, cargo, force bool) {
+// whether the opt-in --cargo crate-dependency pass was requested, whether
+// --no-manifests disabled the default package-manifest pass, and whether --force
+// was given to bypass the anti-shrink guard. It exists for callers that do not
+// support semantic enrichment; build uses parseBuildOpts.
+func parseBuildArgs(args []string) (root string, cargo, noManifests, force bool) {
 	opts, _ := parseBuildOpts(args)
-	return opts.root, opts.cargo, opts.force
+	return opts.root, opts.cargo, opts.noManifests, opts.force
 }
 
 // parseBuildOpts parses the full build flag set: the target path (default "."),
@@ -344,6 +352,8 @@ func parseBuildOpts(args []string) (buildOpts, error) {
 		switch {
 		case a == "--cargo":
 			opts.cargo = true
+		case a == "--no-manifests":
+			opts.noManifests = true
 		case a == "--force":
 			opts.force = true
 		case a == "--semantic":
@@ -377,12 +387,25 @@ func withCargo(root string, results []extract.Result) ([]extract.Result, error) 
 	return append(results, res), nil
 }
 
+// withManifests runs the deterministic package-manifest pass (pyproject.toml,
+// go.mod, pom.xml) and appends its package nodes/depends_on edges to the per-file
+// results. It runs by default (mirroring upstream manifest_ingest) because it is
+// cheap and deterministic; --no-manifests disables it. It never errors on a
+// malformed manifest — only on a walk failure — so it cannot break a build.
+func withManifests(root string, results []extract.Result) ([]extract.Result, error) {
+	res, err := extract.IntrospectManifests(root)
+	if err != nil {
+		return nil, err
+	}
+	return append(results, res), nil
+}
+
 // cmdUpdate rebuilds the graph incrementally: it re-parses only files whose
 // content changed since the last build/update, reusing cached results for the
 // rest, then resolves and writes the same outputs as build. With no existing
 // cache it transparently degrades to a full build.
 func cmdUpdate(args []string) error {
-	root, cargo, force := parseBuildArgs(args)
+	root, cargo, noManifests, force := parseBuildArgs(args)
 	files, err := detect.CollectFiles(root)
 	if err != nil {
 		return err
@@ -395,6 +418,12 @@ func cmdUpdate(args []string) error {
 	results, newCache, newStat, stats := assemble(root, files, prev, prevStat)
 	if cargo {
 		results, err = withCargo(root, results)
+		if err != nil {
+			return err
+		}
+	}
+	if !noManifests {
+		results, err = withManifests(root, results)
 		if err != nil {
 			return err
 		}

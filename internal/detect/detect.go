@@ -82,6 +82,16 @@ var mcpConfigFiles = map[string]bool{
 	"mcp_servers.json":           true,
 }
 
+// packageManifestFiles are indexed by basename: package manifests declaring a
+// module and its dependencies. They are not source files (so they stay out of
+// CollectFiles), but CollectManifests discovers them for the deterministic
+// package-manifest pass in internal/extract (manifest.go).
+var packageManifestFiles = map[string]bool{
+	"pyproject.toml": true,
+	"go.mod":         true,
+	"pom.xml":        true,
+}
+
 // sensitiveDirs hold secrets; any file under one is skipped.
 var sensitiveDirs = map[string]bool{
 	".ssh": true, ".gnupg": true, ".aws": true, ".gcloud": true,
@@ -220,6 +230,45 @@ func CollectFiles(root string) ([]string, error) {
 			return nil
 		}
 		if isSensitive(rel) || ign.ignored(slashRel, false) {
+			return nil
+		}
+		files = append(files, rel)
+		return nil
+	})
+	return files, err
+}
+
+// CollectManifests returns the package-manifest files under root (relative to
+// root, in sorted WalkDir order), honoring the same .gitignore and skip-dir
+// rules as CollectFiles so vendored/ignored manifests are not indexed.
+func CollectManifests(root string) ([]string, error) {
+	var files []string
+	ign := newIgnorer(root)
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil // unreadable entry — skip, don't abort the whole walk
+		}
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		slashRel := filepath.ToSlash(rel)
+		if d.IsDir() {
+			if path == root {
+				return nil
+			}
+			if skipDirs[d.Name()] || ign.ignored(slashRel, true) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !packageManifestFiles[d.Name()] {
+			return nil
+		}
+		if ign.ignored(slashRel, false) {
 			return nil
 		}
 		files = append(files, rel)
