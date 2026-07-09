@@ -9,6 +9,7 @@ import (
 
 	"github.com/dobbo-ca/graphify-go/internal/cache"
 	"github.com/dobbo-ca/graphify-go/internal/detect"
+	"github.com/dobbo-ca/graphify-go/internal/extract"
 )
 
 // TestIncrementalUpdate checks that `update` reuses the cache and produces the
@@ -90,8 +91,13 @@ func TestUpdateAllowsLegitShrink(t *testing.T) {
 	if err := cmdBuild([]string{root}); err != nil {
 		t.Fatalf("build: %v", err)
 	}
-	graphPath := filepath.Join(root, "graphify-out", "graph.json")
+	outDir := filepath.Join(root, "graphify-out")
+	graphPath := filepath.Join(outDir, "graph.json")
 	before := graphNodeCount(t, graphPath)
+	reportBefore, err := os.ReadFile(filepath.Join(outDir, "GRAPH_REPORT.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Remove B and C — the graph must shrink and the write must not be refused.
 	write("a.go", "package p\n\nfunc A() {}\n")
@@ -101,6 +107,86 @@ func TestUpdateAllowsLegitShrink(t *testing.T) {
 	after := graphNodeCount(t, graphPath)
 	if after >= before {
 		t.Errorf("legit shrink not applied: before=%d after=%d (graph.json should have refreshed to fewer nodes)", before, after)
+	}
+	// The legit write path refreshes every output, not just graph.json.
+	reportAfter, err := os.ReadFile(filepath.Join(outDir, "GRAPH_REPORT.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(reportBefore, reportAfter) {
+		t.Error("legit shrink did not refresh GRAPH_REPORT.md")
+	}
+}
+
+// TestRefusedShrinkAbortsAllOutputs is the regression for graphify-go-1fz.2: on an
+// ILLEGITIMATE refused shrink (a lost node's source file was skipped this run),
+// writeOutputs must leave graphify-out entirely untouched — graph.json, the report,
+// the cache, and the stat sidecar — rather than keeping the larger graph.json while
+// still rewriting the other three from the rejected smaller graph. With force set the
+// same shrink is accepted and every output is rewritten.
+func TestRefusedShrinkAbortsAllOutputs(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, content string) {
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("a.go", "package p\n\nfunc A() { B() }\n")
+	write("b.go", "package p\n\nfunc B() {}\n")
+	if err := cmdBuild([]string{root}); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	outDir := filepath.Join(root, "graphify-out")
+	paths := map[string]string{
+		"graph.json":      filepath.Join(outDir, "graph.json"),
+		"GRAPH_REPORT.md": filepath.Join(outDir, "GRAPH_REPORT.md"),
+		"cache":           filepath.Join(outDir, cache.FileName),
+		"stat":            filepath.Join(outDir, cache.StatFileName),
+	}
+	snapshot := func() map[string][]byte {
+		m := make(map[string][]byte, len(paths))
+		for name, p := range paths {
+			b, err := os.ReadFile(p)
+			if err != nil {
+				t.Fatalf("read %s: %v", p, err)
+			}
+			m[name] = b
+		}
+		return m
+	}
+	before := snapshot()
+
+	// Simulate an update where b.go was skipped (failed to read/parse): its result
+	// is absent, so the graph shrinks and the lost node's source (b.go) lands in the
+	// skipped set — an illegitimate shrink CheckShrink must refuse.
+	files := []string{"a.go", "b.go"}
+	ra, err := extract.File(root, "a.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	results := []extract.Result{ra}
+	newCache := cache.Cache{"a.go": {Hash: "h", Result: ra}}
+	newStat := cache.StatIndex{}
+
+	// force=false: the refusal must abort every write, leaving all four outputs byte-identical.
+	if _, _, err := writeOutputs(root, files, results, newCache, newStat, semanticOpts{}, false); err != nil {
+		t.Fatalf("writeOutputs (refused shrink) returned error, want a nil-error warning: %v", err)
+	}
+	for name, b := range snapshot() {
+		if !bytes.Equal(before[name], b) {
+			t.Errorf("refused shrink rewrote %s; every output must be left untouched", name)
+		}
+	}
+
+	// force=true: the same shrink is accepted and every output is rewritten.
+	if _, _, err := writeOutputs(root, files, results, newCache, newStat, semanticOpts{}, true); err != nil {
+		t.Fatalf("writeOutputs (forced shrink): %v", err)
+	}
+	for name, b := range snapshot() {
+		if bytes.Equal(before[name], b) {
+			t.Errorf("forced shrink did not rewrite %s; force must write all outputs", name)
+		}
 	}
 }
 

@@ -221,15 +221,25 @@ func writeOutputs(root string, files []string, results []extract.Result, newCach
 	// re-apply the crude guard and refuse a legitimate refactor.
 	force = force || envForce()
 	graphPath := filepath.Join(outDir, "graph.json")
+	// Run the anti-shrink guard FIRST, before writing any output. On a refused
+	// shrink (and no --force) every output is aborted so graphify-out stays
+	// consistent: keeping the old graph.json while rewriting GRAPH_REPORT.md, the
+	// cache, and the stat sidecar from the rejected smaller graph would leave the
+	// report/cache describing a graph that graph.json does not match (mirrors
+	// upstream watch, where a refused _check_shrink returns before any write).
 	if err := export.CheckShrink(graphPath, g, skippedFiles(files, newCache), force); err != nil {
 		// A shrink/unverifiable refusal is a fail-safe, not a build failure:
-		// warn and keep the existing graph.json rather than crashing the build.
+		// warn and leave graphify-out untouched rather than crashing the build.
 		if errors.Is(err, export.ErrGraphShrink) || errors.Is(err, export.ErrGraphUnverifiable) {
 			fmt.Fprintf(os.Stderr, "[graphify] WARNING: %v\n", err)
-		} else {
-			return nil, nil, err
+			return g, communities, nil
 		}
-	} else if err := export.ToJSON(g, communities, graphPath, commit, true); err != nil {
+		return nil, nil, err
+	}
+	// Shrink allowed (growth, a legitimate carve-out, or force set): write every
+	// output. ToJSON runs with force=true so it does not re-apply its own crude
+	// node-count guard and refuse a legitimate refactor CheckShrink already OK'd.
+	if err := export.ToJSON(g, communities, graphPath, commit, true); err != nil {
 		return nil, nil, err
 	}
 	md := report.Generate(g, communities, root, commit)
