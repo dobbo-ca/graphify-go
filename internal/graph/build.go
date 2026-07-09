@@ -6,22 +6,12 @@
 package graph
 
 import (
-	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
+	"github.com/dobbo-ca/graphify-go/internal/langfamily"
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
-
-// langFamily groups file extensions that share a runtime. Extensions in
-// different families cannot legitimately have an inferred call between them, so
-// such edges are phantom (label collisions across languages) and dropped.
-var langFamily = map[string]string{
-	".go": "go", ".rs": "rust",
-	".js": "js", ".jsx": "js", ".mjs": "js", ".cjs": "js", ".ts": "js", ".tsx": "js",
-	".py": "py",
-}
 
 // Build assembles an extraction into a graph.
 func Build(ext model.Extraction) *model.Graph {
@@ -74,7 +64,5 @@ func Build(ext model.Extraction) *model.Graph {
 }
 
 func crossLanguage(g *model.Graph, src, tgt string) bool {
-	fa := langFamily[strings.ToLower(filepath.Ext(g.Nodes[src].SourceFile))]
-	fb := langFamily[strings.ToLower(filepath.Ext(g.Nodes[tgt].SourceFile))]
-	return fa != "" && fb != "" && fa != fb
+	return langfamily.Cross(g.Nodes[src].SourceFile, g.Nodes[tgt].SourceFile)
 }

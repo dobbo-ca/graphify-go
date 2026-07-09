@@ -43,6 +43,37 @@ func TestResolveAmbiguousByImport(t *testing.T) {
 	}
 }
 
+// TestResolveNoCrossFamilyCall checks that a call whose name is uniquely defined
+// only in a different language family never binds: a Python call to `process`
+// must not resolve to a Java `process` method (a phantom name collision), while
+// a call resolvable within its own family still binds.
+func TestResolveNoCrossFamilyCall(t *testing.T) {
+	results := []Result{
+		{Defs: []Def{{ID: "JAVA", Name: "process", File: "Svc.java"}}},
+		{Defs: []Def{{ID: "PYHELPER", Name: "helper", File: "util.py"}}},
+		{
+			Defs: []Def{{ID: "PYMAIN", Name: "run", File: "main.py"}},
+			Calls: []Call{
+				{CallerID: "PYMAIN", Callee: "process", File: "main.py", Loc: "L2"}, // cross-family, must not bind
+				{CallerID: "PYMAIN", Callee: "helper", File: "main.py", Loc: "L3"},  // same-family, must bind
+			},
+		},
+	}
+	files := []string{"Svc.java", "util.py", "main.py"}
+	ext := Resolve(results, files)
+
+	var es []edge
+	for _, e := range ext.Edges {
+		es = append(es, edge{e.Source, e.Target, e.Relation})
+	}
+	if hasCall(es, "PYMAIN", "JAVA") {
+		t.Error("did not expect PYMAIN --calls--> JAVA (cross language family)")
+	}
+	if !hasCall(es, "PYMAIN", "PYHELPER") {
+		t.Error("expected PYMAIN --calls--> PYHELPER (same language family)")
+	}
+}
+
 // TestResolveAmbiguousBySameDir checks the same-package (same directory)
 // tiebreaker: an ambiguous name with one definition in the caller's directory
 // resolves there, mirroring same-package calls in Go.

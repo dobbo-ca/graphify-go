@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
+	"github.com/dobbo-ca/graphify-go/internal/langfamily"
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
 
@@ -61,7 +62,7 @@ func Resolve(results []Result, files []string) model.Extraction {
 	// resolves a call to the unique (module_stem, symbol) definition with
 	// EXTRACTED confidence. Runs before the generic name pass and marks each
 	// resolved call site so the weaker name pass leaves it alone.
-	resolved := resolveImportGuided(results, &out)
+	resolved := resolveImportGuided(results, idFile, &out)
 
 	// Calls: prefer a definition in the same file, else disambiguate among the
 	// definitions sharing the called name (unique global, imported file, or same
@@ -76,6 +77,14 @@ func Resolve(results []Result, files []string) model.Extraction {
 				tgt = disambiguate(global[c.Callee], c.File, idFile, importedFiles[c.File])
 			}
 			if tgt == "" || tgt == c.CallerID {
+				continue
+			}
+			// Never bind a call to a definition in a different language family:
+			// the same short name (render, parse, Path) collides across languages,
+			// and a name match across a family boundary is a phantom edge, not a
+			// real call. Unknown families (non-code, unrecognized ext) stay
+			// permissive.
+			if langfamily.Cross(c.File, idFile[tgt]) {
 				continue
 			}
 			out.Edges = append(out.Edges, model.Edge{
@@ -271,7 +280,7 @@ func stemName(p string) string {
 // bare call to the unique definition. Member calls and self-edges are skipped.
 // It returns the set of call sites it resolved (keyed callerID\x00callee\x00loc)
 // so the generic name pass leaves them alone.
-func resolveImportGuided(results []Result, out *model.Extraction) map[string]bool {
+func resolveImportGuided(results []Result, idFile map[string]string, out *model.Extraction) map[string]bool {
 	// (module_stem, symbol) -> def ids, used only when an import names that symbol.
 	index := map[string][]string{}
 	for _, r := range results {
@@ -303,6 +312,11 @@ func resolveImportGuided(results []Result, out *model.Extraction) map[string]boo
 			}
 			ids := index[a.ModuleStem+"\x00"+a.Imported]
 			if len(ids) != 1 || ids[0] == c.CallerID {
+				continue
+			}
+			// Same cross-family guard as the generic pass: import evidence still
+			// must not bind a call to a definition in a different language family.
+			if langfamily.Cross(c.File, idFile[ids[0]]) {
 				continue
 			}
 			resolved[c.CallerID+"\x00"+c.Callee+"\x00"+c.Loc] = true
