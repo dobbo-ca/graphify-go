@@ -74,6 +74,78 @@ func TestToJSONAntiShrink(t *testing.T) {
 	}
 }
 
+func TestCheckShrink(t *testing.T) {
+	comm := map[int][]string{}
+	nA := model.Node{ID: "a", Label: "a", FileType: "code", SourceFile: "pkg/a.go"}
+	nB := model.Node{ID: "b", Label: "b", FileType: "code", SourceFile: "pkg/b.go"}
+	nC := model.Node{ID: "c", Label: "c", FileType: "code", SourceFile: "pkg/c.go"}
+
+	graphWith := func(nodes ...model.Node) *model.Graph {
+		g := model.New()
+		for _, n := range nodes {
+			g.AddNode(n)
+		}
+		return g
+	}
+	// seed writes an on-disk graph.json of the given nodes and returns its path.
+	seed := func(nodes ...model.Node) string {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "graph.json")
+		if err := ToJSON(graphWith(nodes...), comm, path, "seed", true); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		return path
+	}
+
+	// Growth (or same size) is never a shrink, regardless of skipped.
+	if err := CheckShrink(seed(nA, nB), graphWith(nA, nB, nC), map[string]bool{"pkg/b.go": true}, false); err != nil {
+		t.Errorf("growth: %v, want nil", err)
+	}
+
+	// Legit refactor: b removed from a re-parsed file (pkg/b.go NOT skipped) — allowed.
+	if err := CheckShrink(seed(nA, nB), graphWith(nA), map[string]bool{}, false); err != nil {
+		t.Errorf("refactor shrink: %v, want nil", err)
+	}
+
+	// Deletion: b's file no longer current, so it never appears in skipped — allowed.
+	if err := CheckShrink(seed(nA, nB), graphWith(nA), map[string]bool{"pkg/z.go": true}, false); err != nil {
+		t.Errorf("deletion shrink: %v, want nil", err)
+	}
+
+	// Silent loss: b's source file is still present but was skipped this run — refuse.
+	if err := CheckShrink(seed(nA, nB), graphWith(nA), map[string]bool{"pkg/b.go": true}, false); !errors.Is(err, ErrGraphShrink) {
+		t.Errorf("skipped-file shrink err = %v, want ErrGraphShrink", err)
+	}
+
+	// force bypasses even a skipped-file shrink.
+	if err := CheckShrink(seed(nA, nB), graphWith(nA), map[string]bool{"pkg/b.go": true}, true); err != nil {
+		t.Errorf("force bypass: %v, want nil", err)
+	}
+
+	// Absent target: nothing to lose.
+	if err := CheckShrink(filepath.Join(t.TempDir(), "graph.json"), graphWith(nA), nil, false); err != nil {
+		t.Errorf("absent target: %v, want nil", err)
+	}
+
+	// Empty (whitespace-only) target: proceed even with a would-be skip set.
+	empty := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(empty, []byte("  \n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckShrink(empty, graphWith(nA), map[string]bool{"pkg/b.go": true}, false); err != nil {
+		t.Errorf("empty target: %v, want nil", err)
+	}
+
+	// Unparseable existing graph: fail safe.
+	corrupt := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(corrupt, []byte("{ not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckShrink(corrupt, graphWith(nA), nil, false); !errors.Is(err, ErrGraphUnverifiable) {
+		t.Errorf("unparseable err = %v, want ErrGraphUnverifiable", err)
+	}
+}
+
 func TestToJSONEmptyAndAbsentTargetWrites(t *testing.T) {
 	comm := map[int][]string{}
 

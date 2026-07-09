@@ -194,7 +194,7 @@ func assemble(root string, files []string, prev cache.Cache, prevStat cache.Stat
 // <root>/graphify-out. When sem.enabled, an additive LLM enrichment pass runs
 // between resolve and graph-build so communities reflect concepts; it never
 // alters the deterministic core.
-func writeOutputs(root string, files []string, results []extract.Result, newCache cache.Cache, newStat cache.StatIndex, sem semanticOpts) (*model.Graph, map[int][]string, error) {
+func writeOutputs(root string, files []string, results []extract.Result, newCache cache.Cache, newStat cache.StatIndex, sem semanticOpts, force bool) (*model.Graph, map[int][]string, error) {
 	ext := extract.Resolve(results, files)
 	if sem.enabled {
 		var err error
@@ -211,7 +211,17 @@ func writeOutputs(root string, files []string, results []extract.Result, newCach
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return nil, nil, err
 	}
-	if err := export.ToJSON(g, communities, filepath.Join(outDir, "graph.json"), commit, false); err != nil {
+	// Anti-shrink guard: allow the write when the graph grew, or when every node
+	// that would be lost belongs to a source that was rebuilt/deleted this run;
+	// refuse (and keep the larger graph.json) only when a lost node's source file
+	// was skipped this run — the silent loss (#479) this guards. --force /
+	// GRAPHIFY_FORCE overrides. The skipped set gives CheckShrink the legitimate-
+	// shrink carve-out the crude ToJSON node-count guard lacks (mirrors upstream
+	// watch._check_shrink); on approval ToJSON runs with force=true so it does not
+	// re-apply the crude guard and refuse a legitimate refactor.
+	force = force || envForce()
+	graphPath := filepath.Join(outDir, "graph.json")
+	if err := export.CheckShrink(graphPath, g, skippedFiles(files, newCache), force); err != nil {
 		// A shrink/unverifiable refusal is a fail-safe, not a build failure:
 		// warn and keep the existing graph.json rather than crashing the build.
 		if errors.Is(err, export.ErrGraphShrink) || errors.Is(err, export.ErrGraphUnverifiable) {
@@ -219,6 +229,8 @@ func writeOutputs(root string, files []string, results []extract.Result, newCach
 		} else {
 			return nil, nil, err
 		}
+	} else if err := export.ToJSON(g, communities, graphPath, commit, true); err != nil {
+		return nil, nil, err
 	}
 	md := report.Generate(g, communities, root, commit)
 	if err := os.WriteFile(filepath.Join(outDir, "GRAPH_REPORT.md"), []byte(md), 0o644); err != nil {
@@ -231,6 +243,32 @@ func writeOutputs(root string, files []string, results []extract.Result, newCach
 		return nil, nil, err
 	}
 	return g, communities, nil
+}
+
+// envForce reports whether GRAPHIFY_FORCE requests bypassing the anti-shrink
+// guard, matching upstream's accepted values (1/true/yes, case-insensitive).
+func envForce() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("GRAPHIFY_FORCE"))) {
+	case "1", "true", "yes":
+		return true
+	}
+	return false
+}
+
+// skippedFiles returns the current source files that failed to process this run —
+// present in files but absent from newCache — keyed by slash path to match node
+// source_file. These are the files whose nodes vanishing would be an unexplained
+// (silent) loss; a shrink whose lost nodes all come from rebuilt or deleted
+// sources is legitimate and never lands here.
+func skippedFiles(files []string, newCache cache.Cache) map[string]bool {
+	skipped := map[string]bool{}
+	for _, f := range files {
+		key := filepath.ToSlash(f)
+		if _, ok := newCache[key]; !ok {
+			skipped[key] = true
+		}
+	}
+	return skipped
 }
 
 func cmdBuild(args []string) error {
@@ -253,7 +291,7 @@ func cmdBuild(args []string) error {
 			return err
 		}
 	}
-	g, communities, err := writeOutputs(root, files, results, newCache, newStat, opts.semanticOpts())
+	g, communities, err := writeOutputs(root, files, results, newCache, newStat, opts.semanticOpts(), opts.force)
 	if err != nil {
 		return err
 	}
@@ -268,6 +306,7 @@ type buildOpts struct {
 	cargo    bool
 	semantic bool   // --semantic: run the opt-in LLM enrichment pass
 	backend  string // --backend: which semantic backend (e.g. "bedrock")
+	force    bool   // --force: overwrite graph.json even when the rebuild has fewer nodes
 }
 
 // semanticOpts projects the build options onto the enrichment-stage options.
@@ -275,12 +314,13 @@ func (o buildOpts) semanticOpts() semanticOpts {
 	return semanticOpts{enabled: o.semantic, backend: o.backend}
 }
 
-// parseBuildArgs splits build/update arguments into the target path (default ".")
-// and whether the opt-in --cargo crate-dependency pass was requested. It exists
-// for callers that do not support semantic enrichment; build uses parseBuildOpts.
-func parseBuildArgs(args []string) (root string, cargo bool) {
+// parseBuildArgs splits build/update arguments into the target path (default "."),
+// whether the opt-in --cargo crate-dependency pass was requested, and whether
+// --force was given to bypass the anti-shrink guard. It exists for callers that do
+// not support semantic enrichment; build uses parseBuildOpts.
+func parseBuildArgs(args []string) (root string, cargo, force bool) {
 	opts, _ := parseBuildOpts(args)
-	return opts.root, opts.cargo
+	return opts.root, opts.cargo, opts.force
 }
 
 // parseBuildOpts parses the full build flag set: the target path (default "."),
@@ -294,6 +334,8 @@ func parseBuildOpts(args []string) (buildOpts, error) {
 		switch {
 		case a == "--cargo":
 			opts.cargo = true
+		case a == "--force":
+			opts.force = true
 		case a == "--semantic":
 			opts.semantic = true
 		case a == "--backend":
@@ -330,7 +372,7 @@ func withCargo(root string, results []extract.Result) ([]extract.Result, error) 
 // rest, then resolves and writes the same outputs as build. With no existing
 // cache it transparently degrades to a full build.
 func cmdUpdate(args []string) error {
-	root, cargo := parseBuildArgs(args)
+	root, cargo, force := parseBuildArgs(args)
 	files, err := detect.CollectFiles(root)
 	if err != nil {
 		return err
@@ -347,7 +389,7 @@ func cmdUpdate(args []string) error {
 			return err
 		}
 	}
-	g, communities, err := writeOutputs(root, files, results, newCache, newStat, semanticOpts{})
+	g, communities, err := writeOutputs(root, files, results, newCache, newStat, semanticOpts{}, force)
 	if err != nil {
 		return err
 	}
@@ -722,8 +764,8 @@ func usage() {
 	fmt.Println(`graphify - code knowledge graph
 
 usage:
-  graphify build [path] [--cargo]   build graph.json + report under <path>/graphify-out (--cargo adds Rust crate-dependency edges)
-  graphify update [path] [--cargo]  rebuild incrementally, re-parsing only changed files
+  graphify build [path] [--cargo] [--force]   build graph.json + report under <path>/graphify-out (--cargo adds Rust crate-dependency edges; --force overwrites even if the rebuild has fewer nodes, also GRAPHIFY_FORCE=1)
+  graphify update [path] [--cargo] [--force]  rebuild incrementally, re-parsing only changed files
   graphify watch [path]        rebuild incrementally as files change (Ctrl-C to stop)
   graphify hook <install|uninstall|status> [path]  manage git hooks that update the graph after commits
   graphify query <pattern>     find nodes by name (regex, case-insensitive)

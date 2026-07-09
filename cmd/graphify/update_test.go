@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -73,4 +74,48 @@ func TestIncrementalUpdate(t *testing.T) {
 	if bytes.Equal(built, changed) {
 		t.Error("expected graph.json to change after editing a source file")
 	}
+}
+
+// TestUpdateAllowsLegitShrink is the regression for the #479/#1116 interaction:
+// removing symbols from a re-parsed file legitimately shrinks the graph, and
+// `update` must refresh graph.json rather than warn and keep the larger stale one.
+func TestUpdateAllowsLegitShrink(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, content string) {
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("a.go", "package p\n\nfunc A() {}\n\nfunc B() {}\n\nfunc C() {}\n")
+	if err := cmdBuild([]string{root}); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	graphPath := filepath.Join(root, "graphify-out", "graph.json")
+	before := graphNodeCount(t, graphPath)
+
+	// Remove B and C — the graph must shrink and the write must not be refused.
+	write("a.go", "package p\n\nfunc A() {}\n")
+	if err := cmdUpdate([]string{root}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	after := graphNodeCount(t, graphPath)
+	if after >= before {
+		t.Errorf("legit shrink not applied: before=%d after=%d (graph.json should have refreshed to fewer nodes)", before, after)
+	}
+}
+
+// graphNodeCount reads a graph.json and returns its node count.
+func graphNodeCount(t *testing.T, path string) int {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	var g struct {
+		Nodes []json.RawMessage `json:"nodes"`
+	}
+	if err := json.Unmarshal(data, &g); err != nil {
+		t.Fatalf("unmarshal %s: %v", path, err)
+	}
+	return len(g.Nodes)
 }

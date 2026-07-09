@@ -13,17 +13,20 @@ func TestParseBuildArgs(t *testing.T) {
 		args      []string
 		wantRoot  string
 		wantCargo bool
+		wantForce bool
 	}{
-		{nil, ".", false},
-		{[]string{"--cargo"}, ".", true},
-		{[]string{"some/path"}, "some/path", false},
-		{[]string{"some/path", "--cargo"}, "some/path", true},
-		{[]string{"--cargo", "some/path"}, "some/path", true},
+		{nil, ".", false, false},
+		{[]string{"--cargo"}, ".", true, false},
+		{[]string{"some/path"}, "some/path", false, false},
+		{[]string{"some/path", "--cargo"}, "some/path", true, false},
+		{[]string{"--cargo", "some/path"}, "some/path", true, false},
+		{[]string{"--force"}, ".", false, true},
+		{[]string{"some/path", "--cargo", "--force"}, "some/path", true, true},
 	}
 	for _, c := range cases {
-		root, cargo := parseBuildArgs(c.args)
-		if root != c.wantRoot || cargo != c.wantCargo {
-			t.Errorf("parseBuildArgs(%v) = (%q, %v), want (%q, %v)", c.args, root, cargo, c.wantRoot, c.wantCargo)
+		root, cargo, force := parseBuildArgs(c.args)
+		if root != c.wantRoot || cargo != c.wantCargo || force != c.wantForce {
+			t.Errorf("parseBuildArgs(%v) = (%q, %v, %v), want (%q, %v, %v)", c.args, root, cargo, force, c.wantRoot, c.wantCargo, c.wantForce)
 		}
 	}
 }

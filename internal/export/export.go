@@ -120,6 +120,62 @@ func ToJSON(g *model.Graph, communities map[int][]string, path, builtAtCommit st
 	return os.WriteFile(path, data, 0o644)
 }
 
+// CheckShrink decides whether writing g over an existing graph.json at path would
+// silently drop nodes, distinguishing a legitimate refactor/deletion shrink from a
+// suspicious one. It mirrors upstream watch._check_shrink: the crude node-count
+// guard in ToJSON cannot tell the two apart, so callers that know which sources
+// were rebuilt this run call CheckShrink first and then ToJSON with force=true.
+//
+// A net shrink is legitimate when every node that would be lost belongs to a source
+// file that was (re)built or removed this run — none belong to skipped, the current
+// source files that FAILED to process this run. A lost node from a skipped file is
+// the silent loss (#479) worth refusing. CheckShrink returns nil when the write is
+// safe (force set; no readable/non-empty graph on disk; the new graph is not
+// smaller; or every lost node is accounted), ErrGraphShrink when a lost node's
+// source file was skipped, or ErrGraphUnverifiable when a non-empty existing
+// graph.json cannot be parsed to make the comparison. It never writes.
+func CheckShrink(path string, g *model.Graph, skipped map[string]bool, force bool) error {
+	if force {
+		return nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		// Absent (or unreadable) target: no nodes to lose — write normally.
+		return nil
+	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		// Empty/whitespace file (e.g. a freshly touched path): proceed.
+		return nil
+	}
+	var existing struct {
+		Nodes []struct {
+			ID         string `json:"id"`
+			SourceFile string `json:"source_file"`
+		} `json:"nodes"`
+	}
+	if err := json.Unmarshal(raw, &existing); err != nil {
+		return fmt.Errorf("%w %s to verify the new graph is not smaller (%v); pass --force to override", ErrGraphUnverifiable, path, err)
+	}
+	newN := g.NumNodes()
+	if newN >= len(existing.Nodes) {
+		// Growth (or same size): never a shrink.
+		return nil
+	}
+	// Net shrink. It is legitimate only when every lost node belongs to a source
+	// rebuilt or removed this run. A lost node whose source file is still present
+	// but was skipped (failed to read/parse) is an unexplained loss — refuse.
+	for _, n := range existing.Nodes {
+		if _, ok := g.Nodes[n.ID]; ok {
+			continue // node survived
+		}
+		if n.SourceFile != "" && skipped[n.SourceFile] {
+			return fmt.Errorf("%w: existing has %d nodes, new has %d (net -%d); a lost node belongs to %s, which failed to process this run; pass --force to override",
+				ErrGraphShrink, len(existing.Nodes), newN, len(existing.Nodes)-newN, n.SourceFile)
+		}
+	}
+	return nil
+}
+
 // guardNoShrink refuses to overwrite an existing graph.json at path when the new
 // graph (newN nodes) would drop nodes relative to what is on disk. An absent,
 // unreadable, or empty file is treated as nothing-to-lose and returns nil.
