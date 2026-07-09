@@ -5,7 +5,10 @@
 package export
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"unicode"
@@ -17,6 +20,18 @@ import (
 )
 
 var confidenceScore = map[string]float64{"EXTRACTED": 1.0, "INFERRED": 0.5, "AMBIGUOUS": 0.2}
+
+// ErrGraphShrink is returned by ToJSON when writing would replace an existing,
+// larger graph.json with one that has fewer nodes and force is false. The guard
+// exists to avoid silently losing nodes (#479) — e.g. missing chunk files from a
+// prior session, or a dedup pass that collapsed same-named symbols on an --update.
+var ErrGraphShrink = errors.New("refusing to overwrite graph.json with a smaller graph")
+
+// ErrGraphUnverifiable is returned by ToJSON when a non-empty existing graph.json
+// cannot be parsed to verify the new graph is not a silent shrink. Fail SAFE:
+// refuse rather than clobber a possibly-good graph over a transient read/parse
+// failure. Pass force to override.
+var ErrGraphUnverifiable = errors.New("refusing to overwrite unparseable graph.json")
 
 type jsonNode struct {
 	ID             string `json:"id"`
@@ -52,7 +67,19 @@ type jsonGraph struct {
 // ToJSON writes the graph to path in NetworkX node-link format with per-node
 // community/norm_label and per-link confidence_score, plus the commit it was
 // built from (for staleness checks).
-func ToJSON(g *model.Graph, communities map[int][]string, path, builtAtCommit string) error {
+//
+// Unless force is set, ToJSON refuses to overwrite an existing, non-empty
+// graph.json when doing so would drop nodes: it returns ErrGraphShrink when the
+// new graph has fewer nodes than the one on disk, or ErrGraphUnverifiable when
+// the existing file cannot be parsed to make that comparison. In both cases the
+// file on disk is left untouched. An absent or empty target is written normally.
+func ToJSON(g *model.Graph, communities map[int][]string, path, builtAtCommit string, force bool) error {
+	if !force {
+		if err := guardNoShrink(path, g.NumNodes()); err != nil {
+			return err
+		}
+	}
+
 	nc := cluster.NodeCommunity(communities)
 	var out jsonGraph
 	out.Hyperedges = []any{}
@@ -91,6 +118,31 @@ func ToJSON(g *model.Graph, communities map[int][]string, path, builtAtCommit st
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
+}
+
+// guardNoShrink refuses to overwrite an existing graph.json at path when the new
+// graph (newN nodes) would drop nodes relative to what is on disk. An absent,
+// unreadable, or empty file is treated as nothing-to-lose and returns nil.
+func guardNoShrink(path string, newN int) error {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		// Absent (or unreadable) target: no nodes to lose — write normally.
+		return nil
+	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		// Empty/whitespace file (e.g. a freshly touched path): proceed.
+		return nil
+	}
+	var existing struct {
+		Nodes []json.RawMessage `json:"nodes"`
+	}
+	if err := json.Unmarshal(raw, &existing); err != nil {
+		return fmt.Errorf("%w %s to verify the new graph is not smaller (%v); pass force to override", ErrGraphUnverifiable, path, err)
+	}
+	if existingN := len(existing.Nodes); newN < existingN {
+		return fmt.Errorf("%w: existing has %d nodes, new has %d (net -%d); pass force to override", ErrGraphShrink, existingN, newN, existingN-newN)
+	}
+	return nil
 }
 
 // normLabel mirrors export._strip_diacritics + lowercase: NFKD-decompose, drop

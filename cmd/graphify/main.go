@@ -6,6 +6,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -210,8 +211,14 @@ func writeOutputs(root string, files []string, results []extract.Result, newCach
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return nil, nil, err
 	}
-	if err := export.ToJSON(g, communities, filepath.Join(outDir, "graph.json"), commit); err != nil {
-		return nil, nil, err
+	if err := export.ToJSON(g, communities, filepath.Join(outDir, "graph.json"), commit, false); err != nil {
+		// A shrink/unverifiable refusal is a fail-safe, not a build failure:
+		// warn and keep the existing graph.json rather than crashing the build.
+		if errors.Is(err, export.ErrGraphShrink) || errors.Is(err, export.ErrGraphUnverifiable) {
+			fmt.Fprintf(os.Stderr, "[graphify] WARNING: %v\n", err)
+		} else {
+			return nil, nil, err
+		}
 	}
 	md := report.Generate(g, communities, root, commit)
 	if err := os.WriteFile(filepath.Join(outDir, "GRAPH_REPORT.md"), []byte(md), 0o644); err != nil {
