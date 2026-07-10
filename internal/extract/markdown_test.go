@@ -1,6 +1,10 @@
 package extract
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/dobbo-ca/graphify-go/internal/model"
+)
 
 // TestExtractMarkdown resolves a small OKF-style markdown bundle and checks that
 // each file becomes one concept node carrying its frontmatter `type`, that
@@ -35,8 +39,14 @@ func TestExtractMarkdown(t *testing.T) {
 	for _, n := range ext.Nodes {
 		byID[n.ID] = struct{ fileType, label string }{n.FileType, n.Label}
 	}
-	if len(ext.Nodes) != len(wantNodes) {
-		t.Errorf("node count = %d, want %d (one concept per file)", len(ext.Nodes), len(wantNodes))
+	concepts := 0
+	for _, n := range ext.Nodes {
+		if n.FileType != "heading" {
+			concepts++
+		}
+	}
+	if concepts != len(wantNodes) {
+		t.Errorf("concept node count = %d, want %d (one concept per file)", concepts, len(wantNodes))
 	}
 	for _, w := range wantNodes {
 		got, ok := byID[w.id]
@@ -146,5 +156,86 @@ func TestResolveMDTarget(t *testing.T) {
 				t.Errorf("resolveMDTarget(%q, %q) = %q, want %q", tc.from, tc.target, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestExtractMarkdownHeadingsRefs covers the additive depth: ATX headings become
+// nodes with `contains` edges (nested by level), and `[[wikilinks]]`,
+// reference-style `[a]: url` definitions and inline `code` spans become MDRefs
+// alongside inline links. It then runs Resolve to confirm an in-corpus wikilink
+// stitches into a `references` edge while an external reference definition and an
+// unresolved backtick symbol do not.
+func TestExtractMarkdownHeadingsRefs(t *testing.T) {
+	doc := "# Top\n\n" +
+		"Intro links to [[other]] and mentions `Symbol` inline.\n\n" +
+		"[a]: http://x\n\n" +
+		"## Nested\n\n" +
+		"More detail about `Symbol`.\n"
+
+	r := extractMarkdown("notes.md", []byte(doc))
+
+	// Heading nodes, typed "heading", one per ATX heading.
+	nodes := map[string]model.Node{}
+	for _, n := range r.Nodes {
+		nodes[n.ID] = n
+	}
+	for _, w := range []struct{ id, label string }{{"notes_top", "Top"}, {"notes_nested", "Nested"}} {
+		n, ok := nodes[w.id]
+		if !ok {
+			t.Fatalf("missing heading node %q", w.id)
+		}
+		if n.FileType != "heading" {
+			t.Errorf("heading %q file_type = %q, want heading", w.id, n.FileType)
+		}
+		if n.Label != w.label {
+			t.Errorf("heading %q label = %q, want %q", w.id, n.Label, w.label)
+		}
+	}
+
+	hasContain := func(src, tgt string) bool {
+		for _, e := range r.Edges {
+			if e.Relation == "contains" && e.Source == src && e.Target == tgt {
+				return true
+			}
+		}
+		return false
+	}
+	if !hasContain("notes", "notes_top") {
+		t.Error("missing contains edge notes --contains--> notes_top (file -> heading)")
+	}
+	if !hasContain("notes_top", "notes_nested") {
+		t.Error("missing contains edge notes_top --contains--> notes_nested (heading nesting)")
+	}
+
+	// Wikilink, reference definition and backtick each captured as an MDRef.
+	refTargets := map[string]bool{}
+	for _, m := range r.MDRefs {
+		refTargets[m.Target] = true
+	}
+	for _, tgt := range []string{"other", "http://x", "Symbol"} {
+		if !refTargets[tgt] {
+			t.Errorf("missing MDRef target %q", tgt)
+		}
+	}
+
+	// Resolve: the wikilink resolves to the sibling doc; the external ref def and
+	// the unresolved backtick symbol produce no `references` edge.
+	other := extractMarkdown("other.md", []byte("# Other\n"))
+	ext := Resolve([]Result{r, other}, []string{"notes.md", "other.md"})
+	refs := 0
+	toOther := false
+	for _, e := range ext.Edges {
+		if e.Relation == "references" && e.Source == "notes" {
+			refs++
+			if e.Target == "other" {
+				toOther = true
+			}
+		}
+	}
+	if !toOther {
+		t.Error("wikilink [[other]] did not resolve to references edge notes --references--> other")
+	}
+	if refs != 1 {
+		t.Errorf("references edges from notes = %d, want 1 (external ref def and backtick symbol must not resolve)", refs)
 	}
 }
