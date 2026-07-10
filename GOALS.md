@@ -66,6 +66,142 @@ Roughly priority order.
 - [ ] After the first release, verify `brew install dobbo-ca/taps/graphify-go` works on macOS arm64/amd64 + linux.
 - [ ] `release.yml` and `graph.yml` both fire on push to `main`; both push back with `[skip ci]` (no loops) but two concurrent pushes can race. If it bites, fold the graph commit into the release flow.
 
+## Parity backlog — upstream audit 2026-07-09
+
+Audited graphify-go against upstream `safishamsi/graphify` (now `Graphify-Labs/graphify`,
+release v0.9.11, `0.9.12` unreleased) across six dimensions — CLI, extractors, cross-file
+resolution, MCP serve, graph.json schema/report/export, detect/security — each with an
+adversarial verification pass. **Verdict: parity is strong for the agent-first scope.** Most
+recent upstream churn is extractor/resolution correctness that does not reproduce here (Go's
+resolver emits no type-reference or inheritance edges and drops-on-ambiguity rather than
+guessing, so it sidesteps whole bug classes upstream keeps patching: #1726, #1713, #1603,
+#1707/#1729/#1744, #1581, #1668, #1638 are all confirmed Go-safe). The confirmed in-scope
+gaps are below. Anything not listed is at parity or a deliberate non-port (see "Out of scope").
+
+> **STATUS 2026-07-10 — all 16 beads implemented.** Landed on stacked branches
+> `parity-p0` → `parity-p1` → `parity-p2` → `parity-p3` (the `parity-p3` tip contains
+> everything: 20 feature commits). Each bead went through an implement → adversarial
+> review → fix → build/vet/test loop; suite grew 207 → **250** tests, `graph.json` output
+> verified deterministic. Epic `graphify-go-1fz` closed. **Not yet merged to `main`** —
+> open a PR from `parity-p3` (or squash-merge the stack) and commit this GOALS.md update.
+
+Each item is tracked as a bead under epic **`graphify-go-1fz`** (`bd list`). Label map
+(`grp:*` = collision group, `tier:*` = priority):
+
+| Item | Bead | Item | Bead | Item | Bead |
+|------|------|------|------|------|------|
+| H1 | `graphify-go-1fz.1` | E4 | `graphify-go-1fz.7` | P-1 | `graphify-go-1fz.11` |
+| H2 | `graphify-go-1fz.2` | C1 | `graphify-go-1fz.8` | P-2 | `graphify-go-1fz.12` |
+| R1 | `graphify-go-1fz.3` | C2 | `graphify-go-1fz.9` | P-3 | `graphify-go-1fz.13` |
+| E1 | `graphify-go-1fz.4` | S1 | `graphify-go-1fz.10` | P-4 | `graphify-go-1fz.14` |
+| E2 | `graphify-go-1fz.5` |    |      | P-5 | `graphify-go-1fz.15` |
+| E3 | `graphify-go-1fz.6` |    |      | P-6 | `graphify-go-1fz.16` |
+
+`bd ready` surfaces unblocked work; P-2 is blocked-by H2. Priorities map to `bd` `-p 0..3`.
+
+### P0 — data integrity (do first)
+
+- [x] **H1 · detect: exempt real source from the sensitive-file drop (#1666).** ✅ `parity-p0-a0fea0`
+  `internal/detect/detect.go` `isSensitive` applies the `(credential|secret|passwd|password|private_key)s?`
+  pattern to the basename unconditionally, silently dropping real auth/secret *code*
+  (`password_reset.go`, `passwords_controller.rb`, `credentials_controller.rb`, `secret_store.py`)
+  from the graph. Port upstream's source-code exemption (`classify_file==CODE` and ext not a
+  secret-prone data ext) plus the load-bearing word-count gate. Files: `detect.go`. Effort M.
+- [x] **H2 · export: anti-shrink / fail-safe `graph.json` overwrite guard (#479).** ✅ `parity-p0-a0fea0`
+  `internal/export/export.go` `ToJSON` does an unconditional `os.WriteFile` — no node-count
+  compare, no read-back, no `force`. A transient walk error, corrupt prior file, or missing
+  cache chunk silently clobbers the CI-committed, agent-consumed graph. Before writing: parse
+  the existing non-empty target, refuse on shrink or unparseable-existing unless `force`; wire
+  `force` from `build`/`update`/`watch`. Files: `export.go`, `cmd/graphify/main.go`. Effort M.
+
+### P1 — correctness
+
+- [x] **R1 · resolve: filter cross-language `calls` edges (#1718).** ✅ `parity-p1`
+  `internal/graph/build.go` `langFamily` covers only go/rust/js/py, so the ~15 other extracted
+  languages bypass the cross-language filter — a Python call binding to a unique Kotlin/Java/C++/Ruby
+  def survives as a phantom `calls` edge. The Python import-guided path (`resolve.go`) also emits
+  `EXTRACTED` confidence, which the `INFERRED`-only backstop never filters. Fix: complete the
+  `langFamily` map (S) and, better, add a resolver-time family guard in `disambiguate` /
+  `resolveImportGuided` so the edge is never emitted (M). Files: `build.go`, `internal/extract/resolve.go`.
+
+### P1 — deterministic-extraction parity (default no-LLM graph diverges from upstream)
+
+- [x] **E1 · extract: Java/Kotlin enum-constant nodes + `case_of` edges (#1719/#1700).** ✅ `parity-p1`
+  `java.go`/`kotlin.go` skip `enum_constant`/`enum_entry`; no `case_of` kind exists. Breaks
+  "where is `EnumType.X` used". Files: `java.go`, `kotlin.go`. Effort S.
+- [x] **E2 · extract: deterministic rationale + doc_ref/cites post-pass.** ✅ `parity-p1`
+  Upstream scans `# NOTE:/WHY:/HACK:` + `// NOTE:` comments and `ADR-NNNN`/`RFC NNNN` tokens
+  into `rationale`/`doc_ref` nodes with **no LLM**; Go produces these only via the opt-in
+  `--semantic` backend, so the default graph has none. Files: `python.go`, `javascript.go`. Effort M.
+- [x] **E3 · extract: Vue/Svelte/Astro extractors.** ✅ `parity-p1`
+  Run the existing JS/TS grammar over the `<script>` block + import regex fallback — no new
+  binding needed. Files: `extract.go`, `detect.go`. Effort M.
+- [x] **E4 · extract: non-Cargo package-manifest ingestion.** ✅ `parity-p1`
+  Only Cargo is ingested today (opt-in `--cargo`); own `go.mod` isn't indexed. Add a canonical
+  `type=package` + `depends_on` ingester for pyproject.toml / go.mod / pom.xml. Files: new
+  ingester alongside `cargo.go`, wired in `main.go`. Effort L.
+
+### P2 — agent UX / commands
+
+- [x] **C1 · serve: annotate MCP `shortest_path` with per-hop relation/confidence + same-node guard.** ✅ `parity-p2`
+  `toolShortestPath` emits a bare label join; `query.Path` already walks real edges. Files:
+  `cmd/graphify/serve.go`, `internal/query/query.go`. Effort M.
+- [x] **C2 · affected: add `--depth`/`--relation` scoping (keep the git-diff auto-anchor).** ✅ `parity-p2`
+  Files: `cmd/graphify/main.go`, `internal/query`. Effort M.
+- [x] **S1 · security: honor `GRAPHIFY_MAX_GRAPH_BYTES` env override.** ✅ `parity-p2`
+  `MaxGraphFileBytes` is a hardcoded const; large monorepos hit an unraisable 512 MiB cap.
+  Files: `internal/security/security.go`. Effort S.
+
+### P3 — polish
+
+- [x] ✅`parity-p3` **P-1 · detect: surface walk errors + seen-but-skipped / no-extractor files (#1692/#1689/0.9.11).**
+  `CollectFiles` swallows `WalkDir` errors (`return nil`) and drops unsupported files with no
+  count/warning — silent partial graphs. Files: `detect.go`, `main.go`. Effort S.
+- [x] ✅`parity-p3` **P-2 · update: `--force` + node-count shrink guard (optional `--no-cluster`).** Folds into H2. Files: `main.go`. Effort S.
+- [x] ✅`parity-p3` **P-3 · detect/extract: discover `.mts`/`.cts` + shebang extensionless dispatch (#1607/#1683).** Files: `detect.go`, `extract.go`. Effort S/M.
+- [x] ✅`parity-p3` **P-4 · cli: `--graph` override for `explain`/`path`** (the primitive already exists for `ask`/`diff`). Files: `main.go`. Effort S.
+- [x] ✅`parity-p3` **P-5 · (weight emitted; edge `context` deferred — needs extractor plumbing) export: emit edge `context`/`weight` fields** (informational; add only if a downstream consumer keys on them). Files: `export.go`. Effort S.
+- [x] ✅`parity-p3` **P-6 · extract: markdown depth** — heading sub-nodes, reference-style/wikilink syntax, backtick code-symbol `references` edges. Files: `markdown.go`. Effort M.
+
+### Execution strategy — implement / review / fix / verify workflow
+
+Run each bead through a closed loop until it is provably done:
+
+```
+implement (isolated worktree) → adversarial review → apply fixes → verify → repeat until green
+```
+
+- **implement** — one agent per bead, `isolation: worktree` so parallel edits don't collide.
+- **review** — a second agent adversarially reviews the diff against the upstream reference and
+  the bead's definition of done (below); it does not trust the implementer.
+- **fix** — apply review findings; re-review. Loop until the reviewer returns no blocking findings.
+- **verify** — `go build ./... && go vet ./... && go test ./...` must pass, plus the item-specific
+  check below. Only then close the bead.
+
+**Definition of done (every item):** upstream behavior matched; a unit test added that mirrors the
+upstream fix's scenario (the file that *should* now be kept/extracted/annotated); `go test ./...`
+green; and for anything touching the build pipeline, `graph.json` output stays deterministic
+(re-running `build` twice is byte-identical) — this is a hard invariant of the incremental-cache design.
+
+**Batching for a single pass — group by file collision, sequence within a group, parallelize across:**
+
+| Group | Beads (in order) | Primary files |
+|-------|------------------|---------------|
+| `write`   | H2 → P-2 → S1 → P-5      | `export.go`, `main.go`, `security.go` |
+| `detect`  | H1 → P-1 → P-3 → E3      | `detect.go`, `extract.go` |
+| `resolve` | R1                      | `build.go`, `resolve.go` |
+| `java`    | E1                      | `java.go`, `kotlin.go` |
+| `jspy`    | E2                      | `python.go`, `javascript.go` |
+| `serve`   | C1 → C2 → P-4           | `serve.go`, `query.go`, `main.go` |
+| `manifest`| E4                      | new ingester, `main.go` |
+| `md`      | P-6                     | `markdown.go` |
+
+Groups are independent (disjoint file sets), so all eight run in parallel; within a group the
+beads are sequential to avoid same-file merge conflicts. `main.go` is touched by three groups —
+land those beads' `main.go` edits behind small, non-overlapping hunks, or serialize the final
+merge of `write`/`serve`/`manifest`. Do P0 (H2, H1) first regardless of parallelism; they are the
+data-integrity fixes and everything else builds on a trustworthy `graph.json`.
+
 ## Out of scope (intentionally not ported)
 
 The features that need external services or a far larger surface than the

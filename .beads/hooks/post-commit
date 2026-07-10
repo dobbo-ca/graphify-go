@@ -1,0 +1,9 @@
+#!/bin/sh
+# Ansible-managed global git hook (graphify knowledge-graph updater).
+# Installed via core.hooksPath, so this fires in EVERY repo. It is a no-op
+# unless the repo has already been graphed (a graphify-out/ dir exists), which
+# makes graphify strictly opt-in per repo: run `graphify build .` once to enable.
+root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+[ -d "$root/graphify-out" ] || exit 0
+command -v graphify >/dev/null 2>&1 || exit 0
+exec graphify update "$root" >/dev/null 2>&1 || true
