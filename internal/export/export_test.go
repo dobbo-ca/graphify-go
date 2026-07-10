@@ -2,13 +2,203 @@ package export
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
+
+// graphOfSize returns a graph with n distinct nodes and no edges.
+func graphOfSize(n int) *model.Graph {
+	g := model.New()
+	for i := 0; i < n; i++ {
+		id := "n" + strconv.Itoa(i)
+		g.AddNode(model.Node{ID: id, Label: id, FileType: "code", SourceFile: "pkg/a.go"})
+	}
+	return g
+}
+
+// nodeCount reads a node-link graph.json and returns its node count.
+func nodeCount(t *testing.T, path string) int {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	var out jsonGraph
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatalf("unmarshal %s: %v", path, err)
+	}
+	return len(out.Nodes)
+}
+
+func TestToJSONAntiShrink(t *testing.T) {
+	comm := map[int][]string{}
+	path := filepath.Join(t.TempDir(), "graph.json")
+
+	// Seed disk with a 5-node graph.
+	if err := ToJSON(graphOfSize(5), comm, path, "c1", false); err != nil {
+		t.Fatalf("seed write: %v", err)
+	}
+	if got := nodeCount(t, path); got != 5 {
+		t.Fatalf("seed node count = %d, want 5", got)
+	}
+
+	// A smaller (2-node) graph is refused and the 5-node file is left intact.
+	err := ToJSON(graphOfSize(2), comm, path, "c2", false)
+	if !errors.Is(err, ErrGraphShrink) {
+		t.Fatalf("shrink write err = %v, want ErrGraphShrink", err)
+	}
+	if got := nodeCount(t, path); got != 5 {
+		t.Errorf("after refused shrink node count = %d, want 5 (file must be unchanged)", got)
+	}
+
+	// force=true overwrites even though it shrinks.
+	if err := ToJSON(graphOfSize(2), comm, path, "c3", true); err != nil {
+		t.Fatalf("forced shrink write: %v", err)
+	}
+	if got := nodeCount(t, path); got != 2 {
+		t.Errorf("after forced shrink node count = %d, want 2", got)
+	}
+
+	// A larger graph is never refused.
+	if err := ToJSON(graphOfSize(9), comm, path, "c4", false); err != nil {
+		t.Fatalf("growth write: %v", err)
+	}
+	if got := nodeCount(t, path); got != 9 {
+		t.Errorf("after growth node count = %d, want 9", got)
+	}
+}
+
+func TestCheckShrink(t *testing.T) {
+	comm := map[int][]string{}
+	nA := model.Node{ID: "a", Label: "a", FileType: "code", SourceFile: "pkg/a.go"}
+	nB := model.Node{ID: "b", Label: "b", FileType: "code", SourceFile: "pkg/b.go"}
+	nC := model.Node{ID: "c", Label: "c", FileType: "code", SourceFile: "pkg/c.go"}
+
+	graphWith := func(nodes ...model.Node) *model.Graph {
+		g := model.New()
+		for _, n := range nodes {
+			g.AddNode(n)
+		}
+		return g
+	}
+	// seed writes an on-disk graph.json of the given nodes and returns its path.
+	seed := func(nodes ...model.Node) string {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "graph.json")
+		if err := ToJSON(graphWith(nodes...), comm, path, "seed", true); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		return path
+	}
+
+	// Growth (or same size) is never a shrink, regardless of skipped.
+	if err := CheckShrink(seed(nA, nB), graphWith(nA, nB, nC), map[string]bool{"pkg/b.go": true}, false); err != nil {
+		t.Errorf("growth: %v, want nil", err)
+	}
+
+	// Legit refactor: b removed from a re-parsed file (pkg/b.go NOT skipped) — allowed.
+	if err := CheckShrink(seed(nA, nB), graphWith(nA), map[string]bool{}, false); err != nil {
+		t.Errorf("refactor shrink: %v, want nil", err)
+	}
+
+	// Deletion: b's file no longer current, so it never appears in skipped — allowed.
+	if err := CheckShrink(seed(nA, nB), graphWith(nA), map[string]bool{"pkg/z.go": true}, false); err != nil {
+		t.Errorf("deletion shrink: %v, want nil", err)
+	}
+
+	// Silent loss: b's source file is still present but was skipped this run — refuse.
+	if err := CheckShrink(seed(nA, nB), graphWith(nA), map[string]bool{"pkg/b.go": true}, false); !errors.Is(err, ErrGraphShrink) {
+		t.Errorf("skipped-file shrink err = %v, want ErrGraphShrink", err)
+	}
+
+	// force bypasses even a skipped-file shrink.
+	if err := CheckShrink(seed(nA, nB), graphWith(nA), map[string]bool{"pkg/b.go": true}, true); err != nil {
+		t.Errorf("force bypass: %v, want nil", err)
+	}
+
+	// Absent target: nothing to lose.
+	if err := CheckShrink(filepath.Join(t.TempDir(), "graph.json"), graphWith(nA), nil, false); err != nil {
+		t.Errorf("absent target: %v, want nil", err)
+	}
+
+	// Empty (whitespace-only) target: proceed even with a would-be skip set.
+	empty := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(empty, []byte("  \n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckShrink(empty, graphWith(nA), map[string]bool{"pkg/b.go": true}, false); err != nil {
+		t.Errorf("empty target: %v, want nil", err)
+	}
+
+	// Unparseable existing graph: fail safe.
+	corrupt := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(corrupt, []byte("{ not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckShrink(corrupt, graphWith(nA), nil, false); !errors.Is(err, ErrGraphUnverifiable) {
+		t.Errorf("unparseable err = %v, want ErrGraphUnverifiable", err)
+	}
+}
+
+func TestToJSONEmptyAndAbsentTargetWrites(t *testing.T) {
+	comm := map[int][]string{}
+
+	// Absent target: writes normally.
+	absent := filepath.Join(t.TempDir(), "graph.json")
+	if err := ToJSON(graphOfSize(3), comm, absent, "c1", false); err != nil {
+		t.Fatalf("absent-target write: %v", err)
+	}
+	if got := nodeCount(t, absent); got != 3 {
+		t.Errorf("absent-target node count = %d, want 3", got)
+	}
+
+	// Empty (whitespace-only) target: writes normally, no shrink refusal.
+	empty := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(empty, []byte("   \n"), 0o644); err != nil {
+		t.Fatalf("touch empty: %v", err)
+	}
+	if err := ToJSON(graphOfSize(1), comm, empty, "c2", false); err != nil {
+		t.Fatalf("empty-target write: %v", err)
+	}
+	if got := nodeCount(t, empty); got != 1 {
+		t.Errorf("empty-target node count = %d, want 1", got)
+	}
+}
+
+func TestToJSONUnparseableExistingRefused(t *testing.T) {
+	comm := map[int][]string{}
+	path := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(path, []byte("{ this is not json"), 0o644); err != nil {
+		t.Fatalf("write corrupt: %v", err)
+	}
+
+	err := ToJSON(graphOfSize(3), comm, path, "c1", false)
+	if !errors.Is(err, ErrGraphUnverifiable) {
+		t.Fatalf("unparseable-target err = %v, want ErrGraphUnverifiable", err)
+	}
+	// File is left untouched (still the corrupt bytes).
+	data, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatalf("read: %v", readErr)
+	}
+	if string(data) != "{ this is not json" {
+		t.Errorf("corrupt file was modified: %q", data)
+	}
+
+	// force overwrites the corrupt file.
+	if err := ToJSON(graphOfSize(3), comm, path, "c2", true); err != nil {
+		t.Fatalf("forced overwrite of corrupt file: %v", err)
+	}
+	if got := nodeCount(t, path); got != 3 {
+		t.Errorf("after forced overwrite node count = %d, want 3", got)
+	}
+}
 
 func TestToJSON(t *testing.T) {
 	g := model.New()
@@ -19,7 +209,7 @@ func TestToJSON(t *testing.T) {
 	communities := map[int][]string{0: {"a1", "fa"}}
 
 	path := filepath.Join(t.TempDir(), "graph.json")
-	if err := ToJSON(g, communities, path, "deadbeefcafe"); err != nil {
+	if err := ToJSON(g, communities, path, "deadbeefcafe", false); err != nil {
 		t.Fatalf("ToJSON: %v", err)
 	}
 
@@ -69,13 +259,67 @@ func TestToJSON(t *testing.T) {
 	}
 }
 
+func TestToJSONEdgeWeight(t *testing.T) {
+	g := model.New()
+	g.AddNode(model.Node{ID: "a", Label: "a", FileType: "code", SourceFile: "pkg/a.go"})
+	g.AddNode(model.Node{ID: "b", Label: "b", FileType: "code", SourceFile: "pkg/b.go"})
+	// One edge carries a non-zero weight, the other leaves it unset.
+	g.AddEdge(model.Edge{Source: "a", Target: "b", Relation: "calls", Confidence: "EXTRACTED", Weight: 3.5})
+	g.AddEdge(model.Edge{Source: "b", Target: "a", Relation: "calls", Confidence: "EXTRACTED"})
+
+	path := filepath.Join(t.TempDir(), "graph.json")
+	if err := ToJSON(g, map[int][]string{}, path, "c1", false); err != nil {
+		t.Fatalf("ToJSON: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	// A weighted edge serializes its weight; an unweighted edge omits the field.
+	var out jsonGraph
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(out.Links) != 2 {
+		t.Fatalf("got %d links, want 2", len(out.Links))
+	}
+	for _, l := range out.Links {
+		want := 0.0
+		if l.Source == "a" {
+			want = 3.5
+		}
+		if l.Weight != want {
+			t.Errorf("link %s->%s weight = %v, want %v", l.Source, l.Target, l.Weight, want)
+		}
+	}
+
+	// omitempty: the unweighted edge must not emit a "weight" key at all, so
+	// existing consumers and round-trips are unaffected.
+	var raw struct {
+		Links []map[string]any `json:"links"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("unmarshal raw: %v", err)
+	}
+	for _, l := range raw.Links {
+		_, hasWeight := l["weight"]
+		if l["source"] == "a" && !hasWeight {
+			t.Errorf("weighted edge is missing the weight key: %v", l)
+		}
+		if l["source"] == "b" && hasWeight {
+			t.Errorf("unweighted edge must omit the weight key: %v", l)
+		}
+	}
+}
+
 func TestToJSONComputedName(t *testing.T) {
 	g := model.New()
 	g.AddNode(model.Node{ID: "m1", Label: "module.this [null-label]", FileType: "code", SourceFile: "main.tf", SourceLocation: "L1", ComputedName: "eg-prod-app"})
 	communities := map[int][]string{0: {"m1"}}
 
 	path := filepath.Join(t.TempDir(), "graph.json")
-	if err := ToJSON(g, communities, path, "deadbeefcafe"); err != nil {
+	if err := ToJSON(g, communities, path, "deadbeefcafe", false); err != nil {
 		t.Fatalf("ToJSON: %v", err)
 	}
 	data, err := os.ReadFile(path)

@@ -1,6 +1,11 @@
 package extract
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/dobbo-ca/graphify-go/internal/idutil"
+)
 
 func TestExtractPython(t *testing.T) {
 	root := "testdata/pyproj"
@@ -51,5 +56,44 @@ func TestExtractPython(t *testing.T) {
 	}
 	if rels["imports"] == 0 {
 		t.Error("no external import edges (expected os)")
+	}
+}
+
+// A `# NOTE:` comment becomes a rationale node with an edge to the file, and a
+// function docstring becomes a rationale node with an edge to that function.
+func TestExtractPythonRationale(t *testing.T) {
+	src := []byte("# NOTE: keep boot fast\n" +
+		"def boot():\n" +
+		"    \"\"\"Boot the service and return its status code for callers.\"\"\"\n" +
+		"    return 1\n")
+	res := FileFromBytes("svc/app.py", src)
+
+	fileID := idutil.MakeID("svc/app.py")
+	funcID := idutil.MakeID("svc.app", "boot")
+
+	label := map[string]string{}
+	ftype := map[string]string{}
+	for _, n := range res.Nodes {
+		label[n.ID] = n.Label
+		ftype[n.ID] = n.FileType
+	}
+	hasRationaleFor := func(labelPrefix, target string) bool {
+		for _, e := range res.Edges {
+			if e.Relation != "rationale_for" || e.Target != target {
+				continue
+			}
+			if ftype[e.Source] == "rationale" && strings.HasPrefix(label[e.Source], labelPrefix) {
+				return true
+			}
+		}
+		return false
+	}
+	// NOTE comment -> rationale node, edge to the file.
+	if !hasRationaleFor("# NOTE: keep boot fast", fileID) {
+		t.Errorf("expected rationale_for edge from NOTE comment to file %s", fileID)
+	}
+	// Function docstring -> rationale node, edge to the function.
+	if !hasRationaleFor("Boot the service", funcID) {
+		t.Errorf("expected rationale_for edge from docstring to function %s", funcID)
 	}
 }

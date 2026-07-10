@@ -6,6 +6,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -59,13 +60,9 @@ func main() {
 	case "ask":
 		err = cmdAsk(os.Args[2:])
 	case "explain":
-		err = cmdExplain(mustArg(2, "explain <node>"))
+		err = cmdExplain(os.Args[2:])
 	case "path":
-		if len(os.Args) < 4 {
-			err = fmt.Errorf("usage: graphify path <from> <to>")
-		} else {
-			err = cmdPath(os.Args[2], os.Args[3])
-		}
+		err = cmdPath(os.Args[2:])
 	case "extract":
 		err = cmdExtract(mustArg(2, "extract <file>"))
 	case "export":
@@ -193,7 +190,7 @@ func assemble(root string, files []string, prev cache.Cache, prevStat cache.Stat
 // <root>/graphify-out. When sem.enabled, an additive LLM enrichment pass runs
 // between resolve and graph-build so communities reflect concepts; it never
 // alters the deterministic core.
-func writeOutputs(root string, files []string, results []extract.Result, newCache cache.Cache, newStat cache.StatIndex, sem semanticOpts) (*model.Graph, map[int][]string, error) {
+func writeOutputs(root string, files []string, results []extract.Result, newCache cache.Cache, newStat cache.StatIndex, sem semanticOpts, force, noCluster bool) (*model.Graph, map[int][]string, error) {
 	ext := extract.Resolve(results, files)
 	if sem.enabled {
 		var err error
@@ -203,14 +200,48 @@ func writeOutputs(root string, files []string, results []extract.Result, newCach
 		}
 	}
 	g := graph.Build(ext)
-	communities := cluster.Cluster(g)
+	// --no-cluster writes the raw extraction: skip Louvain community detection so
+	// every node lands with no community assignment (mirrors upstream update
+	// --no-cluster). An empty map flows through NodeCommunity as "no community".
+	communities := map[int][]string{}
+	if !noCluster {
+		communities = cluster.Cluster(g)
+	}
 	commit := gitHead(root)
 
 	outDir := filepath.Join(root, "graphify-out")
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return nil, nil, err
 	}
-	if err := export.ToJSON(g, communities, filepath.Join(outDir, "graph.json"), commit); err != nil {
+	// Anti-shrink guard: allow the write when the graph grew, or when every node
+	// that would be lost belongs to a source that was rebuilt/deleted this run;
+	// refuse (and keep the larger graph.json) only when a lost node's source file
+	// was skipped this run — the silent loss (#479) this guards. --force /
+	// GRAPHIFY_FORCE overrides. The skipped set gives CheckShrink the legitimate-
+	// shrink carve-out the crude ToJSON node-count guard lacks (mirrors upstream
+	// watch._check_shrink); on approval ToJSON runs with force=true so it does not
+	// re-apply the crude guard and refuse a legitimate refactor.
+	force = force || envForce()
+	graphPath := filepath.Join(outDir, "graph.json")
+	// Run the anti-shrink guard FIRST, before writing any output. On a refused
+	// shrink (and no --force) every output is aborted so graphify-out stays
+	// consistent: keeping the old graph.json while rewriting GRAPH_REPORT.md, the
+	// cache, and the stat sidecar from the rejected smaller graph would leave the
+	// report/cache describing a graph that graph.json does not match (mirrors
+	// upstream watch, where a refused _check_shrink returns before any write).
+	if err := export.CheckShrink(graphPath, g, skippedFiles(files, newCache), force); err != nil {
+		// A shrink/unverifiable refusal is a fail-safe, not a build failure:
+		// warn and leave graphify-out untouched rather than crashing the build.
+		if errors.Is(err, export.ErrGraphShrink) || errors.Is(err, export.ErrGraphUnverifiable) {
+			fmt.Fprintf(os.Stderr, "[graphify] WARNING: %v\n", err)
+			return g, communities, nil
+		}
+		return nil, nil, err
+	}
+	// Shrink allowed (growth, a legitimate carve-out, or force set): write every
+	// output. ToJSON runs with force=true so it does not re-apply its own crude
+	// node-count guard and refuse a legitimate refactor CheckShrink already OK'd.
+	if err := export.ToJSON(g, communities, graphPath, commit, true); err != nil {
 		return nil, nil, err
 	}
 	md := report.Generate(g, communities, root, commit)
@@ -226,16 +257,57 @@ func writeOutputs(root string, files []string, results []extract.Result, newCach
 	return g, communities, nil
 }
 
+// envForce reports whether GRAPHIFY_FORCE requests bypassing the anti-shrink
+// guard, matching upstream's accepted values (1/true/yes, case-insensitive).
+func envForce() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("GRAPHIFY_FORCE"))) {
+	case "1", "true", "yes":
+		return true
+	}
+	return false
+}
+
+// skippedFiles returns the current source files that failed to process this run —
+// present in files but absent from newCache — keyed by slash path to match node
+// source_file. These are the files whose nodes vanishing would be an unexplained
+// (silent) loss; a shrink whose lost nodes all come from rebuilt or deleted
+// sources is legitimate and never lands here.
+func skippedFiles(files []string, newCache cache.Cache) map[string]bool {
+	skipped := map[string]bool{}
+	for _, f := range files {
+		key := filepath.ToSlash(f)
+		if _, ok := newCache[key]; !ok {
+			skipped[key] = true
+		}
+	}
+	return skipped
+}
+
+// warnWalkReport prints a non-fatal stderr warning for each directory the detect
+// walk could not read (its files are missing from this run) and a note counting
+// files seen but skipped for lacking an extractor. Silent otherwise. Mirrors
+// upstream detect.py's walk_errors / unclassified surfacing.
+func warnWalkReport(rep detect.WalkReport) {
+	for _, we := range rep.WalkErrors {
+		fmt.Fprintf(os.Stderr, "[graphify] WARNING: could not scan %s; its files are missing from this run's enumeration.\n", we)
+	}
+	if rep.Skipped > 0 {
+		fmt.Fprintf(os.Stderr, "[graphify] note: %d file(s) skipped (no extractor for their type).\n", rep.Skipped)
+	}
+}
+
 func cmdBuild(args []string) error {
 	opts, err := parseBuildOpts(args)
 	if err != nil {
 		return err
 	}
 	root := opts.root
-	files, err := detect.CollectFiles(root)
+	rep, err := detect.CollectFilesReport(root)
 	if err != nil {
 		return err
 	}
+	files := rep.Files
+	warnWalkReport(rep)
 	if len(files) == 0 {
 		return fmt.Errorf("no supported source files found under %s", root)
 	}
@@ -246,7 +318,13 @@ func cmdBuild(args []string) error {
 			return err
 		}
 	}
-	g, communities, err := writeOutputs(root, files, results, newCache, newStat, opts.semanticOpts())
+	if !opts.noManifests {
+		results, err = withManifests(root, results)
+		if err != nil {
+			return err
+		}
+	}
+	g, communities, err := writeOutputs(root, files, results, newCache, newStat, opts.semanticOpts(), opts.force, opts.noCluster)
 	if err != nil {
 		return err
 	}
@@ -257,10 +335,13 @@ func cmdBuild(args []string) error {
 
 // buildOpts holds the parsed build/update arguments.
 type buildOpts struct {
-	root     string
-	cargo    bool
-	semantic bool   // --semantic: run the opt-in LLM enrichment pass
-	backend  string // --backend: which semantic backend (e.g. "bedrock")
+	root        string
+	cargo       bool
+	noManifests bool   // --no-manifests: skip the default package-manifest pass
+	semantic    bool   // --semantic: run the opt-in LLM enrichment pass
+	backend     string // --backend: which semantic backend (e.g. "bedrock")
+	force       bool   // --force: overwrite graph.json even when the rebuild has fewer nodes
+	noCluster   bool   // --no-cluster: skip community detection, write the raw extraction
 }
 
 // semanticOpts projects the build options onto the enrichment-stage options.
@@ -268,12 +349,15 @@ func (o buildOpts) semanticOpts() semanticOpts {
 	return semanticOpts{enabled: o.semantic, backend: o.backend}
 }
 
-// parseBuildArgs splits build/update arguments into the target path (default ".")
-// and whether the opt-in --cargo crate-dependency pass was requested. It exists
-// for callers that do not support semantic enrichment; build uses parseBuildOpts.
-func parseBuildArgs(args []string) (root string, cargo bool) {
+// parseBuildArgs splits build/update arguments into the target path (default "."),
+// whether the opt-in --cargo crate-dependency pass was requested, whether
+// --no-manifests disabled the default package-manifest pass, whether --force
+// was given to bypass the anti-shrink guard, and whether --no-cluster skipped
+// community detection. It exists for callers that do not support semantic
+// enrichment; build uses parseBuildOpts.
+func parseBuildArgs(args []string) (root string, cargo, noManifests, force, noCluster bool) {
 	opts, _ := parseBuildOpts(args)
-	return opts.root, opts.cargo
+	return opts.root, opts.cargo, opts.noManifests, opts.force, opts.noCluster
 }
 
 // parseBuildOpts parses the full build flag set: the target path (default "."),
@@ -287,6 +371,12 @@ func parseBuildOpts(args []string) (buildOpts, error) {
 		switch {
 		case a == "--cargo":
 			opts.cargo = true
+		case a == "--no-manifests":
+			opts.noManifests = true
+		case a == "--force":
+			opts.force = true
+		case a == "--no-cluster":
+			opts.noCluster = true
 		case a == "--semantic":
 			opts.semantic = true
 		case a == "--backend":
@@ -318,16 +408,31 @@ func withCargo(root string, results []extract.Result) ([]extract.Result, error) 
 	return append(results, res), nil
 }
 
+// withManifests runs the deterministic package-manifest pass (pyproject.toml,
+// go.mod, pom.xml) and appends its package nodes/depends_on edges to the per-file
+// results. It runs by default (mirroring upstream manifest_ingest) because it is
+// cheap and deterministic; --no-manifests disables it. It never errors on a
+// malformed manifest — only on a walk failure — so it cannot break a build.
+func withManifests(root string, results []extract.Result) ([]extract.Result, error) {
+	res, err := extract.IntrospectManifests(root)
+	if err != nil {
+		return nil, err
+	}
+	return append(results, res), nil
+}
+
 // cmdUpdate rebuilds the graph incrementally: it re-parses only files whose
 // content changed since the last build/update, reusing cached results for the
 // rest, then resolves and writes the same outputs as build. With no existing
 // cache it transparently degrades to a full build.
 func cmdUpdate(args []string) error {
-	root, cargo := parseBuildArgs(args)
-	files, err := detect.CollectFiles(root)
+	root, cargo, noManifests, force, noCluster := parseBuildArgs(args)
+	rep, err := detect.CollectFilesReport(root)
 	if err != nil {
 		return err
 	}
+	files := rep.Files
+	warnWalkReport(rep)
 	if len(files) == 0 {
 		return fmt.Errorf("no supported source files found under %s", root)
 	}
@@ -340,7 +445,13 @@ func cmdUpdate(args []string) error {
 			return err
 		}
 	}
-	g, communities, err := writeOutputs(root, files, results, newCache, newStat, semanticOpts{})
+	if !noManifests {
+		results, err = withManifests(root, results)
+		if err != nil {
+			return err
+		}
+	}
+	g, communities, err := writeOutputs(root, files, results, newCache, newStat, semanticOpts{}, force, noCluster)
 	if err != nil {
 		return err
 	}
@@ -439,12 +550,16 @@ func safeGraphPath(path string) (string, error) {
 	return security.ValidateGraphPath(path, base)
 }
 
-func cmdExplain(id string) error {
-	g, err := load()
+func cmdExplain(args []string) error {
+	positionals, graphPath := parseGraphFlag(args)
+	if len(positionals) != 1 {
+		return fmt.Errorf(`usage: graphify explain <node> [--graph path]`)
+	}
+	g, err := loadGraphAt(graphPath)
 	if err != nil {
 		return err
 	}
-	ex, err := query.Explain(g, id)
+	ex, err := query.Explain(g, positionals[0])
 	if err != nil {
 		return err
 	}
@@ -458,12 +573,16 @@ func cmdExplain(id string) error {
 	return nil
 }
 
-func cmdPath(from, to string) error {
-	g, err := load()
+func cmdPath(args []string) error {
+	positionals, graphPath := parseGraphFlag(args)
+	if len(positionals) != 2 {
+		return fmt.Errorf("usage: graphify path <from> <to> [--graph path]")
+	}
+	g, err := loadGraphAt(graphPath)
 	if err != nil {
 		return err
 	}
-	nodes, err := query.Path(g, from, to)
+	nodes, err := query.Path(g, positionals[0], positionals[1])
 	if err != nil {
 		return err
 	}
@@ -473,6 +592,39 @@ func cmdPath(from, to string) error {
 	}
 	fmt.Println(strings.Join(parts, " -> "))
 	return nil
+}
+
+// parseGraphFlag splits args into positionals and an optional --graph <path>
+// (or --graph=<path>) override, defaulting to defaultGraphPath. It lets explain
+// and path accept an alternate graph.json the way ask and diff already do.
+func parseGraphFlag(args []string) (positionals []string, graphPath string) {
+	graphPath = defaultGraphPath
+	for i := 0; i < len(args); i++ {
+		switch {
+		case args[i] == "--graph" && i+1 < len(args):
+			graphPath = args[i+1]
+			i++
+		case strings.HasPrefix(args[i], "--graph="):
+			graphPath = strings.TrimPrefix(args[i], "--graph=")
+		default:
+			positionals = append(positionals, args[i])
+		}
+	}
+	return positionals, graphPath
+}
+
+// loadGraphAt loads a graph from a user-supplied --graph path, applying the same
+// containment guard as ask/diff when it differs from the default so an alternate
+// path cannot escape graphify-out to read arbitrary on-disk JSON.
+func loadGraphAt(graphPath string) (*query.Graph, error) {
+	if graphPath != defaultGraphPath {
+		safe, err := safeGraphPath(graphPath)
+		if err != nil {
+			return nil, err
+		}
+		graphPath = safe
+	}
+	return query.Load(graphPath)
 }
 
 func cmdExtract(file string) error {
@@ -536,20 +688,47 @@ func cmdExport(format, root string) error {
 
 // cmdAffected prints the graph nodes defined in the given files and everything
 // that transitively depends on them. With no files it derives them from the
-// working tree's uncommitted changes (git diff against HEAD).
-func cmdAffected(files []string) error {
+// working tree's uncommitted changes (git diff against HEAD). --depth N bounds
+// the reverse-dependency walk (default: unbounded); --relation R (repeatable)
+// restricts which edge kinds count as "depends-on".
+func cmdAffected(args []string) error {
 	g, err := load()
 	if err != nil {
 		return err
 	}
+	var files, relations []string
+	depth := 0 // unbounded — preserve the historical whole-closure behaviour
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--depth" && i+1 < len(args):
+			depth, err = strconv.Atoi(args[i+1])
+			if err != nil {
+				return fmt.Errorf("--depth must be an integer")
+			}
+			i++
+		case strings.HasPrefix(a, "--depth="):
+			depth, err = strconv.Atoi(strings.TrimPrefix(a, "--depth="))
+			if err != nil {
+				return fmt.Errorf("--depth must be an integer")
+			}
+		case a == "--relation" && i+1 < len(args):
+			relations = append(relations, args[i+1])
+			i++
+		case strings.HasPrefix(a, "--relation="):
+			relations = append(relations, strings.TrimPrefix(a, "--relation="))
+		default:
+			files = append(files, a)
+		}
+	}
 	if len(files) == 0 {
 		files = gitChangedFiles(".")
 		if len(files) == 0 {
-			return fmt.Errorf("no files given and no uncommitted changes detected (usage: graphify affected [file...])")
+			return fmt.Errorf("no files given and no uncommitted changes detected (usage: graphify affected [file...] [--depth N] [--relation R])")
 		}
 		fmt.Printf("changed files (from git): %s\n", strings.Join(files, ", "))
 	}
-	res := query.Affected(g, files)
+	res := query.Affected(g, files, query.AffectedOptions{Depth: depth, Relations: relations})
 	if len(res.Changed) == 0 {
 		fmt.Println("no graph nodes are defined in those files")
 		return nil
@@ -715,15 +894,15 @@ func usage() {
 	fmt.Println(`graphify - code knowledge graph
 
 usage:
-  graphify build [path] [--cargo]   build graph.json + report under <path>/graphify-out (--cargo adds Rust crate-dependency edges)
-  graphify update [path] [--cargo]  rebuild incrementally, re-parsing only changed files
+  graphify build [path] [--cargo] [--force] [--no-cluster]   build graph.json + report under <path>/graphify-out (--cargo adds Rust crate-dependency edges; --force overwrites even if the rebuild has fewer nodes, also GRAPHIFY_FORCE=1; --no-cluster skips community detection)
+  graphify update [path] [--cargo] [--force] [--no-cluster]  rebuild incrementally, re-parsing only changed files
   graphify watch [path]        rebuild incrementally as files change (Ctrl-C to stop)
   graphify hook <install|uninstall|status> [path]  manage git hooks that update the graph after commits
   graphify query <pattern>     find nodes by name (regex, case-insensitive)
   graphify ask "<question>"    NL retrieval: relevant subgraph as text [--dfs --budget N --graph path]
-  graphify explain <node>      show a node and its neighbours
-  graphify path <from> <to>    shortest dependency path between two nodes
-  graphify affected [file...]  nodes defined in changed files + their dependents
+  graphify explain <node>      show a node and its neighbours [--graph path]
+  graphify path <from> <to>    shortest dependency path between two nodes [--graph path]
+  graphify affected [file...]  nodes defined in changed files + their dependents [--depth N --relation R]
   graphify diff <old> <new>    node/edge delta between two graph.json snapshots
   graphify merge-driver <base> <current> <other>  git merge driver: union-merge two graph.json files
   graphify validate            check graph.json for structural problems

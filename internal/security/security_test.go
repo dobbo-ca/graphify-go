@@ -40,3 +40,33 @@ func TestSanitizeLabel(t *testing.T) {
 		t.Errorf("SanitizeLabel stripped wrong: %q", got)
 	}
 }
+
+func TestMaxGraphFileBytes(t *testing.T) {
+	const defaultCap = int64(MaxGraphFileBytes)
+	for _, tc := range []struct {
+		name string
+		set  bool
+		env  string
+		want int64
+	}{
+		{"unset", false, "", defaultCap},
+		{"blank", true, "  ", defaultCap},
+		{"gb suffix", true, "1GB", 1073741824},
+		{"mb suffix lowercase", true, "640mb", 640 * 1024 * 1024},
+		{"plain bytes", true, "123456", 123456},
+		{"invalid", true, "not-a-number", defaultCap},
+		{"zero", true, "0", defaultCap},
+		{"negative", true, "-5", defaultCap},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.set {
+				t.Setenv("GRAPHIFY_MAX_GRAPH_BYTES", tc.env)
+			} else {
+				os.Unsetenv("GRAPHIFY_MAX_GRAPH_BYTES")
+			}
+			if got := maxGraphFileBytes(); got != tc.want {
+				t.Errorf("maxGraphFileBytes() = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}

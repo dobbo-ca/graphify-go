@@ -1,6 +1,7 @@
 package query
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -75,5 +76,55 @@ func TestPath(t *testing.T) {
 	}
 	if len(p) != 3 || p[0].Label != "a()" || p[2].Label != "c()" {
 		t.Fatalf("path = %+v, want a->b->c", p)
+	}
+}
+
+func TestPathEdges(t *testing.T) {
+	g := loadSample(t)
+	res, err := PathEdges(g, "a()", "c()", 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Nodes) != 3 || len(res.Edges) != 2 {
+		t.Fatalf("got %d nodes / %d edges, want 3 / 2", len(res.Nodes), len(res.Edges))
+	}
+	for i, e := range res.Edges {
+		if e.Relation != "calls" || e.Confidence != "INFERRED" || !e.Forward {
+			t.Errorf("edge %d = %+v, want forward calls/INFERRED", i, e)
+		}
+	}
+	// Reversed query orients both hops backwards against the stored edges.
+	rev, err := PathEdges(g, "c()", "a()", 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, e := range rev.Edges {
+		if e.Forward {
+			t.Errorf("edge %d should be backward: %+v", i, e)
+		}
+	}
+}
+
+func TestPathEdgesSameNode(t *testing.T) {
+	g := loadSample(t)
+	_, err := PathEdges(g, "a()", "a()", 8)
+	var same *SameNodeError
+	if !errors.As(err, &same) {
+		t.Fatalf("err = %v, want *SameNodeError", err)
+	}
+	if same.ID != "x_a" {
+		t.Errorf("resolved ID = %q, want x_a", same.ID)
+	}
+}
+
+func TestPathEdgesMaxHops(t *testing.T) {
+	g := loadSample(t)
+	_, err := PathEdges(g, "a()", "c()", 1)
+	var over *MaxHopsError
+	if !errors.As(err, &over) {
+		t.Fatalf("err = %v, want *MaxHopsError", err)
+	}
+	if over.MaxHops != 1 || over.Hops != 2 {
+		t.Errorf("got max=%d hops=%d, want max=1 hops=2", over.MaxHops, over.Hops)
 	}
 }

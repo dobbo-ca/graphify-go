@@ -19,21 +19,42 @@ type AffectedResult struct {
 	Impacted []Node
 }
 
+// AffectedOptions scopes the reverse-dependency walk performed by Affected.
+type AffectedOptions struct {
+	// Depth bounds how many reverse-dependency hops a node may sit from a changed
+	// node to still count as impacted: Depth 1 keeps only direct dependents, 2
+	// their dependents, and so on. Depth <= 0 means unbounded — the whole
+	// transitive closure — which is the historical (flag-absent) behaviour.
+	Depth int
+	// Relations restricts which edge relations are treated as "depends-on" when
+	// walking backwards. Empty uses the default dependency relation set.
+	Relations []string
+}
+
 // Affected returns the graph nodes defined in changedFiles ("changed") and every
 // node that transitively depends on them ("impacted") — the blast radius of a
 // change. Impact propagates backwards along dependency edges: a changed callee
-// reaches its callers, a changed file reaches its importers.
-func Affected(g *Graph, changedFiles []string) AffectedResult {
+// reaches its callers, a changed file reaches its importers. opts.Depth bounds
+// the number of hops and opts.Relations restricts which edge kinds are followed.
+func Affected(g *Graph, changedFiles []string, opts AffectedOptions) AffectedResult {
 	want := make(map[string]bool, len(changedFiles))
 	for _, f := range changedFiles {
 		want[filepath.ToSlash(f)] = true
+	}
+
+	relSet := depRelations
+	if len(opts.Relations) > 0 {
+		relSet = make(map[string]bool, len(opts.Relations))
+		for _, r := range opts.Relations {
+			relSet[r] = true
+		}
 	}
 
 	// Reverse dependency adjacency: for "A depends on B" (A->B), record B->A so a
 	// changed B reaches its dependent A.
 	rev := map[string][]string{}
 	for _, l := range g.Links {
-		if depRelations[l.Relation] {
+		if relSet[l.Relation] {
 			rev[l.Target] = append(rev[l.Target], l.Source)
 		}
 	}
@@ -48,18 +69,30 @@ func Affected(g *Graph, changedFiles []string) AffectedResult {
 		}
 	}
 
-	// BFS backwards from the changed nodes to collect dependents.
+	// BFS backwards from the changed nodes (depth 0) to collect dependents,
+	// stopping at opts.Depth hops. Depth <= 0 leaves the walk unbounded.
+	bounded := opts.Depth > 0
+	type item struct {
+		id    string
+		depth int
+	}
 	impactedSet := map[string]bool{}
-	queue := append([]string(nil), seeds...)
+	queue := make([]item, 0, len(seeds))
+	for _, s := range seeds {
+		queue = append(queue, item{s, 0})
+	}
 	for len(queue) > 0 {
 		cur := queue[0]
 		queue = queue[1:]
-		for _, dep := range rev[cur] {
+		if bounded && cur.depth >= opts.Depth {
+			continue
+		}
+		for _, dep := range rev[cur.id] {
 			if changedSet[dep] || impactedSet[dep] {
 				continue
 			}
 			impactedSet[dep] = true
-			queue = append(queue, dep)
+			queue = append(queue, item{dep, cur.depth + 1})
 		}
 	}
 

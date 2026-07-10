@@ -10,20 +10,28 @@ import (
 
 func TestParseBuildArgs(t *testing.T) {
 	cases := []struct {
-		args      []string
-		wantRoot  string
-		wantCargo bool
+		args            []string
+		wantRoot        string
+		wantCargo       bool
+		wantNoManifests bool
+		wantForce       bool
+		wantNoCluster   bool
 	}{
-		{nil, ".", false},
-		{[]string{"--cargo"}, ".", true},
-		{[]string{"some/path"}, "some/path", false},
-		{[]string{"some/path", "--cargo"}, "some/path", true},
-		{[]string{"--cargo", "some/path"}, "some/path", true},
+		{nil, ".", false, false, false, false},
+		{[]string{"--cargo"}, ".", true, false, false, false},
+		{[]string{"some/path"}, "some/path", false, false, false, false},
+		{[]string{"some/path", "--cargo"}, "some/path", true, false, false, false},
+		{[]string{"--cargo", "some/path"}, "some/path", true, false, false, false},
+		{[]string{"--force"}, ".", false, false, true, false},
+		{[]string{"some/path", "--cargo", "--force"}, "some/path", true, false, true, false},
+		{[]string{"--no-manifests"}, ".", false, true, false, false},
+		{[]string{"--no-cluster"}, ".", false, false, false, true},
+		{[]string{"some/path", "--cargo", "--no-cluster"}, "some/path", true, false, false, true},
 	}
 	for _, c := range cases {
-		root, cargo := parseBuildArgs(c.args)
-		if root != c.wantRoot || cargo != c.wantCargo {
-			t.Errorf("parseBuildArgs(%v) = (%q, %v), want (%q, %v)", c.args, root, cargo, c.wantRoot, c.wantCargo)
+		root, cargo, noManifests, force, noCluster := parseBuildArgs(c.args)
+		if root != c.wantRoot || cargo != c.wantCargo || noManifests != c.wantNoManifests || force != c.wantForce || noCluster != c.wantNoCluster {
+			t.Errorf("parseBuildArgs(%v) = (%q, %v, %v, %v, %v), want (%q, %v, %v, %v, %v)", c.args, root, cargo, noManifests, force, noCluster, c.wantRoot, c.wantCargo, c.wantNoManifests, c.wantForce, c.wantNoCluster)
 		}
 	}
 }

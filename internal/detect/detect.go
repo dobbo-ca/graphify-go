@@ -5,7 +5,10 @@
 package detect
 
 import (
+	"bytes"
+	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -19,6 +22,8 @@ var SupportedExtensions = map[string]bool{
 	".mjs":      true,
 	".cjs":      true,
 	".ts":       true,
+	".mts":      true,
+	".cts":      true,
 	".tsx":      true,
 	".tf":       true,
 	".tfvars":   true,
@@ -55,6 +60,9 @@ var SupportedExtensions = map[string]bool{
 	".md":       true,
 	".mdx":      true,
 	".markdown": true,
+	".vue":      true,
+	".svelte":   true,
+	".astro":    true,
 }
 
 var skipDirs = map[string]bool{
@@ -82,24 +90,274 @@ var mcpConfigFiles = map[string]bool{
 	"mcp_servers.json":           true,
 }
 
+// shebangExtractorExt maps a shebang interpreter's basename to the file
+// extension whose extractor should handle an extensionless script. Only
+// interpreters that have a real Go extractor are listed — upstream's other
+// shebang code interpreters (perl, Rscript, fish, tcsh) have no extractor here,
+// so their scripts are left unindexed rather than mis-parsed. The mapped
+// extension is one the extract dispatch already understands. Mirrors the
+// extractor-backed subset of detect.py's _SHEBANG_CODE_INTERPRETERS.
+var shebangExtractorExt = map[string]string{
+	"python":  ".py",
+	"python3": ".py",
+	"python2": ".py",
+	"node":    ".js",
+	"nodejs":  ".js",
+	"ruby":    ".rb",
+	"bash":    ".sh",
+	"sh":      ".sh",
+	"dash":    ".sh",
+	"zsh":     ".sh",
+	"ksh":     ".sh",
+	"lua":     ".lua",
+	"php":     ".php",
+	"julia":   ".jl",
+}
+
+// ShebangExt returns the extractor extension (e.g. ".sh", ".py") for a script
+// whose leading line is a shebang naming an interpreter with a Go extractor, or
+// "" when src has no such shebang. src need only hold the first line. It lets
+// the extract dispatch route an extensionless script the same way CollectFiles
+// decided to collect it.
+func ShebangExt(src []byte) string {
+	return shebangExtractorExt[shebangInterpreter(src)]
+}
+
+// shebangInterpreter parses the interpreter basename from a leading shebang
+// line, resolving the common `/usr/bin/env [flag|VAR=val ...] <interp>` form. It
+// returns "" when src does not start with "#!" or no interpreter token is found.
+func shebangInterpreter(src []byte) string {
+	if !bytes.HasPrefix(src, []byte("#!")) {
+		return ""
+	}
+	line := src[2:]
+	if i := bytes.IndexByte(line, '\n'); i >= 0 {
+		line = line[:i]
+	}
+	fields := strings.Fields(string(line))
+	if len(fields) == 0 {
+		return ""
+	}
+	interp := filepath.Base(fields[0])
+	if interp == "env" {
+		// Skip env(1) flags (-S, -i, ...) and inline NAME=value assignments to
+		// reach the interpreter token.
+		interp = ""
+		for _, f := range fields[1:] {
+			if strings.HasPrefix(f, "-") || strings.Contains(f, "=") {
+				continue
+			}
+			interp = filepath.Base(f)
+			break
+		}
+	}
+	return interp
+}
+
+// shebangExtOfFile reads the leading bytes of path and returns the extractor
+// extension for its shebang interpreter, or "" if the file has no recognised
+// shebang or cannot be read.
+func shebangExtOfFile(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	var buf [256]byte
+	n, _ := f.Read(buf[:])
+	return ShebangExt(buf[:n])
+}
+
+// packageManifestFiles are indexed by basename: package manifests declaring a
+// module and its dependencies. They are not source files (so they stay out of
+// CollectFiles), but CollectManifests discovers them for the deterministic
+// package-manifest pass in internal/extract (manifest.go).
+var packageManifestFiles = map[string]bool{
+	"pyproject.toml": true,
+	"go.mod":         true,
+	"pom.xml":        true,
+}
+
 // sensitiveDirs hold secrets; any file under one is skipped.
 var sensitiveDirs = map[string]bool{
 	".ssh": true, ".gnupg": true, ".aws": true, ".gcloud": true,
 	"secrets": true, ".secrets": true, "credentials": true,
 }
 
-// sensitivePatterns match filenames likely to contain secrets.
+// sensitivePatterns match filenames that specifically name a secret store
+// (extensions, exact credential-store names). These are specific and always
+// apply, regardless of extension.
 var sensitivePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(^|[\\/])\.(env|envrc)(\.|$)`),
 	regexp.MustCompile(`(?i)\.(pem|key|p12|pfx|cert|crt|der|p8)$`),
-	regexp.MustCompile(`(?i)(^|[^a-zA-Z0-9])(credential|secret|passwd|password|private_key)s?($|[^a-zA-Z])`),
 	regexp.MustCompile(`(id_rsa|id_dsa|id_ecdsa|id_ed25519)(\.pub)?$`),
 	regexp.MustCompile(`(?i)(\.netrc|\.pgpass|\.htpasswd)$`),
+}
+
+// secretProneDataExts are data/serialization extensions that commonly ARE secret
+// stores when their name hits a generic keyword (credentials.json, secrets.yaml).
+// They stay subject to the generic-keyword drop even though .json routes through
+// the code path for manifest parsing — only real programming-language source is
+// exempt. Mirrors the upstream _SECRET_PRONE_DATA_EXTS set.
+var secretProneDataExts = map[string]bool{
+	".json": true, ".yaml": true, ".yml": true, ".toml": true, ".ini": true,
+	".cfg": true, ".conf": true, ".config": true, ".xml": true,
+	".properties": true, ".env": true, ".txt": true,
+}
+
+// documentExts are DOC_EXTENSIONS entries this port ALSO lists in
+// SupportedExtensions because Go extracts markdown structurally. Upstream
+// classifies these as FileType.DOCUMENT (not FileType.CODE), so they must NOT
+// qualify for the source-code exemption in isSensitive: a secret-keyword doc
+// (credentials.md, password.mdx) is a document, not a module, and must be
+// dropped. Mirrors the intersection of upstream DOC_EXTENSIONS with this port's
+// SupportedExtensions — the other DOC_EXTENSIONS (.qmd/.txt/.rst/.html/.yaml/
+// .yml) are not in SupportedExtensions, so they never reach the code path.
+var documentExts = map[string]bool{
+	".md": true, ".mdx": true, ".markdown": true,
+}
+
+// genericKeywordPattern matches a generic secret keyword core (plus an optional
+// plural "s") in a filename. Unlike sensitivePatterns it does NOT unconditionally
+// drop the file: a genuine source file whose name merely contains the keyword
+// (password_reset.go, passwords_controller.rb) is a module, not a secret store,
+// so it is exempt in isSensitive Stage 3. RE2 has no lookbehind, so upstream's
+// zero-width word boundaries ((?<![a-zA-Z0-9]) / (?![a-zA-Z])) are emulated in
+// genericKeywordHit by checking the chars adjacent to each match by hand. The
+// pattern matches only the bare keyword (no surrounding separators) so
+// FindAllStringIndex advances exactly like the upstream finditer and does not
+// consume the boundary shared by two adjacent keywords (aws_secret_credentials).
+var genericKeywordPattern = regexp.MustCompile(`(?i)(?:credential|secret|passwd|password|private_key)s?`)
+
+// wordSplit separates a filename stem into words for the load-bearing check
+// (mirrors the upstream _WORD_SPLIT of [-_\s]+).
+var wordSplit = regexp.MustCompile(`[-_\s]+`)
+
+// genericKeywordHit reports whether a generic secret keyword appears load-bearing
+// in the filename. Secret-store files name their contents, and in English
+// compounds the content noun comes last: "api_token", "oauth_password". A keyword
+// that neither ends the stem nor sits in a short (<=2 word) name is a topic word
+// in a descriptive slug ("password-policy-discussion.md") and must not silently
+// drop the file. Mirrors upstream _generic_keyword_hit.
+func genericKeywordHit(name string) bool {
+	// Stem = name up to the first dot, ignoring leading dots so dotfiles like
+	// ".secret" keep their keyword.
+	stem := strings.SplitN(strings.TrimLeft(name, "."), ".", 2)[0]
+	hit := false
+	for _, m := range genericKeywordPattern.FindAllStringIndex(stem, -1) {
+		start, end := m[0], m[1]
+		// Emulate upstream's zero-width lookarounds: the keyword must not be
+		// preceded by an alphanumeric ((?<![a-zA-Z0-9])) nor followed by a letter
+		// ((?![a-zA-Z])). ASCII-only, matching the upstream character classes; a
+		// leading byte of a multibyte rune is >=0x80 and reads as a boundary.
+		if start > 0 && isASCIIAlnum(stem[start-1]) {
+			continue
+		}
+		if end < len(stem) && isASCIIAlpha(stem[end]) {
+			continue
+		}
+		hit = true
+		if end == len(stem) { // keyword+s ends the stem -> names the contents
+			return true
+		}
+	}
+	if !hit {
+		return false
+	}
+	// Short name like secret_store / password_reset (<=2 words): still load-bearing.
+	words := 0
+	for _, w := range wordSplit.Split(stem, -1) {
+		if w != "" {
+			words++
+		}
+	}
+	return words <= 2
+}
+
+func isASCIIAlnum(b byte) bool {
+	return isASCIIAlpha(b) || (b >= '0' && b <= '9')
+}
+
+func isASCIIAlpha(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+}
+
+// WalkReport carries the diagnostics CollectFilesReport gathers alongside the
+// file list: directory-read errors hit mid-walk (which would otherwise silently
+// truncate the enumeration into a partial graph.json) and a count of files that
+// were walked past but not collected because no extractor handles their
+// extension. Mirrors upstream detect.py's walk_errors / unclassified surfacing.
+type WalkReport struct {
+	Files      []string // collected source files, relative to root, in WalkDir order
+	WalkErrors []string // "<path>: <error>" for each entry the walk could not read
+	Skipped    int      // files seen but dropped for an unsupported extension / no extractor
+}
+
+// CollectFilesReport walks root exactly like CollectFiles but additionally
+// records the directory-read errors it hits (instead of silently swallowing
+// them) and counts the files it skips for lacking a supported extension. The
+// returned Files slice is identical to CollectFiles' output.
+func CollectFilesReport(root string) (WalkReport, error) {
+	var rep WalkReport
+	ign := newIgnorer(root)
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			// Record the failing entry instead of swallowing it: an unreadable
+			// directory (permissions, or a delete racing a concurrent scan)
+			// otherwise silently truncates the file list. Keep walking siblings.
+			rep.WalkErrors = append(rep.WalkErrors, fmt.Sprintf("%s: %v", path, err))
+			return nil
+		}
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		slashRel := filepath.ToSlash(rel)
+		if d.IsDir() {
+			if path == root {
+				return nil
+			}
+			if skipDirs[d.Name()] || ign.ignored(slashRel, true) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		name := d.Name()
+		if skipFiles[name] {
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(name))
+		if !SupportedExtensions[ext] && !mcpConfigFiles[name] {
+			// An extensionless file may still be a script: sniff its first line
+			// for a shebang naming an interpreter that has a Go extractor.
+			if ext != "" || shebangExtOfFile(path) == "" {
+				rep.Skipped++ // seen but no extractor handles this type
+				return nil
+			}
+		}
+		if isSensitive(rel) || ign.ignored(slashRel, false) {
+			return nil
+		}
+		rep.Files = append(rep.Files, rel)
+		return nil
+	})
+	return rep, err
 }
 
 // CollectFiles returns the supported source files under root, relative to root,
 // in sorted order for deterministic output.
 func CollectFiles(root string) ([]string, error) {
+	rep, err := CollectFilesReport(root)
+	return rep.Files, err
+}
+
+// CollectManifests returns the package-manifest files under root (relative to
+// root, in sorted WalkDir order), honoring the same .gitignore and skip-dir
+// rules as CollectFiles so vendored/ignored manifests are not indexed.
+func CollectManifests(root string) ([]string, error) {
 	var files []string
 	ign := newIgnorer(root)
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -123,14 +381,10 @@ func CollectFiles(root string) ([]string, error) {
 			}
 			return nil
 		}
-		name := d.Name()
-		if skipFiles[name] {
+		if !packageManifestFiles[d.Name()] {
 			return nil
 		}
-		if !SupportedExtensions[strings.ToLower(filepath.Ext(name))] && !mcpConfigFiles[name] {
-			return nil
-		}
-		if isSensitive(rel) || ign.ignored(slashRel, false) {
+		if ign.ignored(slashRel, false) {
 			return nil
 		}
 		files = append(files, rel)
@@ -157,6 +411,22 @@ func isSensitive(rel string) bool {
 		if p.MatchString(name) {
 			return true
 		}
+	}
+	// Stage 3: generic secret keywords, only when load-bearing in the name. Do NOT
+	// let a bare keyword silently drop a genuine programming-language source file: a
+	// .rb/.py named passwords_controller or secret_store is a module, not a secret
+	// store. Data/config formats (.json, .yaml, ...) are deliberately NOT exempt,
+	// because credentials.json / secrets.yaml are exactly the secret stores this
+	// stage must catch. Document formats (.md/.mdx/.markdown) are likewise NOT
+	// exempt: this port lists them in SupportedExtensions to extract markdown
+	// structurally, but upstream classifies them as FileType.DOCUMENT, so a
+	// secret-keyword doc (credentials.md, password.mdx) must be dropped. The
+	// specific Stage 2 patterns (.env, .pem, id_rsa) still apply to everything
+	// regardless of extension.
+	if genericKeywordHit(name) {
+		ext := strings.ToLower(filepath.Ext(name))
+		isSourceCode := SupportedExtensions[ext] && !documentExts[ext] && !secretProneDataExts[ext]
+		return !isSourceCode
 	}
 	return false
 }

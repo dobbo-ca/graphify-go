@@ -1,6 +1,8 @@
 package extract
 
 import (
+	"regexp"
+	"strings"
 	"unsafe"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
@@ -20,6 +22,7 @@ func extractJS(rel string, src []byte, langPtr unsafe.Pointer) Result {
 	for i := uint(0); i < root.ChildCount(); i++ {
 		b.jsStatement(root.Child(i), src)
 	}
+	b.jsRationale(src)
 	return b.res
 }
 
@@ -139,4 +142,91 @@ func (b *builder) jsCalls(body *ts.Node, callerID string, src []byte) {
 		}
 		return true
 	})
+}
+
+// jsRationalePrefixes are the leading comment tokens that mark an explanatory
+// comment worth capturing as a rationale node (mirrors upstream
+// _JS_RATIONALE_PREFIXES; covers `//` line comments and `*`-prefixed lines
+// inside block comments).
+var jsRationalePrefixes = []string{
+	"// NOTE:", "// IMPORTANT:", "// HACK:", "// WHY:", "// RATIONALE:",
+	"// TODO:", "// FIXME:",
+	"* NOTE:", "* IMPORTANT:", "* HACK:", "* WHY:", "* RATIONALE:",
+	"* TODO:", "* FIXME:",
+}
+
+// jsCommentLineRe matches a line that begins (after optional indent) with a
+// comment marker, so doc references are only harvested from comments.
+var jsCommentLineRe = regexp.MustCompile(`^\s*(//|/\*|\*)`)
+
+// jsDocRefRe finds architecture-decision / RFC references (ADR-0011, RFC 793) in
+// a comment; jsDocRefParseRe splits a matched token into its kind and number.
+var (
+	jsDocRefRe      = regexp.MustCompile(`(?i)\b(ADR[- ]?\d{1,5}|RFC[- ]?\d{1,5})\b`)
+	jsDocRefParseRe = regexp.MustCompile(`([A-Za-z]+)[- ]?(\d+)`)
+)
+
+// jsRationale is a deterministic post-pass mirroring upstream
+// _extract_js_rationale: `// NOTE:`-style comments become "rationale" nodes
+// (rationale_for edge to the file) and ADR/RFC tokens in comments become
+// "doc_ref" nodes (cites edge from the file). No LLM is involved.
+func (b *builder) jsRationale(src []byte) {
+	seenDocRefs := map[string]bool{}
+	for i, lineText := range strings.Split(string(src), "\n") {
+		lineNum := i + 1
+		stripped := strings.TrimSpace(lineText)
+		for _, p := range jsRationalePrefixes {
+			if strings.HasPrefix(stripped, p) {
+				b.addRationale(strings.TrimLeft(stripped, "/* "), lineNum, b.fileID)
+				break
+			}
+		}
+		if jsCommentLineRe.MatchString(lineText) {
+			for _, m := range jsDocRefRe.FindAllStringSubmatch(stripped, -1) {
+				b.addDocRef(m[1], lineNum, seenDocRefs)
+			}
+		}
+	}
+}
+
+// addDocRef records a "doc_ref" node for a normalized ADR/RFC reference and a
+// cites edge from the file to it. Labels are normalized (ADR-0011, RFC-793) and
+// deduped per file so repeated citations collapse to one node. Mirrors upstream
+// _add_doc_ref.
+func (b *builder) addDocRef(token string, lineNum int, seenDocRefs map[string]bool) {
+	m := jsDocRefParseRe.FindStringSubmatch(token)
+	if m == nil {
+		return
+	}
+	kind := strings.ToUpper(m[1])
+	label := kind + "-" + m[2]
+	if kind == "ADR" {
+		label = kind + "-" + zfill(m[2], 4)
+	}
+	if seenDocRefs[label] {
+		return
+	}
+	seenDocRefs[label] = true
+	rid := idutil.MakeID("docref", label)
+	loc := "L" + itoa(lineNum)
+	if !b.seen[rid] {
+		b.seen[rid] = true
+		b.res.Nodes = append(b.res.Nodes, model.Node{
+			ID: rid, Label: label, FileType: "doc_ref",
+			SourceFile: b.file, SourceLocation: loc,
+		})
+	}
+	b.res.Edges = append(b.res.Edges, model.Edge{
+		Source: b.fileID, Target: rid, Relation: "cites",
+		Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: loc,
+	})
+}
+
+// zfill left-pads s with zeros to at least width characters (Python str.zfill for
+// unsigned numeric strings).
+func zfill(s string, width int) string {
+	if len(s) >= width {
+		return s
+	}
+	return strings.Repeat("0", width-len(s)) + s
 }

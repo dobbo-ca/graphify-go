@@ -11,15 +11,49 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
 const (
-	// MaxGraphFileBytes rejects graph.json files larger than this before parsing,
-	// so a crafted multi-gigabyte file cannot exhaust memory.
+	// MaxGraphFileBytes is the default cap: graph.json files larger than this are
+	// rejected before parsing, so a crafted multi-gigabyte file cannot exhaust
+	// memory. The effective cap is resolved at call time by maxGraphFileBytes,
+	// which lets GRAPHIFY_MAX_GRAPH_BYTES override this default.
 	MaxGraphFileBytes = 512 * 1024 * 1024
 	maxLabelLen       = 256
 )
+
+// maxGraphFileBytes resolves the graph.json size cap in bytes.
+//
+// It honors the GRAPHIFY_MAX_GRAPH_BYTES environment variable so users with
+// large codebases can raise the limit without editing source. The value may be
+// plain bytes ("671088640") or carry an MB / GB suffix ("640MB", "2GB" -
+// case-insensitive, binary multipliers: MB is 1024*1024 and GB is
+// 1024*1024*1024, i.e. MiB / GiB). Falls back to MaxGraphFileBytes (512 MiB)
+// when the env var is unset, blank, or unparseable. Read fresh on every call so
+// the env var can be set at runtime and still take effect.
+func maxGraphFileBytes() int64 {
+	raw := strings.TrimSpace(os.Getenv("GRAPHIFY_MAX_GRAPH_BYTES"))
+	if raw == "" {
+		return MaxGraphFileBytes
+	}
+	text := strings.ToUpper(raw)
+	var multiplier int64 = 1
+	switch {
+	case strings.HasSuffix(text, "GB"):
+		multiplier = 1024 * 1024 * 1024
+		text = strings.TrimSpace(text[:len(text)-2])
+	case strings.HasSuffix(text, "MB"):
+		multiplier = 1024 * 1024
+		text = strings.TrimSpace(text[:len(text)-2])
+	}
+	value, err := strconv.ParseInt(text, 10, 64)
+	if err != nil || value <= 0 {
+		return MaxGraphFileBytes
+	}
+	return value * multiplier
+}
 
 var blockedHosts = map[string]bool{
 	"metadata.google.internal": true,
@@ -96,14 +130,16 @@ func ValidateGraphPath(path, base string) (string, error) {
 	return abs, nil
 }
 
-// CheckGraphFileSize returns an error if path exceeds MaxGraphFileBytes.
+// CheckGraphFileSize returns an error if path exceeds the resolved cap
+// (see maxGraphFileBytes, honoring GRAPHIFY_MAX_GRAPH_BYTES).
 func CheckGraphFileSize(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil // existence is the caller's concern; nothing to cap
 	}
-	if info.Size() > MaxGraphFileBytes {
-		return fmt.Errorf("graph file %s is %d bytes, exceeds %d-byte cap", path, info.Size(), MaxGraphFileBytes)
+	limit := maxGraphFileBytes()
+	if info.Size() > limit {
+		return fmt.Errorf("graph file %s is %d bytes, exceeds %d-byte cap", path, info.Size(), limit)
 	}
 	return nil
 }

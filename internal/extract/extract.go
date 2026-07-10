@@ -15,6 +15,7 @@ import (
 	tsjs "github.com/tree-sitter/tree-sitter-javascript/bindings/go"
 	tstsx "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
 
+	"github.com/dobbo-ca/graphify-go/internal/detect"
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
@@ -102,14 +103,20 @@ func FileFromBytes(rel string, src []byte) Result {
 	if IsMCPConfigPath(rel) {
 		return extractMCPConfig(rel, src)
 	}
-	switch strings.ToLower(filepath.Ext(rel)) {
+	ext := strings.ToLower(filepath.Ext(rel))
+	if ext == "" {
+		// Extensionless script: route by the interpreter its shebang names, the
+		// same way detect.CollectFiles decided to collect it.
+		ext = detect.ShebangExt(src)
+	}
+	switch ext {
 	case ".go":
 		return extractGo(rel, src)
 	case ".js", ".jsx", ".mjs", ".cjs":
 		return extractJS(rel, src, tsjs.Language())
 	case ".tsx":
 		return extractJS(rel, src, tstsx.LanguageTSX())
-	case ".ts":
+	case ".ts", ".mts", ".cts":
 		return extractJS(rel, src, tstsx.LanguageTypescript())
 	case ".tf", ".tfvars", ".hcl":
 		return extractTerraform(rel, src)
@@ -147,6 +154,10 @@ func FileFromBytes(rel string, src []byte) Result {
 		return extractZig(rel, src)
 	case ".md", ".mdx", ".markdown":
 		return extractMarkdown(rel, src)
+	case ".vue", ".svelte":
+		return extractComponent(rel, src, false)
+	case ".astro":
+		return extractComponent(rel, src, true)
 	}
 	return Result{}
 }
@@ -251,6 +262,39 @@ func (b *builder) imp(spec, loc string) {
 	if spec != "" {
 		b.res.Imps = append(b.res.Imps, Imp{FileID: b.fileID, File: b.file, Spec: spec, Loc: loc})
 	}
+}
+
+// addRationale records a rationale node (an explanatory docstring or a
+// `# NOTE:` / `// NOTE:`-style comment) plus a rationale_for edge from it to
+// parentID. Mirrors upstream _add_rationale: the node id keys on the source line
+// so repeated captures on one line collapse to a single node, and the label is
+// the first 80 runes with embedded newlines flattened to spaces.
+func (b *builder) addRationale(text string, lineNum int, parentID string) {
+	rid := idutil.MakeID(b.stem, "rationale", itoa(lineNum))
+	loc := "L" + itoa(lineNum)
+	if !b.seen[rid] {
+		b.seen[rid] = true
+		b.res.Nodes = append(b.res.Nodes, model.Node{
+			ID: rid, Label: rationaleLabel(text), FileType: "rationale",
+			SourceFile: b.file, SourceLocation: loc,
+		})
+	}
+	b.res.Edges = append(b.res.Edges, model.Edge{
+		Source: rid, Target: parentID, Relation: "rationale_for",
+		Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: loc,
+	})
+}
+
+// rationaleLabel trims a rationale's display text to the first 80 runes with any
+// embedded newlines flattened to spaces (mirrors upstream label construction).
+func rationaleLabel(text string) string {
+	if r := []rune(text); len(r) > 80 {
+		text = string(r[:80])
+	}
+	text = strings.ReplaceAll(text, "\r\n", " ")
+	text = strings.ReplaceAll(text, "\r", " ")
+	text = strings.ReplaceAll(text, "\n", " ")
+	return strings.TrimSpace(text)
 }
 
 // walk visits every descendant of n, calling fn on each. fn returns false to
