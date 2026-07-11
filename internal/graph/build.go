@@ -54,8 +54,20 @@ func Build(ext model.Extraction) *model.Graph {
 		if g.Nodes[src] == nil || g.Nodes[tgt] == nil {
 			continue // dangling edge to an external/stdlib node — expected
 		}
-		if e.Relation == "calls" && e.Confidence == "INFERRED" && crossLanguage(g, src, tgt) {
-			continue
+		switch e.Relation {
+		case "calls":
+			if e.Confidence == "INFERRED" && crossLanguage(g, src, tgt) {
+				continue
+			}
+		case "imports", "imports_from", "references":
+			// Same phantom-collision guard as calls, but EXTRACTED: an
+			// unresolved `import time` must not bind by bare stem onto a
+			// `time.ts` across a language boundary (#1749). crossLanguage is
+			// false when either endpoint is a non-code node (empty family),
+			// so config/manifest/md -> code references survive.
+			if crossLanguage(g, src, tgt) {
+				continue
+			}
 		}
 		e.Source, e.Target = src, tgt
 		g.AddEdge(e)
