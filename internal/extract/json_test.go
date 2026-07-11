@@ -3,7 +3,9 @@ package extract
 import (
 	"testing"
 
+	"github.com/dobbo-ca/graphify-go/internal/graph"
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
+	"github.com/dobbo-ca/graphify-go/internal/model"
 )
 
 // helpers shared by the JSON extractor tests.
@@ -17,9 +19,10 @@ func jsonNodes(res Result) (labels map[string]bool, id2label map[string]string) 
 	return
 }
 
-// jsonHasEdge matches by source label and target ID. Ref/dep targets (extends,
-// $ref, imports) are edge-only — the extractor emits no node for them (mirrors
-// upstream), so the target is matched by its computed ID, not a node label.
+// jsonHasEdge matches by source label and target ID. extends/imports targets now
+// get a "concept" node (mirrors upstream #1764) so the edge survives graph.Build;
+// $ref/references targets stay edge-only (dangling, per upstream). The target is
+// matched by its computed ID, not a node label.
 func jsonHasEdge(res Result, id2label map[string]string, srcLabel, rel, tgtID string) bool {
 	for _, e := range res.Edges {
 		if e.Relation == rel && id2label[e.Source] == srcLabel && e.Target == tgtID {
@@ -73,6 +76,44 @@ func TestExtractJSONTsconfigExtendsAndRef(t *testing.T) {
 	}
 	if !jsonHasEdge(res, id2label, "tsconfig.json", "contains", idutil.MakeID("tsconfig", "compilerOptions")) {
 		t.Error("expected tsconfig.json --contains--> compilerOptions")
+	}
+}
+
+// TestExtractJSONExtendsTargetSurvivesBuild verifies the #1764 fix: the "extends"
+// target now gets a "concept" node so graph.Build no longer drops the edge as
+// dangling. The $ref/references target still has no node (stays dangling per parity).
+func TestExtractJSONExtendsTargetSurvivesBuild(t *testing.T) {
+	res := FileFromBytes("tsconfig.json", []byte(`{
+  "extends": "./base.json"
+}`))
+
+	refID := idutil.MakeID("ref", "./base.json")
+	var concept *model.Node
+	for i := range res.Nodes {
+		if res.Nodes[i].ID == refID {
+			concept = &res.Nodes[i]
+		}
+	}
+	if concept == nil {
+		t.Fatalf("expected concept target node for extends ./base.json (id %q)", refID)
+	}
+	if concept.FileType != "concept" {
+		t.Errorf("extends target file_type = %q, want %q", concept.FileType, "concept")
+	}
+	if concept.Label != "./base.json" {
+		t.Errorf("extends target label = %q, want %q", concept.Label, "./base.json")
+	}
+
+	g := graph.Build(model.Extraction{Nodes: res.Nodes, Edges: res.Edges})
+	fileID := idutil.MakeID("tsconfig.json")
+	var survived bool
+	for _, e := range g.Edges() {
+		if e.Relation == "extends" && e.Source == fileID && e.Target == refID {
+			survived = true
+		}
+	}
+	if !survived {
+		t.Error("expected tsconfig.json --extends--> ./base.json edge to survive graph.Build")
 	}
 }
 
