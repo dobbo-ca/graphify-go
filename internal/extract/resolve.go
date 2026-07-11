@@ -3,6 +3,7 @@ package extract
 import (
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
@@ -180,12 +181,29 @@ func Resolve(results []Result, files []string) model.Extraction {
 // mdExts are the markdown suffixes a link target may resolve to in the corpus.
 var mdExts = []string{".md", ".mdx", ".markdown"}
 
+// mdCodeSymbol is the identifier shape a backtick `code` span must match to be a
+// candidate reference to a code definition. Spans with spaces, dashes or dots
+// (`git status`, `--flag`, `pkg.Fn`) are rejected as noise.
+var mdCodeSymbol = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
 // resolveMarkdown stitches markdown link references into `references` edges and
 // adds the `contains` edges implied by directory structure (a directory's
 // index.md owns the other markdown concepts in that directory). Link targets are
 // resolved against the bundle root for a leading '/', otherwise relative to the
 // linking file's directory; http(s)/mailto/in-page (#anchor) targets are ignored.
 func resolveMarkdown(results []Result, files []string, corpus map[string]bool, out *model.Extraction) {
+	// Name -> code definition ids, for resolving a backtick `symbol` span that does
+	// not point at a markdown file. Defs are exactly the code definitions, so
+	// markdown concept/heading nodes never appear here; a name mapping to more than
+	// one definition is ambiguous and drops (no map iteration feeds this).
+	symDefs := map[string][]string{}
+	for _, r := range results {
+		for _, d := range r.Defs {
+			symDefs[d.Name] = append(symDefs[d.Name], d.ID)
+		}
+	}
+
+	seenSym := map[string]bool{} // FromID\x00defID, to not emit a symbol edge twice
 	for _, r := range results {
 		for _, m := range r.MDRefs {
 			if tgt := resolveMDTarget(m.File, m.Target, corpus); tgt != "" {
@@ -194,7 +212,24 @@ func resolveMarkdown(results []Result, files []string, corpus map[string]bool, o
 					Relation: "references", Confidence: "EXTRACTED",
 					SourceFile: m.File, SourceLocation: m.Loc,
 				})
+				continue
 			}
+			// Not a markdown link: a backtick `symbol` matching a unique code
+			// definition becomes a references edge to that definition. Drop on
+			// ambiguity (0 or >1 candidates) and on non-identifier noise.
+			id := uniqueCodeDef(m.Target, symDefs)
+			if id == "" {
+				continue
+			}
+			key := m.FromID + "\x00" + id
+			if seenSym[key] {
+				continue
+			}
+			seenSym[key] = true
+			out.Edges = append(out.Edges, model.Edge{
+				Source: m.FromID, Target: id, Relation: "references",
+				Confidence: "EXTRACTED", SourceFile: m.File, SourceLocation: m.Loc,
+			})
 		}
 	}
 
@@ -221,6 +256,19 @@ func resolveMarkdown(results []Result, files []string, corpus map[string]bool, o
 			Relation: "contains", Confidence: "EXTRACTED", SourceFile: idx,
 		})
 	}
+}
+
+// uniqueCodeDef resolves a backtick code-span symbol to the single code
+// definition that bears that name, or "" when the span is not an identifier or
+// when zero/several definitions share the name (drop-on-ambiguity).
+func uniqueCodeDef(sym string, index map[string][]string) string {
+	if !mdCodeSymbol.MatchString(sym) {
+		return ""
+	}
+	if ids := index[sym]; len(ids) == 1 {
+		return ids[0]
+	}
+	return ""
 }
 
 // resolveMDTarget maps a markdown link target to a markdown file in the corpus,
