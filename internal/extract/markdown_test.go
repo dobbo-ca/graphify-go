@@ -239,3 +239,48 @@ func TestExtractMarkdownHeadingsRefs(t *testing.T) {
 		t.Errorf("references edges from notes = %d, want 1 (external ref def and backtick symbol must not resolve)", refs)
 	}
 }
+
+// TestResolveBacktickCodeSymbol covers backtick code-span resolution: a unique
+// code definition named by an inline `code` span becomes a `references` edge from
+// the doc concept to that code node; an ambiguous name (defined twice) and a
+// noise token with no matching definition both drop.
+func TestResolveBacktickCodeSymbol(t *testing.T) {
+	doc := "# Doc\n\nUses `UniqueSymbolXyz`, `Dupe` and `true` inline.\n"
+	r := extractMarkdown("notes.md", []byte(doc))
+
+	code := Result{Defs: []Def{
+		{ID: "UNIQUE", Name: "UniqueSymbolXyz", File: "a.go"},
+		{ID: "DUPE1", Name: "Dupe", File: "a.go"},
+		{ID: "DUPE2", Name: "Dupe", File: "b.go"},
+	}}
+
+	ext := Resolve([]Result{r, code}, []string{"notes.md", "a.go", "b.go"})
+
+	hasRef := func(src, tgt string) bool {
+		for _, e := range ext.Edges {
+			if e.Relation == "references" && e.Source == src && e.Target == tgt {
+				return true
+			}
+		}
+		return false
+	}
+
+	// (a) unique backtick symbol -> references edge to the code def.
+	if !hasRef("notes", "UNIQUE") {
+		t.Error("expected notes --references--> UNIQUE (unique backtick code symbol)")
+	}
+	// (b) ambiguous symbol (defined twice) -> no edge.
+	if hasRef("notes", "DUPE1") || hasRef("notes", "DUPE2") {
+		t.Error("did not expect a references edge for ambiguous backtick symbol `Dupe`")
+	}
+	// (c) exactly one references edge: `true` (noise, no def) also drops.
+	refs := 0
+	for _, e := range ext.Edges {
+		if e.Relation == "references" && e.Source == "notes" {
+			refs++
+		}
+	}
+	if refs != 1 {
+		t.Errorf("references edges from notes = %d, want 1 (only the unique code symbol resolves)", refs)
+	}
+}

@@ -97,3 +97,36 @@ func TestExtractPythonRationale(t *testing.T) {
 		t.Errorf("expected rationale_for edge from docstring to function %s", funcID)
 	}
 }
+
+// A leading comment as a body child (which tree-sitter includes but upstream's
+// AST omits) must not hide the docstring that follows it. A module-level comment
+// is a direct sibling of the docstring statement, so module.Child(0) is the
+// comment and module.Child(1) is the docstring: this exercises the comment-skip
+// in pyDocstring, unlike a function body where the comment attaches to the
+// function_definition node rather than the block.
+func TestExtractPythonDocstringAfterComment(t *testing.T) {
+	src := []byte("# a leading comment\n" +
+		"\"\"\"Module docstring longer than twenty characters explaining architecture.\"\"\"\n")
+	res := FileFromBytes("svc/app.py", src)
+
+	fileID := idutil.MakeID("svc/app.py")
+
+	label := map[string]string{}
+	ftype := map[string]string{}
+	for _, n := range res.Nodes {
+		label[n.ID] = n.Label
+		ftype[n.ID] = n.FileType
+	}
+	found := false
+	for _, e := range res.Edges {
+		if e.Relation != "rationale_for" || e.Target != fileID {
+			continue
+		}
+		if ftype[e.Source] == "rationale" && strings.HasPrefix(label[e.Source], "Module docstring") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected docstring after leading comment to yield rationale_for edge to %s", fileID)
+	}
+}

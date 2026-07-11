@@ -84,13 +84,13 @@ func extractJSON(rel string, src []byte) Result {
 	seenEdge := map[string]bool{}
 	stem := fileStem(rel)
 
-	addNode := func(id, label, loc string) {
+	addNode := func(id, label, loc, fileType string) {
 		if id == "" || seenNode[id] {
 			return
 		}
 		seenNode[id] = true
 		res.Nodes = append(res.Nodes, model.Node{
-			ID: id, Label: security.SanitizeLabel(label), FileType: "code", SourceFile: rel, SourceLocation: loc,
+			ID: id, Label: security.SanitizeLabel(label), FileType: fileType, SourceFile: rel, SourceLocation: loc,
 		})
 	}
 	addEdge := func(srcID, tgtID, relation, loc string) {
@@ -137,7 +137,7 @@ func extractJSON(rel string, src []byte) Result {
 			if keyID == "" {
 				continue
 			}
-			addNode(keyID, key, loc)
+			addNode(keyID, key, loc, "code")
 			addEdge(parentID, keyID, "contains", loc)
 
 			val := child.ChildByFieldName("value")
@@ -158,6 +158,7 @@ func extractJSON(rel string, src []byte) Result {
 					}
 					if ref := jsonStringContent(item, src); ref != "" {
 						if refID := idutil.MakeID("ref", ref); refID != "" {
+							addNode(refID, ref, loc, "concept")
 							addEdge(keyID, refID, "extends", loc)
 						}
 					}
@@ -167,6 +168,7 @@ func extractJSON(rel string, src []byte) Result {
 				switch {
 				case key == "extends" && valText != "":
 					if refID := idutil.MakeID("ref", valText); refID != "" {
+						addNode(refID, valText, loc, "concept")
 						addEdge(fileID, refID, "extends", loc)
 					}
 				case key == "$ref" && valText != "":
@@ -175,6 +177,7 @@ func extractJSON(rel string, src []byte) Result {
 					}
 				case depKeys[parentKey] && valText != "":
 					if depID := idutil.MakeID(key); depID != "" {
+						addNode(depID, key, loc, "concept")
 						addEdge(keyID, depID, "imports", loc)
 					}
 				}
