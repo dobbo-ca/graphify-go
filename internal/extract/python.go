@@ -276,20 +276,29 @@ func pyDocstring(body *ts.Node, src []byte) (string, int, bool) {
 	if body == nil {
 		return "", 0, false
 	}
+	// Find the first non-comment statement. tree-sitter includes comment nodes
+	// as body children, whereas upstream's AST body[0] omits them; skip leading
+	// comments so a comment before the docstring does not hide it.
+	var stmt *ts.Node
 	for i := uint(0); i < body.ChildCount(); i++ {
-		stmt := body.Child(i)
-		if stmt.Kind() == "expression_statement" {
-			for j := uint(0); j < stmt.ChildCount(); j++ {
-				sub := stmt.Child(j)
-				if sub.Kind() == "string" || sub.Kind() == "concatenated_string" {
-					text := stripDocstring(sub.Utf8Text(src))
-					if utf8.RuneCountInString(text) > 20 {
-						return text, int(stmt.StartPosition().Row) + 1, true
-					}
-				}
+		child := body.Child(i)
+		if child.Kind() == "comment" {
+			continue
+		}
+		stmt = child
+		break
+	}
+	if stmt == nil || stmt.Kind() != "expression_statement" {
+		return "", 0, false
+	}
+	for j := uint(0); j < stmt.ChildCount(); j++ {
+		sub := stmt.Child(j)
+		if sub.Kind() == "string" || sub.Kind() == "concatenated_string" {
+			text := stripDocstring(sub.Utf8Text(src))
+			if utf8.RuneCountInString(text) > 20 {
+				return text, int(stmt.StartPosition().Row) + 1, true
 			}
 		}
-		break
 	}
 	return "", 0, false
 }
