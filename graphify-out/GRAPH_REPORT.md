@@ -5,7 +5,7 @@
 - Extraction: 53% EXTRACTED · 46% INFERRED · 0% AMBIGUOUS
 
 ## Graph Freshness
-- Built from commit: `c728944a`
+- Built from commit: `dfc495d7`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify build .` after code changes to rebuild.
 
