@@ -7,10 +7,15 @@ on:
   push:
     branches: [main]
 
-# Avoid stacking runs; a queued run would rebuild stale state.
+# Serialize graph runs so back-to-back merges can't race. cancel-in-progress
+# would be async best-effort, not mutual exclusion: two runs could push
+# graphify-out/ concurrently and the loser's rebase would conflict on
+# graph.json/GRAPH_REPORT.md (same tracked files, different tip) and be lost.
+# Queue instead — each run starts after the previous finishes and checks out
+# the latest tip, so the graph is fresh and pushes never collide.
 concurrency:
   group: graph-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build-graph:
@@ -43,10 +48,11 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add graphify-out
           git commit -m "chore: regenerate knowledge graph [skip ci]"
-          # Another workflow (e.g. release) can push to main concurrently. Rebase
+          # A human merge can land on main between our build and push. Rebase
           # onto the latest tip and retry so our commit is never lost to a
-          # non-fast-forward rejection. The graph commit only touches
-          # graphify-out/, so the rebase cannot conflict with a changelog/tag push.
+          # non-fast-forward rejection. Serializing graph runs (above) stops
+          # two of them pushing at once, so the tip we rebase onto carries
+          # source changes (different files), not a competing graphify-out edit.
           for attempt in 1 2 3 4 5; do
             if git push; then
               exit 0
