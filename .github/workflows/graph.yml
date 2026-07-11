@@ -46,19 +46,31 @@ jobs:
           fi
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add graphify-out
-          git commit -m "chore: regenerate knowledge graph [skip ci]"
-          # A human merge can land on main between our build and push. Rebase
-          # onto the latest tip and retry so our commit is never lost to a
-          # non-fast-forward rejection. Serializing graph runs (above) stops
-          # two of them pushing at once, so the tip we rebase onto carries
-          # source changes (different files), not a competing graphify-out edit.
+          commit_graph() {
+            git add graphify-out
+            git commit -m "chore: regenerate knowledge graph [skip ci]"
+          }
+          commit_graph
+          # A human commit can land on main between our build and push. On a
+          # non-fast-forward rejection, resync to the latest tip and rebuild the
+          # graph there, then retry. We rebuild rather than rebase: a rebase would
+          # conflict on graphify-out/ if that commit also touched it, and the loop
+          # would spin on a half-applied rebase. Rebuilding on top of the latest
+          # tip is conflict-free and never stale (graphify build is deterministic).
           for attempt in 1 2 3 4 5; do
             if git push; then
               exit 0
             fi
-            echo "push rejected (attempt $attempt) — rebasing onto origin/$GITHUB_REF_NAME"
-            git pull --rebase --autostash origin "$GITHUB_REF_NAME"
+            echo "push rejected (attempt $attempt) — resyncing to origin/$GITHUB_REF_NAME and rebuilding"
+            git rebase --abort 2>/dev/null || true
+            git fetch origin "$GITHUB_REF_NAME"
+            git reset --hard FETCH_HEAD
+            graphify build .
+            if git diff --quiet -- graphify-out; then
+              echo "graph already current on latest tip"
+              exit 0
+            fi
+            commit_graph
           done
           echo "failed to push graph after 5 attempts" >&2
           exit 1
