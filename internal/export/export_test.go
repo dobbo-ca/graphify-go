@@ -97,33 +97,50 @@ func TestCheckShrink(t *testing.T) {
 		return path
 	}
 
+	// root has none of the pkg/*.go source files on disk, so a lost node's source
+	// reads as deleted (not excluded) unless a subtest creates it.
+	root := t.TempDir()
+
 	// Growth (or same size) is never a shrink, regardless of skipped.
-	if err := CheckShrink(seed(nA, nB), graphWith(nA, nB, nC), map[string]bool{"pkg/b.go": true}, false); err != nil {
+	if err := CheckShrink(seed(nA, nB), graphWith(nA, nB, nC), map[string]bool{"pkg/b.go": true}, root, false); err != nil {
 		t.Errorf("growth: %v, want nil", err)
 	}
 
-	// Legit refactor: b removed from a re-parsed file (pkg/b.go NOT skipped) — allowed.
-	if err := CheckShrink(seed(nA, nB), graphWith(nA), map[string]bool{}, false); err != nil {
-		t.Errorf("refactor shrink: %v, want nil", err)
+	// Fail closed (#1795): b left the corpus but its source still exists on disk,
+	// so it was excluded (e.g. a new ignore rule), not deleted — refuse the shrink.
+	excludedRoot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(excludedRoot, "pkg"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(excludedRoot, "pkg", "b.go"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckShrink(seed(nA, nB), graphWith(nA), map[string]bool{}, excludedRoot, false); !errors.Is(err, ErrGraphShrink) {
+		t.Errorf("excluded-but-present source err = %v, want ErrGraphShrink", err)
+	}
+
+	// b's file left the corpus and is absent from root's disk: a deletion — allowed.
+	if err := CheckShrink(seed(nA, nB), graphWith(nA), map[string]bool{}, root, false); err != nil {
+		t.Errorf("deletion (source gone from disk): %v, want nil", err)
 	}
 
 	// Deletion: b's file no longer current, so it never appears in skipped — allowed.
-	if err := CheckShrink(seed(nA, nB), graphWith(nA), map[string]bool{"pkg/z.go": true}, false); err != nil {
+	if err := CheckShrink(seed(nA, nB), graphWith(nA), map[string]bool{"pkg/z.go": true}, root, false); err != nil {
 		t.Errorf("deletion shrink: %v, want nil", err)
 	}
 
 	// Silent loss: b's source file is still present but was skipped this run — refuse.
-	if err := CheckShrink(seed(nA, nB), graphWith(nA), map[string]bool{"pkg/b.go": true}, false); !errors.Is(err, ErrGraphShrink) {
+	if err := CheckShrink(seed(nA, nB), graphWith(nA), map[string]bool{"pkg/b.go": true}, root, false); !errors.Is(err, ErrGraphShrink) {
 		t.Errorf("skipped-file shrink err = %v, want ErrGraphShrink", err)
 	}
 
 	// force bypasses even a skipped-file shrink.
-	if err := CheckShrink(seed(nA, nB), graphWith(nA), map[string]bool{"pkg/b.go": true}, true); err != nil {
+	if err := CheckShrink(seed(nA, nB), graphWith(nA), map[string]bool{"pkg/b.go": true}, root, true); err != nil {
 		t.Errorf("force bypass: %v, want nil", err)
 	}
 
 	// Absent target: nothing to lose.
-	if err := CheckShrink(filepath.Join(t.TempDir(), "graph.json"), graphWith(nA), nil, false); err != nil {
+	if err := CheckShrink(filepath.Join(t.TempDir(), "graph.json"), graphWith(nA), nil, root, false); err != nil {
 		t.Errorf("absent target: %v, want nil", err)
 	}
 
@@ -132,7 +149,7 @@ func TestCheckShrink(t *testing.T) {
 	if err := os.WriteFile(empty, []byte("  \n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := CheckShrink(empty, graphWith(nA), map[string]bool{"pkg/b.go": true}, false); err != nil {
+	if err := CheckShrink(empty, graphWith(nA), map[string]bool{"pkg/b.go": true}, root, false); err != nil {
 		t.Errorf("empty target: %v, want nil", err)
 	}
 
@@ -141,8 +158,41 @@ func TestCheckShrink(t *testing.T) {
 	if err := os.WriteFile(corrupt, []byte("{ not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := CheckShrink(corrupt, graphWith(nA), nil, false); !errors.Is(err, ErrGraphUnverifiable) {
+	if err := CheckShrink(corrupt, graphWith(nA), nil, root, false); !errors.Is(err, ErrGraphUnverifiable) {
 		t.Errorf("unparseable err = %v, want ErrGraphUnverifiable", err)
+	}
+}
+
+// A node lost to an in-place rebuild (its source is still in the new graph) is a
+// normal refactor and must be allowed even when the source file exists on disk —
+// the currentSources carve-out must short-circuit before the on-disk check.
+func TestCheckShrinkAllowsRebuildInPlace(t *testing.T) {
+	comm := map[int][]string{}
+	graphWith := func(nodes ...model.Node) *model.Graph {
+		g := model.New()
+		for _, n := range nodes {
+			g.AddNode(n)
+		}
+		return g
+	}
+	a1 := model.Node{ID: "a1", Label: "a1", FileType: "code", SourceFile: "pkg/a.go"}
+	a2 := model.Node{ID: "a2", Label: "a2", FileType: "code", SourceFile: "pkg/a.go"}
+
+	path := filepath.Join(t.TempDir(), "graph.json")
+	if err := ToJSON(graphWith(a1, a2), comm, path, "seed", true); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "pkg"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "pkg", "a.go"), []byte("package p"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// New graph dropped a2 but pkg/a.go is still built (a1 present) — in-place
+	// refactor. Must be allowed despite pkg/a.go existing on disk.
+	if err := CheckShrink(path, graphWith(a1), map[string]bool{}, root, false); err != nil {
+		t.Errorf("rebuild-in-place shrink must be allowed with source on disk, got %v", err)
 	}
 }
 

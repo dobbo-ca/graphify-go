@@ -83,7 +83,17 @@ func IntrospectCargo(root string) (Result, error) {
 		}
 		sort.Strings(depNames)
 		for _, depName := range depNames {
-			target, ok := crates[depName]
+			// Honor a dep-table rename: `db = { path = "...", package = "real" }`
+			// binds to the workspace crate named "real", not the dep key "db"
+			// (#1858). A rename pointing at a registry/external crate simply misses
+			// `crates` and stays a no-op, like any other non-internal dep.
+			lookup := depName
+			if spec, ok := deps[depName].(map[string]any); ok {
+				if pkg, ok := spec["package"].(string); ok && pkg != "" {
+					lookup = pkg
+				}
+			}
+			target, ok := crates[lookup]
 			if !ok {
 				continue // registry dep or unknown crate — not an internal edge
 			}

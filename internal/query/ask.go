@@ -21,7 +21,7 @@ import (
 func Ask(g *Graph, question string, dfs bool, depth, tokenBudget int) string {
 	terms := queryTerms(question)
 	scored := scoreNodes(g, terms)
-	seeds := pickSeeds(scored, 3, 0.2)
+	seeds := pickSeeds(g, scored, 3, 0.2)
 	if len(seeds) == 0 {
 		return "No matching nodes found."
 	}
@@ -43,19 +43,83 @@ func Ask(g *Graph, question string, dfs bool, depth, tokenBudget int) string {
 	return header + subgraphToText(g, nodes, edges, tokenBudget, seeds)
 }
 
-var wordRe = regexp.MustCompile(`\w+`)
+// wordRe is Unicode-aware to mirror Python's re `\w+` (RE2's bare `\w` is
+// ASCII-only, which would split accented tokens like "über"/"größe" and defeat
+// the diacritic stopwords + mangle accented identifiers).
+var wordRe = regexp.MustCompile(`[\p{L}\p{N}_]+`)
 
-// queryTerms splits a question into searchable lowercase tokens, dropping
-// English words of two characters or fewer (mirrors upstream _query_terms +
-// _is_searchable for the Latin-script case).
+// queryStopwords are question/filler words dropped from query terms so content
+// words drive BFS seeding. Without this, "how does the frontier cache work"
+// seeds on "how"/"work" instead of "frontier"/"cache". Non-English question
+// words are just as damaging in a mostly-English corpus (#1900): rare German
+// "wie"/"funktioniert" get HIGH IDF and out-seed the real content noun, so a
+// curated German set plus trimmed French/Spanish/Portuguese/Italian fillers are
+// included. Diacritics are kept intact; the all-stopword fallback in queryTerms
+// keeps an English "die"/"hat"/"work" query workable. Mirrors upstream
+// _QUERY_STOPWORDS; "war"/"bald"/"comment"/"come"/"son"/"sin"/"con"/"pour"/"des"
+// are deliberately omitted as common English/code terms.
+var queryStopwords = map[string]bool{
+	// English
+	"how": true, "what": true, "why": true, "when": true, "where": true,
+	"which": true, "who": true, "whom": true, "whose": true,
+	"does": true, "did": true, "is": true, "are": true, "was": true, "were": true,
+	"be": true, "been": true, "being": true,
+	"can": true, "could": true, "should": true, "would": true, "will": true,
+	"shall": true, "may": true, "might": true, "must": true,
+	"has": true, "have": true, "had": true, "the": true, "and": true, "but": true,
+	"not": true, "for": true, "from": true, "with": true, "without": true,
+	"into": true, "onto": true, "off": true, "that": true, "this": true,
+	"these": true, "those": true, "there": true, "here": true, "its": true,
+	"their": true, "them": true, "they": true, "about": true, "any": true,
+	"all": true, "some": true, "work": true, "works": true, "working": true,
+	// German (articles/conjunctions/question words/auxiliaries/prepositions)
+	"der": true, "die": true, "das": true, "den": true, "dem": true, "ein": true,
+	"eine": true, "und": true, "oder": true, "nicht": true,
+	"wie": true, "wer": true, "wann": true, "wo": true, "warum": true, "wieso": true,
+	"welche": true, "welcher": true, "welches": true,
+	"ist": true, "sind": true, "wird": true, "wurde": true, "hat": true, "haben": true,
+	"kann": true, "koennen": true, "können": true, "soll": true, "muss": true, "sich": true,
+	"bei": true, "mit": true, "von": true, "fuer": true, "für": true, "ueber": true,
+	"über": true, "nach": true, "aus": true, "gibt": true, "es": true,
+	"funktioniert": true, "geaendert": true, "geändert": true, "aendert": true, "ändert": true,
+	// French
+	"pourquoi": true, "quand": true, "quel": true, "quelle": true, "quels": true,
+	"quelles": true, "quoi": true, "qui": true, "que": true, "est": true, "sont": true,
+	"fonctionne": true, "cette": true, "dans": true, "avec": true, "où": true,
+	// Spanish
+	"cómo": true, "como": true, "qué": true, "cuál": true, "cuáles": true,
+	"cuándo": true, "dónde": true, "donde": true, "porque": true, "por": true,
+	"para": true, "funciona": true, "está": true, "están": true, "hay": true,
+	// Portuguese
+	"qual": true, "quais": true, "quando": true, "onde": true, "são": true,
+	"estão": true, "tem": true, "uma": true, "não": true,
+	// Italian
+	"perché": true, "cosa": true, "quale": true, "quali": true, "dove": true,
+	"funziona": true, "sono": true, "che": true, "della": true,
+}
+
+// queryTerms splits a question into searchable lowercase tokens, dropping words
+// of two ASCII characters or fewer and question/filler stopwords so content
+// words drive seeding. If a query is ALL stopwords it falls back to the
+// unfiltered searchable tokens so it still seeds on something (mirrors upstream
+// _query_terms + _is_searchable + _QUERY_STOPWORDS).
 func queryTerms(question string) []string {
-	var terms []string
+	var searchable []string
 	for _, raw := range strings.Fields(question) {
 		for _, tok := range wordRe.FindAllString(strings.ToLower(raw), -1) {
 			if isSearchable(tok) {
-				terms = append(terms, tok)
+				searchable = append(searchable, tok)
 			}
 		}
+	}
+	var terms []string
+	for _, t := range searchable {
+		if !queryStopwords[t] {
+			terms = append(terms, t)
+		}
+	}
+	if len(terms) == 0 {
+		return searchable // all-stopword query: keep seeding on something
 	}
 	return terms
 }
@@ -172,20 +236,37 @@ type scoredNode struct {
 
 // pickSeeds selects up to maxK seed nodes, stopping once a candidate's score
 // drops below gapRatio of the top score so high-frequency noise terms cannot
-// steal seed slots from a dominant identifier match.
-func pickSeeds(scored []scoredNode, maxK int, gapRatio float64) []string {
+// steal seed slots from a dominant identifier match. Candidates are deduplicated
+// by normalized label, so a swarm of homonymous generic symbols (three `GET`
+// route handlers) cannot flood every seed slot and starve the distinct relevant
+// node — one representative per label is seeded (#1766).
+func pickSeeds(g *Graph, scored []scoredNode, maxK int, gapRatio float64) []string {
 	if len(scored) == 0 {
 		return nil
 	}
 	top := scored[0].score
 	var seeds []string
-	for i, s := range scored {
-		if i >= maxK {
+	seenLabel := map[string]bool{}
+	for _, s := range scored {
+		if len(seeds) >= maxK {
 			break
 		}
 		if len(seeds) > 0 && s.score < top*gapRatio {
 			break
 		}
+		// Key on the normalized label, but keep label-less nodes DISTINCT by
+		// falling back to the id (mirrors upstream's `(norm_label or ...) or nid`)
+		// so several unlabelled nodes are not collapsed into one seed.
+		label := s.id
+		if nd := g.byID[s.id]; nd != nil {
+			if nl := normLabel(nd); nl != "" {
+				label = nl
+			}
+		}
+		if seenLabel[label] {
+			continue // a homonym already holds a seed slot — don't let it flood
+		}
+		seenLabel[label] = true
 		seeds = append(seeds, s.id)
 	}
 	return seeds

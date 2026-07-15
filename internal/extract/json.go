@@ -124,7 +124,10 @@ func extractJSON(rel string, src []byte) Result {
 			}
 			pairCount++
 			key := jsonKeyText(child, src)
-			if key == "" {
+			// Skip keys with no identifier signal (empty, or a JSONC `//` comment
+			// key): they normalize to an empty ID and would collapse to a bare
+			// stem node labelled with the raw key — pure noise (#1899).
+			if degenerateName(key) {
 				continue
 			}
 			loc := line(child)

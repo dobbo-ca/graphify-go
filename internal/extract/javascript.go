@@ -48,9 +48,15 @@ func (b *builder) jsStatement(n *ts.Node, src []byte) {
 	}
 }
 
+// degenerateName reports whether a symbol name carries no identifier signal — it
+// normalizes to an empty ID (a minified `$`, a JSONC `//` comment key). MakeID
+// would collapse such a name to the bare file stem, producing a label-only noise
+// node that can also collide with an extensionless sibling file. Skip it (#1899).
+func degenerateName(name string) bool { return idutil.NormalizeID(name) == "" }
+
 func (b *builder) jsFunc(n *ts.Node, src []byte) {
 	name := fieldText(n, "name", src)
-	if name == "" {
+	if degenerateName(name) {
 		return
 	}
 	id := idutil.MakeID(b.stem, name)
@@ -60,7 +66,7 @@ func (b *builder) jsFunc(n *ts.Node, src []byte) {
 
 func (b *builder) jsClass(n *ts.Node, src []byte) {
 	name := fieldText(n, "name", src)
-	if name == "" {
+	if degenerateName(name) {
 		return
 	}
 	classID := idutil.MakeID(b.stem, name)
@@ -76,7 +82,7 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 			continue
 		}
 		mname := fieldText(m, "name", src)
-		if mname == "" {
+		if degenerateName(mname) {
 			continue
 		}
 		mid := idutil.MakeID(b.stem, name, mname)
@@ -92,7 +98,7 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 
 func (b *builder) jsNamedType(n *ts.Node, src []byte) {
 	name := fieldText(n, "name", src)
-	if name == "" {
+	if degenerateName(name) {
 		return
 	}
 	b.def(idutil.MakeID(b.stem, name), name, name, line(n))
@@ -111,7 +117,7 @@ func (b *builder) jsVarFuncs(n *ts.Node, src []byte) {
 			continue
 		}
 		name := fieldText(d, "name", src)
-		if name == "" {
+		if degenerateName(name) {
 			continue
 		}
 		id := idutil.MakeID(b.stem, name)
