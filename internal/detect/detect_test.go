@@ -205,11 +205,11 @@ func TestCollectFilesReportsWalkError(t *testing.T) {
 // deliberately-skipped lock files are not counted.
 func TestCollectFilesReportCountsSkipped(t *testing.T) {
 	root := t.TempDir()
-	mustWrite(t, filepath.Join(root, "main.go"), `package p`)      // collected
-	mustWrite(t, filepath.Join(root, "notes.unknownext"), `x`)     // no extractor -> counted
-	mustWrite(t, filepath.Join(root, "image.png"), `x`)            // no extractor -> counted
-	mustWrite(t, filepath.Join(root, "Makefile"), `all:`)          // extensionless -> counted
-	mustWrite(t, filepath.Join(root, "go.sum"), `x`)               // lock file -> NOT counted
+	mustWrite(t, filepath.Join(root, "main.go"), `package p`)  // collected
+	mustWrite(t, filepath.Join(root, "notes.unknownext"), `x`) // no extractor -> counted
+	mustWrite(t, filepath.Join(root, "image.png"), `x`)        // no extractor -> counted
+	mustWrite(t, filepath.Join(root, "Makefile"), `all:`)      // extensionless -> counted
+	mustWrite(t, filepath.Join(root, "go.sum"), `x`)           // lock file -> NOT counted
 
 	rep, err := CollectFilesReport(root)
 	if err != nil {
@@ -253,6 +253,68 @@ func TestCollectFilesShebangAndMts(t *testing.T) {
 		if got[notWant] {
 			t.Errorf("did not expect %q to be collected, got %v", notWant, files)
 		}
+	}
+}
+
+// .nox/ (nox virtualenvs, tox's successor) and the other Python venv/cache dirs
+// must be skipped by the built-in rule even when no .gitignore covers them,
+// otherwise a venv's site-packages floods the graph with dependency noise (#1804).
+func TestCollectFilesSkipsNoxVirtualenv(t *testing.T) {
+	root := t.TempDir()
+	// Path has NO other skip-dir segment (not site-packages/lib), so only the
+	// .nox skip can exclude it — a regression dropping .nox from skipDirs fails.
+	mustWrite(t, filepath.Join(root, ".nox", "noxenv", "pkg", "widget.py"), "class Deck: pass")
+	mustWrite(t, filepath.Join(root, "app.py"), "def go(): pass")
+
+	files, err := CollectFiles(root)
+	if err != nil {
+		t.Fatalf("CollectFiles: %v", err)
+	}
+	got := map[string]bool{}
+	for _, f := range files {
+		got[filepath.ToSlash(f)] = true
+	}
+	if !got["app.py"] {
+		t.Errorf("expected app.py collected, got %v", files)
+	}
+	for _, f := range files {
+		if strings.Contains(filepath.ToSlash(f), ".nox") {
+			t.Errorf("did not expect .nox file collected: %q", f)
+		}
+	}
+}
+
+// .rake (plain Ruby) and .skill (Markdown+frontmatter agent doc) are now
+// supported extensions and must be collected (#1784, #1901).
+func TestCollectFilesIncludesRakeAndSkill(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "tasks", "build.rake"), "task :run do\nend\n")
+	mustWrite(t, filepath.Join(root, "10_Orchestrator.skill"), "---\nname: x\n---\n# Title\n")
+
+	files, err := CollectFiles(root)
+	if err != nil {
+		t.Fatalf("CollectFiles: %v", err)
+	}
+	got := map[string]bool{}
+	for _, f := range files {
+		got[filepath.ToSlash(f)] = true
+	}
+	for _, want := range []string{"tasks/build.rake", "10_Orchestrator.skill"} {
+		if !got[want] {
+			t.Errorf("expected %q collected, got %v", want, files)
+		}
+	}
+}
+
+// A .skill is a DOCUMENT, not source code, so a secret-keyword .skill
+// (credentials.skill) must NOT get the source-code exemption in isSensitive and
+// must be dropped — matching upstream FileType.DOCUMENT classification (#1901).
+func TestIsSensitiveSkillIsDocument(t *testing.T) {
+	if !IsSensitive("credentials.skill") {
+		t.Error("credentials.skill should be treated as a sensitive document, not exempt source")
+	}
+	if IsSensitive("build.rake") {
+		t.Error("build.rake is source code and should not be sensitive")
 	}
 }
 

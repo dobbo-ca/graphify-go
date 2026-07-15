@@ -42,6 +42,7 @@ var SupportedExtensions = map[string]bool{
 	".java":     true,
 	".cs":       true,
 	".rb":       true,
+	".rake":     true, // rake tasks are plain Ruby; route to the ruby extractor (#1784)
 	".php":      true,
 	".phtml":    true,
 	".sh":       true,
@@ -60,6 +61,7 @@ var SupportedExtensions = map[string]bool{
 	".md":       true,
 	".mdx":      true,
 	".markdown": true,
+	".skill":    true, // agent .skill files are Markdown + YAML frontmatter; a DOCUMENT (#1901)
 	".vue":      true,
 	".svelte":   true,
 	".astro":    true,
@@ -73,6 +75,30 @@ var skipDirs = map[string]bool{
 	".cache": true, ".idea": true, ".vscode": true, ".worktrees": true,
 	"graphify-out": true, ".graphify": true,
 	".terraform": true, // provider/module cache from `terraform init` — vendored, never source
+	// Python venv/cache dirs: hardcoded skips must fire even when a repo does not
+	// gitignore them (or is scanned outside a git repo), otherwise a .nox/.venv's
+	// site-packages floods the graph with dependency noise (#1804).
+	".nox": true, ".tox": true, "site-packages": true, "lib64": true,
+	".eggs": true, ".pytest_cache": true, ".mypy_cache": true, ".ruff_cache": true,
+}
+
+// skipDirSuffixes are directory-name suffixes that mark a dir as skippable even
+// when its exact name is not in skipDirs. Mirrors upstream's `*.egg-info` glob:
+// setuptools metadata dirs (foo.egg-info) are generated, never source.
+var skipDirSuffixes = []string{".egg-info"}
+
+// skipDir reports whether a directory named n should be pruned from the walk
+// (exact-name skip set or a skippable suffix like *.egg-info).
+func skipDir(n string) bool {
+	if skipDirs[n] {
+		return true
+	}
+	for _, s := range skipDirSuffixes {
+		if strings.HasSuffix(n, s) {
+			return true
+		}
+	}
+	return false
 }
 
 var skipFiles = map[string]bool{
@@ -214,7 +240,7 @@ var secretProneDataExts = map[string]bool{
 // SupportedExtensions — the other DOC_EXTENSIONS (.qmd/.txt/.rst/.html/.yaml/
 // .yml) are not in SupportedExtensions, so they never reach the code path.
 var documentExts = map[string]bool{
-	".md": true, ".mdx": true, ".markdown": true,
+	".md": true, ".mdx": true, ".markdown": true, ".skill": true,
 }
 
 // genericKeywordPattern matches a generic secret keyword core (plus an optional
@@ -320,7 +346,7 @@ func CollectFilesReport(root string) (WalkReport, error) {
 			if path == root {
 				return nil
 			}
-			if skipDirs[d.Name()] || ign.ignored(slashRel, true) {
+			if skipDir(d.Name()) || ign.ignored(slashRel, true) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -376,7 +402,7 @@ func CollectManifests(root string) ([]string, error) {
 			if path == root {
 				return nil
 			}
-			if skipDirs[d.Name()] || ign.ignored(slashRel, true) {
+			if skipDir(d.Name()) || ign.ignored(slashRel, true) {
 				return filepath.SkipDir
 			}
 			return nil

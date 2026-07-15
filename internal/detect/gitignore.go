@@ -49,6 +49,18 @@ func (g *ignorer) load(dir string) *ignoreFile {
 		return f
 	}
 	var f *ignoreFile
+	// At the VCS root, $GIT_DIR/info/exclude patterns apply repo-wide at the
+	// LOWEST precedence: load them first so a nearer .gitignore/.graphifyignore
+	// negation still wins via last-match-wins. This keeps a nested `git worktree
+	// add` copy (recorded only in .git/info/exclude, not .gitignore) from being
+	// fully indexed (#1810, #1809).
+	if dir == "" {
+		if excl := g.infoExcludePath(); excl != "" {
+			if data, err := os.ReadFile(excl); err == nil {
+				f = parseIgnore("", string(data))
+			}
+		}
+	}
 	for _, name := range []string{".gitignore", ".graphifyignore"} {
 		data, err := os.ReadFile(filepath.Join(g.root, filepath.FromSlash(dir), name))
 		if err != nil {
@@ -63,6 +75,51 @@ func (g *ignorer) load(dir string) *ignoreFile {
 	}
 	g.cache[dir] = f
 	return f
+}
+
+// infoExcludePath returns the path to the repo's $GIT_DIR/info/exclude, or ""
+// when the root is not a git repo or has no exclude file. When <root>/.git is a
+// FILE (a linked worktree or submodule), it follows the `gitdir:` pointer and
+// then the worktree's `commondir` to the shared git dir, where info/exclude
+// lives — mirroring git's own resolution (#1809).
+func (g *ignorer) infoExcludePath() string {
+	gitPath := filepath.Join(g.root, ".git")
+	info, err := os.Stat(gitPath)
+	if err != nil {
+		return ""
+	}
+	gitDir := gitPath
+	if !info.IsDir() {
+		data, err := os.ReadFile(gitPath)
+		if err != nil {
+			return ""
+		}
+		line := strings.TrimSpace(string(data))
+		const prefix = "gitdir:"
+		if !strings.HasPrefix(line, prefix) {
+			return ""
+		}
+		gitDir = strings.TrimSpace(strings.TrimPrefix(line, prefix))
+		if !filepath.IsAbs(gitDir) {
+			gitDir = filepath.Join(g.root, gitDir)
+		}
+	}
+	// A linked worktree's gitdir carries a `commondir` pointing at the shared git
+	// dir, which is where info/exclude actually lives.
+	commonDir := gitDir
+	if data, err := os.ReadFile(filepath.Join(gitDir, "commondir")); err == nil {
+		if cd := strings.TrimSpace(string(data)); cd != "" {
+			if !filepath.IsAbs(cd) {
+				cd = filepath.Join(gitDir, cd)
+			}
+			commonDir = filepath.Clean(cd)
+		}
+	}
+	excl := filepath.Join(commonDir, "info", "exclude")
+	if _, err := os.Stat(excl); err != nil {
+		return ""
+	}
+	return excl
 }
 
 // ignored reports whether rel (slash-relative to root) is excluded, given

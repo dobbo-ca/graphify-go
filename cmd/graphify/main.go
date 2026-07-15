@@ -38,6 +38,7 @@ var (
 )
 
 func main() {
+	handleBrokenPipe()
 	if len(os.Args) < 2 {
 		usage()
 		os.Exit(2)
@@ -84,6 +85,9 @@ func main() {
 		err = fmt.Errorf("unknown command %q", os.Args[1])
 	}
 	if err != nil {
+		if isBrokenPipe(err) {
+			os.Exit(0) // a downstream reader closed the pipe early — not a failure
+		}
 		fmt.Fprintln(os.Stderr, "graphify:", err)
 		os.Exit(1)
 	}
@@ -229,7 +233,7 @@ func writeOutputs(root string, files []string, results []extract.Result, newCach
 	// cache, and the stat sidecar from the rejected smaller graph would leave the
 	// report/cache describing a graph that graph.json does not match (mirrors
 	// upstream watch, where a refused _check_shrink returns before any write).
-	if err := export.CheckShrink(graphPath, g, skippedFiles(files, newCache), force); err != nil {
+	if err := export.CheckShrink(graphPath, g, skippedFiles(files, newCache), root, force); err != nil {
 		// A shrink/unverifiable refusal is a fail-safe, not a build failure:
 		// warn and leave graphify-out untouched rather than crashing the build.
 		if errors.Is(err, export.ErrGraphShrink) || errors.Is(err, export.ErrGraphUnverifiable) {

@@ -134,7 +134,7 @@ func FileFromBytes(rel string, src []byte) Result {
 		return extractJava(rel, src)
 	case ".cs":
 		return extractCSharp(rel, src)
-	case ".rb":
+	case ".rb", ".rake":
 		return extractRuby(rel, src)
 	case ".php", ".phtml":
 		return extractPHP(rel, src)
@@ -152,7 +152,7 @@ func FileFromBytes(rel string, src []byte) Result {
 		return extractLua(rel, src)
 	case ".zig":
 		return extractZig(rel, src)
-	case ".md", ".mdx", ".markdown":
+	case ".md", ".mdx", ".markdown", ".skill":
 		return extractMarkdown(rel, src)
 	case ".vue", ".svelte":
 		return extractComponent(rel, src, false)

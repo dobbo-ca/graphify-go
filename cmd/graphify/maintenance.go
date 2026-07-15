@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,12 @@ import (
 // hookMarker tags hook scripts graphify wrote, so reinstalling overwrites our
 // own scripts but never clobbers a hook the user wrote.
 const hookMarker = "# graphify-managed hook"
+
+// mergeAttrLine wires graphify-out/graph.json to the union merge driver so
+// concurrent branches that both regenerated the graph merge cleanly instead of
+// conflicting. Registered/removed by hook install/uninstall alongside the
+// merge.graphify.* git config keys (#1902).
+const mergeAttrLine = "graphify-out/graph.json merge=graphify"
 
 // managedGitHooks fire an incremental rebuild after history changes.
 var managedGitHooks = []string{"post-commit", "post-merge", "post-checkout"}
@@ -75,6 +82,59 @@ func hookInstall(root string) error {
 		installed = append(installed, h)
 	}
 	fmt.Printf("installed git hooks (%s) → %s\n", strings.Join(installed, ", "), hooksDir)
+
+	// The union merge driver only takes effect once registered; the scripts alone
+	// leave a committed graph.json to clobber/conflict on a branch merge (#1902).
+	if err := registerMergeDriver(absRoot, self); err != nil {
+		fmt.Fprintf(os.Stderr, "  warning: could not register graph.json merge driver: %v\n", err)
+	} else {
+		fmt.Println("registered graph.json union merge driver")
+	}
+	return nil
+}
+
+// registerMergeDriver wires the graphify union merge driver: the merge.graphify.*
+// git config keys plus a graphify-out/graph.json merge=graphify line in
+// .gitattributes. self is graphify's own executable (the driver is `<self>
+// merge-driver %O %A %B`, resolved by git at merge time).
+func registerMergeDriver(root, self string) error {
+	if err := gitConfig(root, "merge.graphify.name", "graphify graph.json union merge"); err != nil {
+		return err
+	}
+	driver := fmt.Sprintf("%q merge-driver %%O %%A %%B", self)
+	if err := gitConfig(root, "merge.graphify.driver", driver); err != nil {
+		return err
+	}
+	return ensureMergeAttr(root)
+}
+
+// ensureMergeAttr appends mergeAttrLine to <root>/.gitattributes unless it is
+// already present, preserving any existing attributes.
+func ensureMergeAttr(root string) error {
+	path := filepath.Join(root, ".gitattributes")
+	data, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) == mergeAttrLine {
+			return nil // already registered
+		}
+	}
+	content := string(data)
+	if len(content) > 0 && !strings.HasSuffix(content, "\n") {
+		content += "\n"
+	}
+	content += mergeAttrLine + "\n"
+	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+// gitConfig sets a local git config key in root's repository.
+func gitConfig(root string, key, value string) error {
+	cmd := exec.Command("git", "-C", root, "config", key, value)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git config %s: %v: %s", key, err, strings.TrimSpace(string(out)))
+	}
 	return nil
 }
 
@@ -98,7 +158,44 @@ func hookUninstall(root string) error {
 		}
 		fmt.Printf("removed %s\n", h)
 	}
+	unregisterMergeDriver(root)
 	return nil
+}
+
+// unregisterMergeDriver removes the merge.graphify.* config keys and the
+// graph.json line from .gitattributes. Missing keys/lines are not an error.
+func unregisterMergeDriver(root string) {
+	_ = exec.Command("git", "-C", root, "config", "--unset", "merge.graphify.name").Run()
+	_ = exec.Command("git", "-C", root, "config", "--unset", "merge.graphify.driver").Run()
+	path := filepath.Join(root, ".gitattributes")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var kept []string
+	removed := false
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) == mergeAttrLine {
+			removed = true
+			continue
+		}
+		kept = append(kept, line)
+	}
+	if !removed {
+		return
+	}
+	// If our line was the only content, remove the file rather than leaving a
+	// stray empty .gitattributes (which would show up as untracked).
+	rest := strings.TrimSpace(strings.Join(kept, "\n"))
+	if rest == "" {
+		if err := os.Remove(path); err != nil {
+			fmt.Fprintf(os.Stderr, "  warning: could not remove .gitattributes: %v\n", err)
+		}
+		return
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(kept, "\n")), 0o644); err != nil {
+		fmt.Fprintf(os.Stderr, "  warning: could not update .gitattributes: %v\n", err)
+	}
 }
 
 // hookStatus reports, per managed hook, whether the graphify hook is installed,
@@ -112,7 +209,30 @@ func hookStatus(root string) error {
 		}
 		fmt.Printf("%s: %s\n", h, state)
 	}
+	fmt.Printf("merge-driver: %s\n", mergeDriverStatus(root))
 	return nil
+}
+
+// mergeDriverStatus reports whether the graph.json union merge driver is fully
+// registered (config key + .gitattributes line), partially, or not at all.
+func mergeDriverStatus(root string) string {
+	driver := exec.Command("git", "-C", root, "config", "--get", "merge.graphify.driver").Run() == nil
+	attr := false
+	if data, err := os.ReadFile(filepath.Join(root, ".gitattributes")); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if strings.TrimSpace(line) == mergeAttrLine {
+				attr = true
+			}
+		}
+	}
+	switch {
+	case driver && attr:
+		return "registered"
+	case driver || attr:
+		return "partial"
+	default:
+		return "not registered"
+	}
 }
 
 // cmdWatch handles `graphify watch [path]`: it does one incremental update, then

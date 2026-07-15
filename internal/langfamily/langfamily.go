@@ -35,8 +35,8 @@ var byExt = map[string]string{
 	".cxx": "native", ".hpp": "native", ".hh": "native", ".hxx": "native",
 	// .NET
 	".cs": "dotnet",
-	// Ruby
-	".rb": "ruby",
+	// Ruby (.rake tasks are plain Ruby, #1784)
+	".rb": "ruby", ".rake": "ruby",
 	// PHP
 	".php": "php", ".phtml": "php",
 	// Lua
