@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -297,5 +298,56 @@ func TestCmdServeLoadError(t *testing.T) {
 	defer os.Chdir(wd)
 	if err := cmdServe(defaultGraphPath); err == nil {
 		t.Error("cmdServe with no graph.json = nil, want load error")
+	}
+}
+
+// bigServer builds a hub node with n neighbours, all in community 0.
+func bigServer(t *testing.T, n int) *mcpServer {
+	t.Helper()
+	nodes := []string{`{"id":"hub","label":"hub()","file_type":"code","source_file":"hub.go","source_location":"L1","community":0,"norm_label":"hub()"}`}
+	var links []string
+	for i := 0; i < n; i++ {
+		nodes = append(nodes, fmt.Sprintf(
+			`{"id":"n%d","label":"neighbor%d()","file_type":"code","source_file":"n.go","source_location":"L1","community":0,"norm_label":"neighbor%d()"}`, i, i, i))
+		links = append(links, fmt.Sprintf(`{"source":"hub","target":"n%d","relation":"calls","confidence":"EXTRACTED"}`, i))
+	}
+	doc := fmt.Sprintf(`{"directed":true,"multigraph":false,"graph":{},"nodes":[%s],"links":[%s]}`,
+		strings.Join(nodes, ","), strings.Join(links, ","))
+	p := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(p, []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g, err := query.Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &mcpServer{g: g, communities: communitiesOf(g), god: modelOf(g)}
+}
+
+func TestToolGetNeighborsTokenBudget(t *testing.T) {
+	s := bigServer(t, 500)
+	out := s.toolGetNeighbors(map[string]any{"label": "hub", "token_budget": float64(200)})
+	first := strings.SplitN(out, "\n", 2)[0]
+	if !strings.HasPrefix(first, "Truncated: ") || !strings.Contains(first, " of 500 shown") {
+		t.Errorf("want truncation notice on first line, got %q", first)
+	}
+	if len(out) > 200*3+len(first)+100 {
+		t.Errorf("output %d chars exceeds budget:\n%s", len(out), out)
+	}
+}
+
+func TestToolGetCommunityTokenBudget(t *testing.T) {
+	s := bigServer(t, 500)
+	out := s.toolGetCommunity(map[string]any{"community_id": float64(0), "token_budget": float64(200)})
+	if !strings.HasPrefix(out, "Truncated: ") {
+		t.Errorf("want truncation notice first, got:\n%s", out[:120])
+	}
+}
+
+func TestToolGetNeighborsUnderBudgetNotTruncated(t *testing.T) {
+	s := newServer(t)
+	out := s.toolGetNeighbors(map[string]any{"label": "authValidate"})
+	if strings.Contains(out, "Truncated") {
+		t.Errorf("small output should not be truncated:\n%s", out)
 	}
 }
