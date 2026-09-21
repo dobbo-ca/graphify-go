@@ -227,7 +227,7 @@ func blockAttributes(body *ts.Node, src []byte, labels []string) map[string]stri
 		if a == nil || a.Kind() != "attribute" || a.NamedChildCount() < 2 {
 			continue
 		}
-		if tfChild(a, "identifier", src) == "sensitive" && attrValue(a.NamedChild(1), src) == "true" {
+		if tfChild(a, "identifier", src) == "sensitive" && attrValue(attrValueNode(a), src) == "true" {
 			blockSensitive = true
 		}
 	}
@@ -247,7 +247,7 @@ func blockAttributes(body *ts.Node, src []byte, labels []string) map[string]stri
 		case (blockSensitive && key != "sensitive") || sensitiveKeyRe.MatchString(key):
 			attrs[key] = redactedValue
 		default:
-			v := attrValue(a.NamedChild(1), src)
+			v := attrValue(attrValueNode(a), src)
 			if v == "" {
 				continue
 			}
@@ -261,6 +261,19 @@ func blockAttributes(body *ts.Node, src []byte, labels []string) map[string]stri
 		return nil
 	}
 	return attrs
+}
+
+// attrValueNode returns an attribute's value expression: its first named child
+// after the identifier that is not a comment (a comment between `=` and the
+// value is itself a named child, so index 1 is not reliably the expression).
+func attrValueNode(a *ts.Node) *ts.Node {
+	for i := uint(1); i < a.NamedChildCount(); i++ {
+		c := a.NamedChild(i)
+		if c != nil && c.Kind() != "comment" {
+			return c
+		}
+	}
+	return nil
 }
 
 // attrValue renders an attribute value expression as one string: a literal

@@ -339,3 +339,30 @@ resource "aws_instance" "web" {
 		t.Errorf("instance_type = %q, want t3.large", v)
 	}
 }
+
+// A comment between `=` and the value is a named child of the attribute, so the
+// value must be found by skipping comments — otherwise the comment is stored as
+// the value and `sensitive = true` stops redacting.
+func TestExtractTerraformAttributeCommentBeforeValue(t *testing.T) {
+	src := []byte(`variable "thing" {
+  sensitive = // yes
+    true
+  default = "hunter2"
+}
+
+resource "aws_instance" "web" {
+  instance_type = /* c */ "t3.large"
+}
+`)
+	res := FileFromBytes("main.tf", src)
+	byLabel := map[string]map[string]string{}
+	for _, n := range res.Nodes {
+		byLabel[n.Label] = n.Attributes
+	}
+	if v := byLabel["var.thing"]["default"]; v != redactedValue {
+		t.Errorf("var.thing default = %q, want %q", v, redactedValue)
+	}
+	if v := byLabel["aws_instance.web"]["instance_type"]; v != "t3.large" {
+		t.Errorf("instance_type = %q, want t3.large", v)
+	}
+}
