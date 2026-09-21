@@ -1,6 +1,8 @@
 package analyze
 
 import (
+	"fmt"
+	"sort"
 	"testing"
 
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -47,7 +49,7 @@ func sampleGraph() *model.Graph {
 
 func TestGodNodesExcludeFileHubs(t *testing.T) {
 	g := sampleGraph()
-	gods := GodNodes(g, 10)
+	gods := GodNodes(g, 10, 0)
 	if len(gods) == 0 {
 		t.Fatal("expected at least one god node")
 	}
@@ -62,7 +64,7 @@ func TestGodNodesExcludeFileHubs(t *testing.T) {
 			t.Errorf("god nodes not sorted by descending degree: %d before %d", gods[i-1].Degree, gods[i].Degree)
 		}
 	}
-	if got := GodNodes(g, 2); len(got) != 2 {
+	if got := GodNodes(g, 2, 0); len(got) != 2 {
 		t.Errorf("GodNodes(topN=2) returned %d, want 2", len(got))
 	}
 }
@@ -136,7 +138,7 @@ func semanticGraph() *model.Graph {
 }
 
 func TestGodNodesIncludesSemanticConcepts(t *testing.T) {
-	gods := GodNodes(semanticGraph(), 10)
+	gods := GodNodes(semanticGraph(), 10, 0)
 	found := false
 	for _, n := range gods {
 		if n.ID == "concept_appconfig" {
@@ -191,7 +193,7 @@ func TestGodNodesExcludeNoiseLabels(t *testing.T) {
 	for _, id := range []string{"a1", "a2", "a3", "b1", "b2", "b3"} {
 		g.AddEdge(model.Edge{Source: "dep", Target: id, Relation: "calls", Confidence: "EXTRACTED"})
 	}
-	for _, n := range GodNodes(g, 10) {
+	for _, n := range GodNodes(g, 10, 0) {
 		if n.Label == "dependencies" {
 			t.Errorf("god nodes should exclude noise label %q", n.Label)
 		}
@@ -200,12 +202,66 @@ func TestGodNodesExcludeNoiseLabels(t *testing.T) {
 	g.AddNode(model.Node{ID: "sched", Label: "scheduler", SourceFile: "package.json"})
 	g.AddEdge(model.Edge{Source: "sched", Target: "a1", Relation: "calls", Confidence: "EXTRACTED"})
 	var found bool
-	for _, n := range GodNodes(g, 20) {
+	for _, n := range GodNodes(g, 20, 0) {
 		if n.Label == "scheduler" {
 			found = true
 		}
 	}
 	if !found {
 		t.Error("non-noise JSON key should still rank as a god node")
+	}
+}
+
+// hubGraph is one mega-hub (degree 40), two mid symbols, and a tail of leaves.
+func hubGraph() *model.Graph {
+	g := model.New()
+	g.AddNode(model.Node{ID: "hub", Label: "Registry", SourceFile: "u.go"})
+	for i := 0; i < 40; i++ {
+		id := fmt.Sprintf("leaf%d", i)
+		g.AddNode(model.Node{ID: id, Label: id, SourceFile: fmt.Sprintf("l%d.go", i)})
+		g.AddEdge(model.Edge{Source: "hub", Target: id, Relation: "calls", Confidence: "EXTRACTED"})
+	}
+	for _, m := range []struct {
+		name string
+		deg  int
+	}{{"core", 6}, {"svc", 4}} {
+		g.AddNode(model.Node{ID: m.name, Label: m.name, SourceFile: m.name + ".go"})
+		for i := 0; i < m.deg; i++ {
+			g.AddEdge(model.Edge{Source: m.name, Target: fmt.Sprintf("leaf%d", i), Relation: "calls", Confidence: "EXTRACTED"})
+		}
+	}
+	return g
+}
+
+func TestGodNodesExcludeHubsPercentile(t *testing.T) {
+	g := hubGraph()
+
+	// Zero keeps the historical ranking: the hub still wins.
+	if got := GodNodes(g, 3, 0); len(got) == 0 || got[0].Label != "Registry" {
+		t.Fatalf("GodNodes(topN=3, pct=0) = %+v, want Registry first", got)
+	}
+
+	// The threshold must match cluster()'s formula: degrees sorted ascending,
+	// idx = max(0, len*pct/100 - 1), anything with a greater degree is a hub.
+	degrees := make([]int, 0, len(g.NodeIDs()))
+	for _, id := range g.NodeIDs() {
+		degrees = append(degrees, g.Degree(id))
+	}
+	sort.Ints(degrees)
+	threshold := degrees[len(degrees)*90/100-1]
+
+	gods := GodNodes(g, 100, 90)
+	if len(gods) == 0 {
+		t.Fatal("suppressing the hub must not empty the ranking")
+	}
+	for _, n := range gods {
+		if n.Degree > threshold {
+			t.Errorf("god node %q has degree %d, above the p90 threshold %d", n.Label, n.Degree, threshold)
+		}
+	}
+
+	// 100 excludes nothing: the threshold is the maximum degree.
+	if got := GodNodes(g, 3, 100); len(got) == 0 || got[0].Label != "Registry" {
+		t.Errorf("GodNodes(topN=3, pct=100) = %+v, want Registry first", got)
 	}
 }

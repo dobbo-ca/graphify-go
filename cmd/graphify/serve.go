@@ -374,7 +374,7 @@ func budgetLines(header string, items []string, tokenBudget int) string {
 }
 
 func (s *mcpServer) toolGodNodes(args map[string]any) string {
-	nodes := analyze.GodNodes(s.god, argInt(args, "top_n", 10))
+	nodes := analyze.GodNodes(s.god, argInt(args, "top_n", 10), argInt(args, "exclude_hubs_percentile", 0))
 	lines := []string{"God nodes (most connected):"}
 	for i, n := range nodes {
 		lines = append(lines, fmt.Sprintf("  %d. %s - %d edges", i+1, security.SanitizeLabel(n.Label), n.Degree))
@@ -550,7 +550,11 @@ func toolDefs() []map[string]any {
 			}, "community_id")},
 		{"name": "god_nodes",
 			"description": "Return the most connected nodes - the core abstractions of the knowledge graph.",
-			"inputSchema": obj(map[string]any{"top_n": map[string]any{"type": "integer"}})},
+			"inputSchema": obj(map[string]any{
+				"top_n": map[string]any{"type": "integer"},
+				"exclude_hubs_percentile": map[string]any{"type": "integer",
+					"description": "Suppress nodes whose degree exceeds this percentile (0-100) of the degree distribution, matching cluster()'s hub exclusion"},
+			})},
 		{"name": "surprising_connections",
 			"description": "Return non-obvious cross-file connections, ranked by how surprising they are (bridging separate communities ranks highest). Use to discover what unexpectedly couples two subsystems.",
 			"inputSchema": obj(map[string]any{"top_n": map[string]any{"type": "integer"}})},

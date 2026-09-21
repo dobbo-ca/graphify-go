@@ -482,3 +482,11 @@ func TestToolSurprisingTopN(t *testing.T) {
 		t.Errorf("got %q, want empty message", out)
 	}
 }
+
+func TestToolGodNodesExcludeHubsPercentile(t *testing.T) {
+	s := newServer(t)
+	out := s.toolGodNodes(map[string]any{"top_n": float64(5), "exclude_hubs_percentile": float64(50)})
+	if strings.Contains(out, "checkToken() - 2 edges") {
+		t.Errorf("p50 should suppress the top hub:\n%s", out)
+	}
+}
