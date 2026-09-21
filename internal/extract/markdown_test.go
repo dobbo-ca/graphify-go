@@ -1,6 +1,7 @@
 package extract
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -282,5 +283,19 @@ func TestResolveBacktickCodeSymbol(t *testing.T) {
 	}
 	if refs != 1 {
 		t.Errorf("references edges from notes = %d, want 1 (only the unique code symbol resolves)", refs)
+	}
+}
+
+// TestComputedMetaSanitized checks that a huge, control-char-laden frontmatter
+// description is capped and stripped before it reaches ComputedName.
+func TestComputedMetaSanitized(t *testing.T) {
+	src := "---\ntitle: Big\ndescription: " + strings.Repeat("a", 10000) + "\x00bad\x07\n---\nbody\n"
+	res := extractMarkdown("big.md", []byte(src))
+	got := res.Nodes[0].ComputedName
+	if len(got) != 256 {
+		t.Errorf("ComputedName length = %d, want 256", len(got))
+	}
+	if strings.ContainsAny(got, "\x00\x07") {
+		t.Errorf("ComputedName retained control chars: %q", got)
 	}
 }
