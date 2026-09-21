@@ -15,9 +15,9 @@ import (
 
 // GodNode is a highly-connected core abstraction.
 type GodNode struct {
-	ID     string
-	Label  string
-	Degree int
+	ID     string `json:"id"`
+	Label  string `json:"label"`
+	Degree int    `json:"degree"`
 }
 
 // GodNodes returns the topN most-connected real entities. File-hub nodes,
