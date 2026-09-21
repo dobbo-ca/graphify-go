@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -88,5 +89,27 @@ func TestCmdExplainPathGraphTraversal(t *testing.T) {
 		if err := cmdPath([]string{"alpha", "alpha", "--graph", p}); err == nil {
 			t.Errorf("cmdPath --graph %q = nil, want containment error", p)
 		}
+	}
+}
+
+// TestCmdPathUndirected verifies that path follows edge direction by default and
+// only traverses backwards with --undirected, pointing the user at the flag.
+func TestCmdPathUndirected(t *testing.T) {
+	dir := t.TempDir()
+	writeTestGraph(t, filepath.Join(dir, "graphify-out", "graph.json"),
+		`{"nodes":[{"id":"beta","label":"beta"},{"id":"gamma","label":"gamma"}],"links":[{"source":"beta","target":"gamma","relation":"calls"}]}`)
+
+	wd, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(wd)
+
+	err := cmdPath([]string{"gamma", "beta"})
+	if err == nil || !strings.Contains(err.Error(), "--undirected") {
+		t.Fatalf("cmdPath gamma beta = %v, want no-directed-path error hinting --undirected", err)
+	}
+	if err := cmdPath([]string{"gamma", "beta", "--undirected"}); err != nil {
+		t.Errorf("cmdPath gamma beta --undirected = %v, want success", err)
 	}
 }

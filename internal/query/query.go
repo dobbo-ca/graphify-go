@@ -6,6 +6,7 @@ package query
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -158,9 +159,14 @@ func Explain(g *Graph, id string) (*Explanation, error) {
 	return &Explanation{Node: n, Neighbors: nbrs}, nil
 }
 
-// Path returns the shortest path (by node labels/ids) between two nodes via BFS
-// on the undirected graph, or an error if no path exists.
-func Path(g *Graph, from, to string) ([]Node, error) {
+// ErrNoDirectedPath is wrapped by Path/PathEdges when a directed search finds
+// no route; callers surface their own "retry undirected" hint.
+var ErrNoDirectedPath = errors.New("no directed path")
+
+// Path returns the shortest path (by node labels/ids) between two nodes via BFS,
+// following edge direction unless undirected is set, or an error if no path
+// exists.
+func Path(g *Graph, from, to string, undirected bool) ([]Node, error) {
 	a, b := g.resolve(from), g.resolve(to)
 	if a == nil {
 		return nil, fmt.Errorf("no node matching %q", from)
@@ -168,9 +174,9 @@ func Path(g *Graph, from, to string) ([]Node, error) {
 	if b == nil {
 		return nil, fmt.Errorf("no node matching %q", to)
 	}
-	ids, ok := g.bfsPath(a.ID, b.ID)
+	ids, ok := g.bfsPath(a.ID, b.ID, undirected)
 	if !ok {
-		return nil, fmt.Errorf("no path between %q and %q", a.Label, b.Label)
+		return nil, noPathErr(a, b, undirected)
 	}
 	out := make([]Node, 0, len(ids))
 	for _, id := range ids {
@@ -220,12 +226,13 @@ func (e *MaxHopsError) Error() string {
 	return fmt.Sprintf("path exceeds max_hops=%d (%d hops found)", e.MaxHops, e.Hops)
 }
 
-// PathEdges resolves from/to and returns the shortest undirected path between
-// them annotated with each traversed edge's relation and confidence. It uses
-// the same resolve() semantics as Path. When both queries resolve to the same
-// node it returns a *SameNodeError; when the path is longer than maxHops (and
-// maxHops > 0) it returns a *MaxHopsError.
-func PathEdges(g *Graph, from, to string, maxHops int) (*PathResult, error) {
+// PathEdges resolves from/to and returns the shortest path between them
+// annotated with each traversed edge's relation and confidence, following edge
+// direction unless undirected is set. It uses the same resolve() semantics as
+// Path. When both queries resolve to the same node it returns a *SameNodeError;
+// when the path is longer than maxHops (and maxHops > 0) it returns a
+// *MaxHopsError.
+func PathEdges(g *Graph, from, to string, maxHops int, undirected bool) (*PathResult, error) {
 	a, b := g.resolve(from), g.resolve(to)
 	if a == nil {
 		return nil, fmt.Errorf("no node matching %q", from)
@@ -236,9 +243,9 @@ func PathEdges(g *Graph, from, to string, maxHops int) (*PathResult, error) {
 	if a.ID == b.ID {
 		return nil, &SameNodeError{From: from, To: to, ID: a.ID}
 	}
-	ids, ok := g.bfsPath(a.ID, b.ID)
+	ids, ok := g.bfsPath(a.ID, b.ID, undirected)
 	if !ok {
-		return nil, fmt.Errorf("no path between %q and %q", a.Label, b.Label)
+		return nil, noPathErr(a, b, undirected)
 	}
 	if hops := len(ids) - 1; maxHops > 0 && hops > maxHops {
 		return nil, &MaxHopsError{MaxHops: maxHops, Hops: hops}
@@ -267,9 +274,19 @@ func PathEdges(g *Graph, from, to string, maxHops int) (*PathResult, error) {
 	return res, nil
 }
 
-// bfsPath returns the node IDs on a shortest undirected path from aID to bID
-// (inclusive, ordered from->to), or ok=false when none exists.
-func (g *Graph) bfsPath(aID, bID string) ([]string, bool) {
+// noPathErr reports a failed search, wrapping ErrNoDirectedPath when the search
+// followed edge direction so callers can offer the undirected retry.
+func noPathErr(a, b *Node, undirected bool) error {
+	if undirected {
+		return fmt.Errorf("no path between %q and %q", a.Label, b.Label)
+	}
+	return fmt.Errorf("%w between %q and %q", ErrNoDirectedPath, a.Label, b.Label)
+}
+
+// bfsPath returns the node IDs on a shortest path from aID to bID (inclusive,
+// ordered from->to), or ok=false when none exists. It follows edge direction
+// unless undirected is set.
+func (g *Graph) bfsPath(aID, bID string, undirected bool) ([]string, bool) {
 	prev := map[string]string{aID: ""}
 	queue := []string{aID}
 	for len(queue) > 0 {
@@ -284,6 +301,9 @@ func (g *Graph) bfsPath(aID, bID string) ([]string, bool) {
 		}
 		sort.Strings(nbrs)
 		for _, nb := range nbrs {
+			if !undirected && g.edge[[2]string{cur, nb}] == nil {
+				continue // edge points nb -> cur; not traversable directed
+			}
 			if _, seen := prev[nb]; !seen {
 				prev[nb] = cur
 				queue = append(queue, nb)

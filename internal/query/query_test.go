@@ -70,7 +70,7 @@ func TestExplainNeighbors(t *testing.T) {
 
 func TestPath(t *testing.T) {
 	g := loadSample(t)
-	p, err := Path(g, "a()", "c()")
+	p, err := Path(g, "a()", "c()", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestPath(t *testing.T) {
 
 func TestPathEdges(t *testing.T) {
 	g := loadSample(t)
-	res, err := PathEdges(g, "a()", "c()", 8)
+	res, err := PathEdges(g, "a()", "c()", 8, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestPathEdges(t *testing.T) {
 		}
 	}
 	// Reversed query orients both hops backwards against the stored edges.
-	rev, err := PathEdges(g, "c()", "a()", 8)
+	rev, err := PathEdges(g, "c()", "a()", 8, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,9 +105,27 @@ func TestPathEdges(t *testing.T) {
 	}
 }
 
+func TestPathDirectedByDefault(t *testing.T) {
+	g := loadSample(t)
+	// c -> a only exists against the direction of the stored call edges.
+	if _, err := Path(g, "c()", "a()", false); !errors.Is(err, ErrNoDirectedPath) {
+		t.Fatalf("err = %v, want ErrNoDirectedPath", err)
+	}
+	if _, err := PathEdges(g, "c()", "a()", 8, false); !errors.Is(err, ErrNoDirectedPath) {
+		t.Fatalf("err = %v, want ErrNoDirectedPath", err)
+	}
+	p, err := Path(g, "c()", "a()", true)
+	if err != nil {
+		t.Fatalf("undirected: %v", err)
+	}
+	if len(p) != 3 || p[0].Label != "c()" || p[2].Label != "a()" {
+		t.Fatalf("undirected path = %+v, want c->b->a", p)
+	}
+}
+
 func TestPathEdgesSameNode(t *testing.T) {
 	g := loadSample(t)
-	_, err := PathEdges(g, "a()", "a()", 8)
+	_, err := PathEdges(g, "a()", "a()", 8, false)
 	var same *SameNodeError
 	if !errors.As(err, &same) {
 		t.Fatalf("err = %v, want *SameNodeError", err)
@@ -119,7 +137,7 @@ func TestPathEdgesSameNode(t *testing.T) {
 
 func TestPathEdgesMaxHops(t *testing.T) {
 	g := loadSample(t)
-	_, err := PathEdges(g, "a()", "c()", 1)
+	_, err := PathEdges(g, "a()", "c()", 1, false)
 	var over *MaxHopsError
 	if !errors.As(err, &over) {
 		t.Fatalf("err = %v, want *MaxHopsError", err)
