@@ -50,3 +50,17 @@ func TestImportCyclesSkipsTypeOnlyImports(t *testing.T) {
 		}
 	}
 }
+
+// Two imports from the same module (one type-only, one value) collapse to a
+// single imports_from edge, so the value import must win regardless of which
+// line comes first.
+func TestImportCyclesTypeAndValueImportSameModule(t *testing.T) {
+	for _, imp := range []string{
+		"import type { B } from './b';\nimport { mkB } from './b';",
+		"import { mkB } from './b';\nimport type { B } from './b';",
+	} {
+		if cycles := ImportCycles(tsCycleGraph(t, imp), 5, 20); len(cycles) != 1 {
+			t.Errorf("expected 1 cycle for %q, got %d: %v", imp, len(cycles), cycles)
+		}
+	}
+}
