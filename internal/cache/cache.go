@@ -94,7 +94,7 @@ type StatIndex map[string]StatEntry
 
 // schema is the on-disk cache layout revision. Bump it when the shape of Entry
 // or StatEntry changes so older files are discarded rather than misread.
-const schema = 1
+const schema = 2
 
 // Stamp is the cache identity for a binary: its version plus the on-disk schema
 // revision. A cache file written under a different stamp is discarded, so an
