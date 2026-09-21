@@ -27,12 +27,15 @@ func Resolve(results []Result, files []string) model.Extraction {
 	// Index definitions by name (global) and by file+name (local-first calls),
 	// and remember each definition's file for disambiguation.
 	global := map[string][]string{}
-	local := map[string]string{}  // file\x00name -> id
-	idFile := map[string]string{} // def id -> defining file
+	local := map[string][]string{} // file\x00name -> ids
+	idFile := map[string]string{}  // def id -> defining file
 	for _, r := range results {
 		for _, d := range r.Defs {
 			global[d.Name] = append(global[d.Name], d.ID)
-			local[d.File+"\x00"+d.Name] = d.ID
+			key := d.File + "\x00" + d.Name
+			if !contains(local[key], d.ID) {
+				local[key] = append(local[key], d.ID)
+			}
 			idFile[d.ID] = d.File
 		}
 	}
@@ -73,7 +76,13 @@ func Resolve(results []Result, files []string) model.Extraction {
 			if resolved[c.CallerID+"\x00"+c.Callee+"\x00"+c.Loc] {
 				continue
 			}
-			tgt := local[c.File+"\x00"+c.Callee]
+			tgt := ""
+			// Two types in one file can each own a method of the same name; a
+			// bare call then has no unambiguous local target, so fall through
+			// to disambiguate rather than guess.
+			if ids := local[c.File+"\x00"+c.Callee]; len(ids) == 1 {
+				tgt = ids[0]
+			}
 			if tgt == "" {
 				tgt = disambiguate(global[c.Callee], c.File, idFile, importedFiles[c.File])
 			}
@@ -408,6 +417,16 @@ func disambiguate(ids []string, callerFile string, idFile map[string]string, imp
 	}
 	dir := path.Dir(filepath.ToSlash(callerFile))
 	return unique(ids, func(id string) bool { return path.Dir(idFile[id]) == dir })
+}
+
+// contains reports whether ids already holds id.
+func contains(ids []string, id string) bool {
+	for _, x := range ids {
+		if x == id {
+			return true
+		}
+	}
+	return false
 }
 
 // unique returns the only id matching pred, or "" if zero or more than one do.
