@@ -166,7 +166,7 @@ func extractTerraform(rel string, src []byte) Result {
 				refsFrom(def("local."+key, "local."+key, line(a)), a)
 			}
 		}
-		if attrs := blockAttributes(bbody, src); owner != "" && attrs != nil {
+		if attrs := blockAttributes(bbody, src, labels); owner != "" && attrs != nil {
 			for i := range res.Nodes {
 				if res.Nodes[i].ID == owner {
 					res.Nodes[i].Attributes = attrs
@@ -195,12 +195,41 @@ var sensitiveKeyRe = regexp.MustCompile(`(?i)(password|passwd|secret|token|api[-
 
 const redactedValue = "[redacted]"
 
+// scriptKeys are bootstrap-script attributes: multi-line shell / cloud-init
+// bodies with no query value that routinely carry a hardcoded credential.
+// They are dropped outright rather than truncated.
+var scriptKeys = map[string]bool{
+	"user_data":                   true,
+	"user_data_base64":            true,
+	"user_data_replace_on_change": true,
+	"custom_data":                 true,
+	"metadata_startup_script":     true,
+}
+
 // blockAttributes reads a block body's direct attributes into a flat
 // key -> value map for search. Nested objects are dropped (the flat map cannot
-// hold them); sensitive keys keep the key and redact the value.
-func blockAttributes(body *ts.Node, src []byte) map[string]string {
+// hold them); sensitive keys keep the key and redact the value. A block is
+// sensitive as a whole when one of its labels reads as a secret name
+// (variable "db_password" carries its value in `default`) or when it declares
+// Terraform's own `sensitive = true`.
+func blockAttributes(body *ts.Node, src []byte, labels []string) map[string]string {
 	if body == nil {
 		return nil
+	}
+	blockSensitive := false
+	for _, l := range labels {
+		if sensitiveKeyRe.MatchString(l) {
+			blockSensitive = true
+		}
+	}
+	for i := uint(0); i < body.ChildCount() && !blockSensitive; i++ {
+		a := body.Child(i)
+		if a == nil || a.Kind() != "attribute" || a.NamedChildCount() < 2 {
+			continue
+		}
+		if tfChild(a, "identifier", src) == "sensitive" && attrValue(a.NamedChild(1), src) == "true" {
+			blockSensitive = true
+		}
 	}
 	attrs := map[string]string{}
 	for i := uint(0); i < body.ChildCount(); i++ {
@@ -213,7 +242,9 @@ func blockAttributes(body *ts.Node, src []byte) map[string]string {
 			continue
 		}
 		switch {
-		case sensitiveKeyRe.MatchString(key):
+		case scriptKeys[key]:
+			continue
+		case (blockSensitive && key != "sensitive") || sensitiveKeyRe.MatchString(key):
 			attrs[key] = redactedValue
 		default:
 			v := attrValue(a.NamedChild(1), src)
@@ -233,7 +264,7 @@ func blockAttributes(body *ts.Node, src []byte) map[string]string {
 }
 
 // attrValue renders an attribute value expression as one string: a literal
-// string as its text, a literal tuple as its elements joined by listSep, and
+// string as its text, a literal tuple as its elements joined by ", ", and
 // anything else (numbers, bools, var refs, interpolations, function calls) as
 // its raw source text. Objects yield "" and are dropped by the caller.
 func attrValue(e *ts.Node, src []byte) string {
@@ -265,7 +296,7 @@ func attrValue(e *ts.Node, src []byte) string {
 				items = append(items, v)
 			}
 		}
-		return strings.Join(items, listSep)
+		return strings.Join(items, ", ")
 	}
 	return security.SanitizeLabel(strings.TrimSpace(cur.Utf8Text(src)))
 }

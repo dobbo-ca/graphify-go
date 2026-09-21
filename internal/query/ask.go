@@ -518,7 +518,7 @@ func attributesText(n *Node) string {
 	}
 	parts := make([]string, 0, len(n.Attributes)*2)
 	for k, v := range n.Attributes {
-		parts = append(parts, k, strings.ReplaceAll(v, "\x00", " "))
+		parts = append(parts, k, v)
 	}
 	return strings.ToLower(strings.Join(parts, " "))
 }

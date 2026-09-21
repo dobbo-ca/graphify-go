@@ -247,7 +247,7 @@ locals {
 		"count":                  "2",
 		"monitoring":             "true",
 		"ami":                    "var.ami_id",
-		"vpc_security_group_ids": "sg-1" + listSep + "sg-2",
+		"vpc_security_group_ids": "sg-1, sg-2",
 		"db_password":            redactedValue,
 	}
 	for k, v := range want {
@@ -286,5 +286,56 @@ func TestExtractTerraformAttributeRedaction(t *testing.T) {
 	}
 	if got["ami"] != "ami-123" {
 		t.Errorf("non-sensitive attribute was lost: ami=%q", got["ami"])
+	}
+
+	// The secret's name can live in the block LABEL, and Terraform's own
+	// `sensitive = true` is the strongest author-declared signal; both must
+	// redact the value-carrying attribute (`default` / `value`).
+	src = []byte(`variable "db_password" {
+  type      = string
+  sensitive = true
+  default   = "hunter2"
+}
+
+output "conn" {
+  sensitive = true
+  value     = "postgres://admin:hunter2@db"
+}
+
+output "api_token" {
+  value = "tok-abc"
+}
+
+resource "aws_instance" "web" {
+  instance_type = "t3.large"
+  user_data     = <<-EOT
+    #!/bin/bash
+    export AWS_SECRET=AKIAhunter2SECRET
+  EOT
+}
+`)
+	res = FileFromBytes("main.tf", src)
+	byLabel := map[string]map[string]string{}
+	for _, n := range res.Nodes {
+		byLabel[n.Label] = n.Attributes
+	}
+	for _, c := range []struct{ label, key string }{
+		{"var.db_password", "default"},
+		{"output.conn", "value"},
+		{"output.api_token", "value"},
+	} {
+		if v := byLabel[c.label][c.key]; v != redactedValue {
+			t.Errorf("%s.%s = %q, want %q", c.label, c.key, v, redactedValue)
+		}
+	}
+	// A sensitive block redacts every value, not just the obvious one.
+	if v := byLabel["var.db_password"]["type"]; v != redactedValue {
+		t.Errorf("var.db_password type = %q, want %q", v, redactedValue)
+	}
+	if v, ok := byLabel["aws_instance.web"]["user_data"]; ok {
+		t.Errorf("bootstrap script must be dropped, got user_data=%q", v)
+	}
+	if v := byLabel["aws_instance.web"]["instance_type"]; v != "t3.large" {
+		t.Errorf("instance_type = %q, want t3.large", v)
 	}
 }
