@@ -28,7 +28,7 @@ func GodNodes(g *model.Graph, topN int) []GodNode {
 	sort.SliceStable(ids, func(i, j int) bool { return g.Degree(ids[i]) > g.Degree(ids[j]) })
 	var out []GodNode
 	for _, id := range ids {
-		if isFileNode(g, id) || isConceptNode(g, id) {
+		if isFileNode(g, id) || isConceptNode(g, id) || isJSONKeyNode(g, id) {
 			continue
 		}
 		out = append(out, GodNode{ID: id, Label: g.Nodes[id].Label, Degree: g.Degree(id)})
@@ -37,6 +37,25 @@ func GodNodes(g *model.Graph, topN int) []GodNode {
 		}
 	}
 	return out
+}
+
+// jsonNoiseLabels are generic JSON keys (package.json, schemas) that accumulate
+// edges mechanically without naming an abstraction.
+var jsonNoiseLabels = map[string]bool{
+	"start": true, "end": true, "name": true, "id": true, "type": true,
+	"properties": true, "value": true, "key": true, "data": true, "items": true,
+	"title": true, "description": true, "version": true, "dependencies": true,
+	"devdependencies": true, "peerdependencies": true, "optionaldependencies": true,
+	"bundleddependencies": true, "bundledependencies": true,
+}
+
+// isJSONKeyNode reports whether a node is a generic key inside a .json file.
+func isJSONKeyNode(g *model.Graph, id string) bool {
+	n := g.Nodes[id]
+	if !strings.HasSuffix(strings.ToLower(n.SourceFile), ".json") {
+		return false
+	}
+	return jsonNoiseLabels[strings.ToLower(strings.TrimSpace(n.Label))]
 }
 
 // semanticRelations are the LLM-inferred edge relations the enrichment stage

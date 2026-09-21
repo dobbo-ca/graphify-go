@@ -183,3 +183,29 @@ func TestSurprisingIncludesSemanticEdgeFromFileHubNote(t *testing.T) {
 		t.Fatalf("note->concept semantic edge not surfaced as surprising")
 	}
 }
+
+func TestGodNodesExcludeNoiseLabels(t *testing.T) {
+	g := sampleGraph()
+	// A mechanical hub out-degreeing every real entity.
+	g.AddNode(model.Node{ID: "dep", Label: "dependencies", SourceFile: "package.json"})
+	for _, id := range []string{"a1", "a2", "a3", "b1", "b2", "b3"} {
+		g.AddEdge(model.Edge{Source: "dep", Target: id, Relation: "calls", Confidence: "EXTRACTED"})
+	}
+	for _, n := range GodNodes(g, 10) {
+		if n.Label == "dependencies" {
+			t.Errorf("god nodes should exclude noise label %q", n.Label)
+		}
+	}
+	// A JSON key that isn't generic noise still ranks.
+	g.AddNode(model.Node{ID: "sched", Label: "scheduler", SourceFile: "package.json"})
+	g.AddEdge(model.Edge{Source: "sched", Target: "a1", Relation: "calls", Confidence: "EXTRACTED"})
+	var found bool
+	for _, n := range GodNodes(g, 20) {
+		if n.Label == "scheduler" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("non-noise JSON key should still rank as a god node")
+	}
+}
