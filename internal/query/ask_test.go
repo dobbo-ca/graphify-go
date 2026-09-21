@@ -215,3 +215,22 @@ func firstNodeLine(out string) string {
 	}
 	return ""
 }
+
+func TestAskEmitsEdgeBetweenSeeds(t *testing.T) {
+	g := loadAsk(t)
+	// Both endpoints are seeds, so the traversal itself records no edge between
+	// them; the induced-edge pass must still emit it, exactly once.
+	for _, dfs := range []bool{false, true} {
+		out := Ask(g, "authValidate checkToken", dfs, 1, 2000)
+		n := 0
+		for _, line := range strings.Split(out, "\n") {
+			if strings.HasPrefix(line, "EDGE ") &&
+				strings.Contains(line, "authValidate()") && strings.Contains(line, "checkToken()") {
+				n++
+			}
+		}
+		if n != 1 {
+			t.Errorf("dfs=%v: want 1 authValidate<->checkToken edge, got %d:\n%s", dfs, n, out)
+		}
+	}
+}
