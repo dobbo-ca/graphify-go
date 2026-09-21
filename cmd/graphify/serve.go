@@ -282,7 +282,7 @@ func (s *mcpServer) toolGetNode(args map[string]any) string {
 	label := argString(args, "label")
 	ex, err := query.Explain(s.g, label)
 	if err != nil {
-		return fmt.Sprintf("No node matching '%s' found.", label)
+		return explainError(label, err)
 	}
 	n := ex.Node
 	comm := ""
@@ -303,7 +303,7 @@ func (s *mcpServer) toolGetNeighbors(args map[string]any) string {
 	label := argString(args, "label")
 	ex, err := query.Explain(s.g, label)
 	if err != nil {
-		return fmt.Sprintf("No node matching '%s' found.", label)
+		return explainError(label, err)
 	}
 	relFilter := strings.ToLower(argString(args, "relation_filter"))
 	var items []string
@@ -466,6 +466,18 @@ func renderPathChain(res *query.PathResult) string {
 		}
 	}
 	return b.String()
+}
+
+// explainError renders a query.Explain failure for MCP callers: an ambiguous
+// query keeps its candidate list so the caller can disambiguate.
+func explainError(label string, err error) string {
+	var amb *query.AmbiguousError
+	if errors.As(err, &amb) {
+		// query.ambiguous already sanitizes Query and each candidate when it
+		// builds the error, so the assembled message needs no further pass.
+		return amb.Error()
+	}
+	return fmt.Sprintf("No node matching '%s' found.", label)
 }
 
 // labelOrID returns a node's label, falling back to its id.

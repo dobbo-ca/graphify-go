@@ -173,7 +173,10 @@ type Explanation struct {
 // (-> outgoing, <- incoming). id may be a full node ID or a label substring with
 // a unique match.
 func Explain(g *Graph, id string) (*Explanation, error) {
-	n := g.resolve(id)
+	n, err := g.resolve(id)
+	if err != nil {
+		return nil, err
+	}
 	if n == nil {
 		return nil, fmt.Errorf("no node matching %q", id)
 	}
@@ -269,9 +272,16 @@ func (e *MaxHopsError) Error() string {
 // node it returns a *SameNodeError; when the path is longer than maxHops (and
 // maxHops > 0) it returns a *MaxHopsError.
 func PathEdges(g *Graph, from, to string, maxHops int, undirected bool) (*PathResult, error) {
-	a, b := g.resolve(from), g.resolve(to)
+	a, err := g.resolve(from)
+	if err != nil {
+		return nil, err
+	}
 	if a == nil {
 		return nil, fmt.Errorf("no node matching %q", from)
+	}
+	b, err := g.resolve(to)
+	if err != nil {
+		return nil, err
 	}
 	if b == nil {
 		return nil, fmt.Errorf("no node matching %q", to)
@@ -359,29 +369,108 @@ func (g *Graph) bfsPath(aID, bID string, undirected bool) ([]string, bool) {
 	return ids, true
 }
 
-// resolve finds a node by exact ID, then exact (case-insensitive) label, then a
-// unique case-insensitive label or ID substring.
-func (g *Graph) resolve(s string) *Node {
-	if n, ok := g.byID[s]; ok {
-		return n
+// AmbiguousError is returned by resolve when a query matches more than one
+// node, so answering would mean guessing.
+type AmbiguousError struct {
+	Query      string
+	Candidates []string // "label (file:line)" per match, capped
+	More       int      // matches omitted from Candidates
+}
+
+func (e *AmbiguousError) Error() string {
+	msg := fmt.Sprintf("%q is ambiguous, matches: %s", e.Query, strings.Join(e.Candidates, ", "))
+	if e.More > 0 {
+		msg += fmt.Sprintf(" (and %d more)", e.More)
 	}
-	low := strings.ToLower(s)
-	for i := range g.Nodes {
-		if strings.ToLower(g.Nodes[i].Label) == low {
-			return &g.Nodes[i]
+	return msg + "; disambiguate with path/to/file::Symbol or the exact node ID"
+}
+
+// maxCandidates caps how many matches an AmbiguousError lists.
+const maxCandidates = 10
+
+// ambiguous builds an *AmbiguousError from more than one matching node. total
+// is the number of matches before capping; it equals len(hits) unless the
+// caller already capped hits itself. Candidates are sanitized here, at the
+// point the message is built, so every caller (CLI and MCP) inherits the
+// guard without needing to re-sanitize the assembled message.
+func ambiguous(s string, hits []*Node, total int) *AmbiguousError {
+	e := &AmbiguousError{Query: security.SanitizeLabel(s)}
+	for _, n := range hits {
+		if len(e.Candidates) == maxCandidates {
+			break
+		}
+		c := n.Label
+		if l := loc(n); l != "" {
+			c += " (" + l + ")"
+		}
+		e.Candidates = append(e.Candidates, security.SanitizeLabel(c))
+	}
+	if total > maxCandidates {
+		e.More = total - maxCandidates
+	}
+	return e
+}
+
+// resolve finds a node by exact ID, then by a path::Symbol qualifier, then by
+// exact (case-insensitive) label, then by a case-insensitive label or ID
+// substring. Matching more than one node at any tier is an *AmbiguousError
+// rather than an arbitrary pick; matching none returns (nil, nil).
+func (g *Graph) resolve(s string) (*Node, error) {
+	if n, ok := g.byID[s]; ok {
+		return n, nil
+	}
+	if i := strings.LastIndex(s, "::"); i > 0 && i+2 < len(s) {
+		path, sym := strings.ToLower(s[:i]), strings.ToLower(s[i+2:])
+		var hits []*Node
+		for j := range g.Nodes {
+			n := &g.Nodes[j]
+			sf := strings.ToLower(n.SourceFile)
+			if strings.ToLower(n.Label) == sym && (sf == path || strings.HasSuffix(sf, "/"+path)) {
+				hits = append(hits, n)
+			}
+		}
+		if len(hits) > 0 {
+			if len(hits) > 1 {
+				return nil, ambiguous(s, hits, len(hits))
+			}
+			return hits[0], nil
 		}
 	}
-	var hit *Node
+	low := strings.ToLower(s)
+	if low == "" {
+		return nil, nil
+	}
+	var exact []*Node
+	for i := range g.Nodes {
+		if strings.ToLower(g.Nodes[i].Label) == low {
+			exact = append(exact, &g.Nodes[i])
+		}
+	}
+	if len(exact) > 0 {
+		if len(exact) > 1 {
+			return nil, ambiguous(s, exact, len(exact))
+		}
+		return exact[0], nil
+	}
+	var subs []*Node
+	total := 0
 	for i := range g.Nodes {
 		n := &g.Nodes[i]
 		if strings.Contains(strings.ToLower(n.Label), low) || strings.Contains(strings.ToLower(n.ID), low) {
-			if hit != nil {
-				return nil // ambiguous
+			total++
+			if len(subs) < maxCandidates {
+				subs = append(subs, n)
 			}
-			hit = n
 		}
 	}
-	return hit
+	switch total {
+	case 0:
+		return nil, nil
+	case 1:
+		return subs[0], nil
+	default:
+		return nil, ambiguous(s, subs, total)
+	}
 }
 
 // edgeLoc formats the call site an edge was extracted from, if it has one.

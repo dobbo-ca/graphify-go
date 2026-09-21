@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -190,5 +191,98 @@ func TestExplainNeighborsDegreeOrdered(t *testing.T) {
 		if n.Degree == 0 {
 			t.Errorf("neighbor %q has zero degree", n.Label)
 		}
+	}
+}
+
+const dupGraph = `{
+  "directed": false, "multigraph": false, "graph": {},
+  "nodes": [
+    {"id":"p_foo","label":"Foo()","file_type":"code","source_file":"pkg/p.go","source_location":"L3","norm_label":"Foo()"},
+    {"id":"q_foo","label":"Foo()","file_type":"code","source_file":"pkg/q.go","source_location":"L9","norm_label":"Foo()"}
+  ],
+  "links": []
+}`
+
+func loadDup(t *testing.T) *Graph {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(p, []byte(dupGraph), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return g
+}
+
+func TestExplainAmbiguousLabel(t *testing.T) {
+	g := loadDup(t)
+	_, err := Explain(g, "Foo()")
+	var amb *AmbiguousError
+	if !errors.As(err, &amb) {
+		t.Fatalf("err = %v, want *AmbiguousError", err)
+	}
+	if len(amb.Candidates) != 2 {
+		t.Fatalf("candidates = %v, want 2", amb.Candidates)
+	}
+	for _, want := range []string{"pkg/p.go:3", "pkg/q.go:9"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing candidate %s", err.Error(), want)
+		}
+	}
+}
+
+func TestExplainPathQualifierSelectsOne(t *testing.T) {
+	g := loadDup(t)
+	ex, err := Explain(g, "pkg/q.go::Foo()")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ex.Node.ID != "q_foo" {
+		t.Errorf("node = %q, want q_foo", ex.Node.ID)
+	}
+}
+
+func TestPathEdgesAmbiguous(t *testing.T) {
+	g := loadDup(t)
+	_, err := PathEdges(g, "Foo()", "pkg/q.go::Foo()", 0, false)
+	var amb *AmbiguousError
+	if !errors.As(err, &amb) {
+		t.Fatalf("err = %v, want *AmbiguousError", err)
+	}
+}
+
+const suffixGraph = `{
+  "directed": false, "multigraph": false, "graph": {},
+  "nodes": [
+    {"id":"h_new","label":"New()","file_type":"code","source_file":"pkg/x/req_handler.go","source_location":"L3","norm_label":"New()"}
+  ],
+  "links": []
+}`
+
+func TestResolveEmptyQueryNoMatch(t *testing.T) {
+	g := loadSample(t)
+	n, err := g.resolve("")
+	if n != nil || err != nil {
+		t.Fatalf("resolve(\"\") = (%v, %v), want (nil, nil)", n, err)
+	}
+}
+
+func TestExplainPathQualifierNeedsBoundary(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(p, []byte(suffixGraph), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// "handler.go" is not a path-boundary suffix of "pkg/x/req_handler.go".
+	if _, err := Explain(g, "handler.go::New()"); err == nil {
+		t.Fatal("err = nil, want no-match error")
+	}
+	if _, err := Explain(g, "x/req_handler.go::New()"); err != nil {
+		t.Fatalf("err = %v, want match", err)
 	}
 }
