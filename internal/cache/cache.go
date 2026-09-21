@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/dobbo-ca/graphify-go/internal/extract"
+	"github.com/dobbo-ca/graphify-go/internal/fsutil"
 )
 
 // FileName is the cache file written under graphify-out alongside graph.json.
@@ -135,7 +136,7 @@ func Save(path, stamp string, c Cache) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return fsutil.WriteFileAtomic(path, data, 0o644)
 }
 
 // LoadStat reads the stat sidecar. A missing, unreadable, or differently-stamped
@@ -159,7 +160,7 @@ func SaveStat(path, stamp string, s StatIndex) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return fsutil.WriteFileAtomic(path, data, 0o644)
 }
 
 // HashBytes returns the hex SHA-256 of b.

@@ -17,6 +17,7 @@ import (
 	"golang.org/x/text/unicode/norm"
 
 	"github.com/dobbo-ca/graphify-go/internal/cluster"
+	"github.com/dobbo-ca/graphify-go/internal/fsutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
 
@@ -134,7 +135,7 @@ func ToJSON(g *model.Graph, communities map[int][]string, path, builtAtCommit st
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return fsutil.WriteFileAtomic(path, data, 0o644)
 }
 
 // CheckShrink decides whether writing g over an existing graph.json at path would
