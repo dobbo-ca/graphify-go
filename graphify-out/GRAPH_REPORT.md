@@ -1,11 +1,11 @@
-# Graph Report - /private/tmp/gfy-wt-graphify-go-2af.16
+# Graph Report - /private/tmp/gfy-wt-graphify-go-2af.19
 
 ## Summary
-- 1430 nodes · 3435 edges · 39 communities
+- 1446 nodes · 3477 edges · 39 communities
 - Extraction: 53% EXTRACTED · 46% INFERRED · 0% AMBIGUOUS
 
 ## Graph Freshness
-- Built from commit: `d106582e`
+- Built from commit: `2ad48be8`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify build .` after code changes to rebuild.
 
@@ -19,7 +19,7 @@
 7. `builder.def()` - 45 edges
 8. `fieldText()` - 34 edges
 9. `walk()` - 33 edges
-10. `main()` - 26 edges
+10. `main()` - 27 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `tsCycleGraph()` --calls--> `FileFromBytes()`  [INFERRED]
@@ -40,71 +40,71 @@
 
 ### Community 0
 Cohesion: 0.03
-Nodes (209): bashHasExpansion(), builder.bashCommand(), builder.bashFunc(), builder.bashItems(), builder.scriptInvocationTarget(), collectBashFuncs(), commandName(), extractBash() (+201 more)
+Nodes (216): bashHasExpansion(), builder.bashCommand(), builder.bashFunc(), builder.bashItems(), builder.scriptInvocationTarget(), collectBashFuncs(), commandName(), extractBash() (+208 more)
 
 ### Community 1
-Cohesion: 0.04
-Nodes (115): Cycle, entityLoc(), GodNode, GodNodes(), ImportCycles(), isConceptNode(), isFileNode(), rotateKey() (+107 more)
+Cohesion: 0.03
+Nodes (104): TestExtractBash(), TestExtractC(), TestExtractVueComponent(), TestExtractJSONSkipsCommentKey(), TestExtractJSSkipsDegenerateName(), TestFileFromBytesMtsAsTypeScript(), TestFileFromBytesShebangBash(), File() (+96 more)
 
 ### Community 2
 Cohesion: 0.04
-Nodes (86): TestExtractBash(), TestExtractC(), TestExtractVueComponent(), TestFileFromBytesMtsAsTypeScript(), TestFileFromBytesShebangBash(), File(), FileFromBytes(), TestExtractAndResolve() (+78 more)
+Nodes (116): Cycle, entityLoc(), GodNode, GodNodes(), ImportCycles(), isConceptNode(), isFileNode(), rotateKey() (+108 more)
 
 ### Community 3
 Cohesion: 0.04
-Nodes (80): TestCollectFilesGitignore(), TestCollectFilesGraphifyignore(), encoding/json, errors, TestExtractCpp(), TestExtractJSONSkipsCommentKey(), TestExtractJSSkipsDegenerateName(), TestExtractJSRationale() (+72 more)
+Nodes (87): crypto/rand, TestCollectFilesGitignore(), TestCollectFilesGraphifyignore(), encoding/hex, encoding/json, errors, TestExtractCpp(), TestExtractJava() (+79 more)
 
 ### Community 4
 Cohesion: 0.04
-Nodes (91): Cache, cacheFile, Entry, HashBytes(), HashFile(), Load(), LoadStat(), mtimeGranularity() (+83 more)
+Nodes (97): bytes, Cache, cacheFile, Entry, HashBytes(), HashFile(), Load(), LoadStat() (+89 more)
 
 ### Community 5
 Cohesion: 0.05
-Nodes (62): context, fmt, github.com/anthropics/anthropic-sdk-go, github.com/anthropics/anthropic-sdk-go/bedrock, github.com/dobbo-ca/graphify-go/internal/cache, github.com/dobbo-ca/graphify-go/internal/detect, github.com/dobbo-ca/graphify-go/internal/semantic, collectNotes() (+54 more)
+Nodes (61): context, fmt, github.com/anthropics/anthropic-sdk-go, github.com/anthropics/anthropic-sdk-go/bedrock, github.com/dobbo-ca/graphify-go/internal/cache, github.com/dobbo-ca/graphify-go/internal/semantic, collectNotes(), enrich() (+53 more)
 
 ### Community 6
-Cohesion: 0.06
-Nodes (58): Final verification (run before opening a PR), Reference: cloudposse `id` algorithm (what composeID reimplements), Reference: tree-sitter-hcl v1.2.0 node shapes (verified empirically), Self-review notes (author), Stage A — Foundation: null-label marker + inherits_context edge, Stage B — Single-block literal name reconstruction, Stage C — Whole-corpus context-chain reconstruction, Task A1: `isNullLabel` helper + `[null-label]` marker on module nodes (+50 more)
-
-### Community 7
 Cohesion: 0.03
 Nodes (60): Add PR graph-impact MCP tools (list_prs, get_pr_impact, triage_prs), Beads (from synthesis), Critic: misclassified beads, Critic: missed capabilities, [critic] p0 `build` `core-cli` — Render the induced subgraph in ask/query_graph, not just traversal-tree edges, [critic] p1 `build` `core-cli` — Cite the traversed edge's call-site line in explain, not the neighbour's definition line, [critic] p2 `build` `core-cli` — Annotate the `path` CLI route with relation, confidence and direction, [critic] p2 `build` `core-cli` — Cap and group explain's connection list instead of dumping every neighbour (+52 more)
 
+### Community 7
+Cohesion: 0.07
+Nodes (53): Final verification (run before opening a PR), Reference: cloudposse `id` algorithm (what composeID reimplements), Reference: tree-sitter-hcl v1.2.0 node shapes (verified empirically), Self-review notes (author), Stage A — Foundation: null-label marker + inherits_context edge, Stage B — Single-block literal name reconstruction, Stage C — Whole-corpus context-chain reconstruction, Task A1: `isNullLabel` helper + `[null-label]` marker on module nodes (+45 more)
+
 ### Community 8
 Cohesion: 0.07
-Nodes (52): encoding/csv, encoding/xml, CSVFromJSON(), DOTFromJSON(), dotQuote(), gmlData, gmlEdge, gmlGraph (+44 more)
+Nodes (50): encoding/csv, encoding/xml, CSVFromJSON(), DOTFromJSON(), dotQuote(), gmlData, gmlEdge, gmlGraph (+42 more)
 
 ### Community 9
-Cohesion: 0.08
-Nodes (54): bufio, github.com/dobbo-ca/graphify-go/internal/analyze, github.com/dobbo-ca/graphify-go/internal/query, argInt(), argString(), argTokenBudget(), budgetLines(), cmdServe() (+46 more)
-
-### Community 10
 Cohesion: 0.05
 Nodes (28): boot(), crate::util::math, /etc/profile, express, helper.h, json, kotlin.math.sqrt, Psr\Log\LoggerInterface (+20 more)
 
+### Community 10
+Cohesion: 0.09
+Nodes (53): bufio, argInt(), argString(), argTokenBudget(), budgetLines(), cmdServe(), communitiesOf(), labelOrID() (+45 more)
+
 ### Community 11
+Cohesion: 0.07
+Nodes (48): CollectFiles(), CollectFilesReport(), CollectManifests(), genericKeywordHit(), inMemoryDir(), isASCIIAlnum(), isASCIIAlpha(), IsSensitive() (+40 more)
+
+### Community 12
 Cohesion: 0.04
 Nodes (53): github.com/anthropics/anthropic-sdk-go, github.com/aws/aws-sdk-go-v2, github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream, github.com/aws/aws-sdk-go-v2/config, github.com/aws/aws-sdk-go-v2/credentials, github.com/aws/aws-sdk-go-v2/feature/ec2/imds, github.com/aws/aws-sdk-go-v2/internal/configsources, github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 (+45 more)
 
-### Community 12
-Cohesion: 0.08
-Nodes (47): Effort / sequencing, Explicitly out of scope (don't pull these in), Gap table, Implementation plan (single follow-up session), Key references, Phase 1 — get the data onto the page, Phase 2 — sidebar UI (template), Phase 3 — selection behavior (+39 more)
-
 ### Community 13
-Cohesion: 0.09
-Nodes (40): bytes, CollectFiles(), CollectFilesReport(), CollectManifests(), genericKeywordHit(), isASCIIAlnum(), isASCIIAlpha(), IsSensitive() (+32 more)
+Cohesion: 0.13
+Nodes (34): math, Ask(), bfsTraverse(), completeInducedEdges(), computeIDF(), dfsTraverse(), Graph.neighbors(), hubThreshold() (+26 more)
 
 ### Community 14
 Cohesion: 0.12
-Nodes (34): crate, IntrospectCargo(), loadTOML(), memberManifestPaths(), packageName(), TestIntrospectCargoHonorsPackageRename(), TestIntrospectCargoRenameToExternalIsNoEdge(), hasEdge() (+26 more)
-
-### Community 15
-Cohesion: 0.12
 Nodes (29): Affected(), AffectedOptions, AffectedResult, Graph.collect(), normalizeSeed(), impacted(), loadJSON(), TestAffectedDepth() (+21 more)
 
-### Community 16
+### Community 15
 Cohesion: 0.11
-Nodes (31): edgeLoc(), Explain(), Explanation, Graph, Graph.bfsPath(), Graph.resolve(), Link, Load() (+23 more)
+Nodes (29): edgeLoc(), Explain(), Explanation, Graph, Graph.bfsPath(), Graph.resolve(), Link, Load() (+21 more)
+
+### Community 16
+Cohesion: 0.14
+Nodes (26): crate, IntrospectCargo(), loadTOML(), memberManifestPaths(), packageName(), TestIntrospectCargoHonorsPackageRename(), TestIntrospectCargoRenameToExternalIsNoEdge(), hasEdge() (+18 more)
 
 ### Community 17
 Cohesion: 0.11
@@ -116,7 +116,7 @@ Nodes (18): Authoritative cloudposse `id` algorithm (to reimplement), Background
 
 ### Community 19
 Cohesion: 0.15
-Nodes (14): componentLangPtr(), extractComponent(), lineOf(), maskComponentScript(), github.com/tree-sitter/tree-sitter-javascript/bindings/go, github.com/tree-sitter/tree-sitter-typescript/bindings/go, golang.org/x/text/cases, golang.org/x/text/unicode/norm (+6 more)
+Nodes (13): Effort / sequencing, Explicitly out of scope (don't pull these in), Gap table, Implementation plan (single follow-up session), Key references, Phase 1 — get the data onto the page, Phase 2 — sidebar UI (template), Phase 3 — selection behavior (+5 more)
 
 ### Community 20
 Cohesion: 0.18

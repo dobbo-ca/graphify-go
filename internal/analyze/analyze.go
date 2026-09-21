@@ -28,7 +28,10 @@ func GodNodes(g *model.Graph, topN int) []GodNode {
 	sort.SliceStable(ids, func(i, j int) bool { return g.Degree(ids[i]) > g.Degree(ids[j]) })
 	var out []GodNode
 	for _, id := range ids {
-		if isFileNode(g, id) || isConceptNode(g, id) {
+		if isFileNode(g, id) || isConceptNode(g, id) || isJSONKeyNode(g, id) {
+			continue
+		}
+		if builtinNoiseLabels[g.Nodes[id].Label] {
 			continue
 		}
 		out = append(out, GodNode{ID: id, Label: g.Nodes[id].Label, Degree: g.Degree(id)})
@@ -37,6 +40,41 @@ func GodNodes(g *model.Graph, topN int) []GodNode {
 		}
 	}
 	return out
+}
+
+// builtinNoiseLabels are stdlib/typing identifiers that can appear as
+// annotation-derived nodes. They are excluded from the god-node ranking so they
+// don't displace real abstractions (mirrors upstream _BUILTIN_NOISE_LABELS).
+var builtinNoiseLabels = map[string]bool{
+	"str": true, "int": true, "float": true, "bool": true, "bytes": true,
+	"bytearray": true, "complex": true, "object": true, "True": true, "False": true,
+	"MagicMock": true, "Mock": true, "AsyncMock": true, "NonCallableMock": true,
+	"NonCallableMagicMock": true, "PropertyMock": true, "patch": true, "sentinel": true,
+	"Path": true, "Any": true, "Optional": true, "List": true, "Dict": true,
+	"Set": true, "Tuple": true, "Union": true, "Callable": true, "Type": true,
+	"ClassVar": true, "Final": true, "Literal": true, "Protocol": true,
+	"Counter": true, "defaultdict": true, "OrderedDict": true, "datetime": true,
+	"Enum": true, "os": true, "sys": true, "re": true, "json": true, "io": true,
+	"abc": true, "typing": true,
+}
+
+// jsonNoiseLabels are generic JSON keys (package.json, schemas) that accumulate
+// edges mechanically without naming an abstraction.
+var jsonNoiseLabels = map[string]bool{
+	"start": true, "end": true, "name": true, "id": true, "type": true,
+	"properties": true, "value": true, "key": true, "data": true, "items": true,
+	"title": true, "description": true, "version": true, "dependencies": true,
+	"devdependencies": true, "peerdependencies": true, "optionaldependencies": true,
+	"bundleddependencies": true, "bundledependencies": true,
+}
+
+// isJSONKeyNode reports whether a node is a generic key inside a .json file.
+func isJSONKeyNode(g *model.Graph, id string) bool {
+	n := g.Nodes[id]
+	if !strings.HasSuffix(strings.ToLower(n.SourceFile), ".json") {
+		return false
+	}
+	return jsonNoiseLabels[strings.ToLower(strings.TrimSpace(n.Label))]
 }
 
 // semanticRelations are the LLM-inferred edge relations the enrichment stage
