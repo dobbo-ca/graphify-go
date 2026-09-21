@@ -5,9 +5,11 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -778,9 +780,24 @@ func cmdExport(format, root string) error {
 	return nil
 }
 
+// readPathList reads newline-separated paths from r, skipping blank lines, so
+// `graphify affected -` can take a file list from a pipe (e.g. gh pr diff
+// <n> --name-only | graphify affected -).
+func readPathList(r io.Reader) []string {
+	var paths []string
+	sc := bufio.NewScanner(r)
+	for sc.Scan() {
+		if p := strings.TrimSpace(sc.Text()); p != "" {
+			paths = append(paths, p)
+		}
+	}
+	return paths
+}
+
 // cmdAffected prints the graph nodes defined in the given files and everything
 // that transitively depends on them. With no files it derives them from the
-// working tree's uncommitted changes (git diff against HEAD). --depth N bounds
+// working tree's uncommitted changes (git diff against HEAD). A "-" argument
+// reads the file list from stdin, one path per line. --depth N bounds
 // the reverse-dependency walk (default: unbounded); --relation R (repeatable)
 // restricts which edge kinds count as "depends-on".
 func cmdAffected(args []string) error {
@@ -809,6 +826,8 @@ func cmdAffected(args []string) error {
 			i++
 		case strings.HasPrefix(a, "--relation="):
 			relations = append(relations, strings.TrimPrefix(a, "--relation="))
+		case a == "-":
+			files = append(files, readPathList(os.Stdin)...)
 		default:
 			files = append(files, a)
 		}
@@ -816,7 +835,7 @@ func cmdAffected(args []string) error {
 	if len(files) == 0 {
 		files = gitChangedFiles(".")
 		if len(files) == 0 {
-			return fmt.Errorf("no files given and no uncommitted changes detected (usage: graphify affected [file...] [--depth N] [--relation R])")
+			return fmt.Errorf("no files given and no uncommitted changes detected (usage: graphify affected [file...|-] [--depth N] [--relation R])")
 		}
 		fmt.Printf("changed files (from git): %s\n", strings.Join(files, ", "))
 	}
@@ -1000,7 +1019,7 @@ usage:
   graphify ask "<question>"    NL retrieval: relevant subgraph as text [--dfs --budget N --context REL --graph path]
   graphify explain <node>      show a node and its neighbours [--graph path]
   graphify path <from> <to>    shortest dependency path between two nodes [--undirected --graph path]
-  graphify affected [file...]  nodes defined in changed files + their dependents [--depth N --relation R]
+  graphify affected [file...|-] nodes defined in changed files + their dependents [--depth N --relation R]
   graphify diff <old> <new>    node/edge delta between two graph.json snapshots
   graphify merge-driver <base> <current> <other>  git merge driver: union-merge two graph.json files
   graphify validate            check graph.json for structural problems
