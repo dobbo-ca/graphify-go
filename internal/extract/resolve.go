@@ -460,10 +460,21 @@ func unique(ids []string, pred func(string) bool) string {
 // trying common extensions and index files. Returns "" for bare (external)
 // specifiers or unresolved paths.
 func resolveRelImport(fromFile, spec string, corpus map[string]bool) string {
+	// The `@/` alias is the de-facto project-root convention in Next.js/Vite/
+	// modern-TS repos; resolve it against the corpus root so those imports
+	// become imports_from edges instead of external dependency nodes.
+	if strings.HasPrefix(spec, "@/") {
+		return resolveModulePath(path.Clean(strings.TrimPrefix(spec, "@/")), corpus)
+	}
 	if spec == "" || (spec[0] != '.' && spec[0] != '/') {
 		return "" // bare specifier — an external package
 	}
-	base := path.Clean(path.Join(path.Dir(filepath.ToSlash(fromFile)), spec))
+	return resolveModulePath(path.Clean(path.Join(path.Dir(filepath.ToSlash(fromFile)), spec)), corpus)
+}
+
+// resolveModulePath probes a corpus-relative module path as-is, then with each
+// JS/TS extension, then as a directory index file. Returns "" if none exist.
+func resolveModulePath(base string, corpus map[string]bool) string {
 	if corpus[base] {
 		return base
 	}
