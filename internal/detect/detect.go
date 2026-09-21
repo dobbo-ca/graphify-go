@@ -105,6 +105,12 @@ func skipDir(n string) bool {
 	if skipDirs[n] {
 		return true
 	}
+	// Mirrors upstream's GRAPHIFY_OUT_NAME: when the out directory is renamed
+	// via GRAPHIFY_OUT and lives inside the scanned tree, its own artifacts
+	// (graph.json, GRAPH_REPORT.md, caches) must not be ingested as source.
+	if v := os.Getenv("GRAPHIFY_OUT"); v != "" && n == filepath.Base(v) {
+		return true
+	}
 	for _, s := range skipDirSuffixes {
 		if strings.HasSuffix(n, s) {
 			return true

@@ -366,3 +366,22 @@ func TestCollectFilesIncludesMemoryDir(t *testing.T) {
 		t.Errorf("missing file %q in %v", f, got)
 	}
 }
+
+// A renamed out directory (GRAPHIFY_OUT) that lives inside the scanned tree
+// must be skipped like "graphify-out", or the second build ingests the first
+// build's own graph.json/report as source.
+func TestCollectFilesSkipsRenamedGraphifyOut(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "main.go"), "package main\n")
+	mustWrite(t, filepath.Join(root, "gfyout", "graph.json"), `{"nodes":[]}`)
+	mustWrite(t, filepath.Join(root, "gfyout", "GRAPH_REPORT.md"), "# report\n")
+	t.Setenv("GRAPHIFY_OUT", filepath.Join(root, "gfyout"))
+
+	files, err := CollectFiles(root)
+	if err != nil {
+		t.Fatalf("CollectFiles: %v", err)
+	}
+	if len(files) != 1 || filepath.ToSlash(files[0]) != "main.go" {
+		t.Errorf("expected only main.go, got %v", files)
+	}
+}
