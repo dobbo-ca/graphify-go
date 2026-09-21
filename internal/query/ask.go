@@ -324,7 +324,7 @@ func bfsTraverse(g *Graph, seeds []string, depth int) (map[string]bool, [][2]str
 		}
 		frontier = next
 	}
-	return visited, edges
+	return visited, completeInducedEdges(g, visited, edges)
 }
 
 // dfsTraverse explores depth-first from the seeds up to depth hops, with the
@@ -359,7 +359,38 @@ func dfsTraverse(g *Graph, seeds []string, depth int) (map[string]bool, [][2]str
 			}
 		}
 	}
-	return visited, edges
+	return visited, completeInducedEdges(g, visited, edges)
+}
+
+// completeInducedEdges appends every edge between two visited nodes that the
+// traversal did not record, so the result is the induced subgraph rather than a
+// spanning tree. It only scans adjacency incident to the visited set.
+func completeInducedEdges(g *Graph, visited map[string]bool, edges [][2]string) [][2]string {
+	seen := make(map[[2]string]bool, len(edges))
+	for _, e := range edges {
+		seen[e] = true
+		seen[[2]string{e[1], e[0]}] = true
+	}
+	ids := make([]string, 0, len(visited))
+	for id := range visited {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, u := range ids {
+		for _, v := range g.neighbors(u) {
+			if !visited[v] || seen[[2]string{u, v}] {
+				continue
+			}
+			e := [2]string{u, v}
+			if g.edge[e] == nil && g.edge[[2]string{v, u}] != nil {
+				e = [2]string{v, u}
+			}
+			seen[[2]string{u, v}] = true
+			seen[[2]string{v, u}] = true
+			edges = append(edges, e)
+		}
+	}
+	return edges
 }
 
 // subgraphToText renders the traversed subgraph as NODE/EDGE lines, seeds first
