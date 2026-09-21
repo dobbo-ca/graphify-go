@@ -1,11 +1,11 @@
-# Graph Report - /private/tmp/gfy-wt-graphify-go-2af.27
+# Graph Report - /private/tmp/gfy-wt-graphify-go-2af.28
 
 ## Summary
 - 1498 nodes · 3614 edges · 42 communities
 - Extraction: 53% EXTRACTED · 46% INFERRED · 0% AMBIGUOUS
 
 ## Graph Freshness
-- Built from commit: `ef152598`
+- Built from commit: `cac6a761`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify build .` after code changes to rebuild.
 

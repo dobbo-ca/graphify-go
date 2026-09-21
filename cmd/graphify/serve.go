@@ -248,13 +248,14 @@ func (s *mcpServer) callTool(req rpcRequest) rpcResponse {
 
 // toolHandlers maps each MCP tool name to its handler.
 var toolHandlers = map[string]func(*mcpServer, map[string]any) string{
-	"query_graph":   (*mcpServer).toolQueryGraph,
-	"get_node":      (*mcpServer).toolGetNode,
-	"get_neighbors": (*mcpServer).toolGetNeighbors,
-	"get_community": (*mcpServer).toolGetCommunity,
-	"god_nodes":     (*mcpServer).toolGodNodes,
-	"graph_stats":   (*mcpServer).toolGraphStats,
-	"shortest_path": (*mcpServer).toolShortestPath,
+	"query_graph":            (*mcpServer).toolQueryGraph,
+	"get_node":               (*mcpServer).toolGetNode,
+	"get_neighbors":          (*mcpServer).toolGetNeighbors,
+	"get_community":          (*mcpServer).toolGetCommunity,
+	"god_nodes":              (*mcpServer).toolGodNodes,
+	"surprising_connections": (*mcpServer).toolSurprising,
+	"graph_stats":            (*mcpServer).toolGraphStats,
+	"shortest_path":          (*mcpServer).toolShortestPath,
 }
 
 func (s *mcpServer) toolQueryGraph(args map[string]any) string {
@@ -377,6 +378,27 @@ func (s *mcpServer) toolGodNodes(args map[string]any) string {
 	lines := []string{"God nodes (most connected):"}
 	for i, n := range nodes {
 		lines = append(lines, fmt.Sprintf("  %d. %s - %d edges", i+1, security.SanitizeLabel(n.Label), n.Degree))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// toolSurprising exposes the report's cross-file "surprising connections" —
+// the one build-time analysis an agent cannot reach via query/explain, because
+// it does not know which names to ask for.
+func (s *mcpServer) toolSurprising(args map[string]any) string {
+	found := analyze.Surprising(s.god, s.communities, argInt(args, "top_n", 5))
+	if len(found) == 0 {
+		return "No surprising connections - all connections are within the same source files."
+	}
+	lines := []string{"Surprising connections (cross-file, ranked by how non-obvious):"}
+	for i, c := range found {
+		note := ""
+		if c.Note != "" {
+			note = " (" + c.Note + ")"
+		}
+		lines = append(lines, fmt.Sprintf("  %d. %s --%s--> %s [%s]", i+1,
+			security.SanitizeLabel(c.Source), c.Relation, security.SanitizeLabel(c.Target), c.Confidence))
+		lines = append(lines, fmt.Sprintf("     %s -> %s%s", c.SourceFiles[0], c.SourceFiles[1], note))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -528,6 +550,9 @@ func toolDefs() []map[string]any {
 			}, "community_id")},
 		{"name": "god_nodes",
 			"description": "Return the most connected nodes - the core abstractions of the knowledge graph.",
+			"inputSchema": obj(map[string]any{"top_n": map[string]any{"type": "integer"}})},
+		{"name": "surprising_connections",
+			"description": "Return non-obvious cross-file connections, ranked by how surprising they are (bridging separate communities ranks highest). Use to discover what unexpectedly couples two subsystems.",
 			"inputSchema": obj(map[string]any{"top_n": map[string]any{"type": "integer"}})},
 		{"name": "graph_stats",
 			"description": "Return summary statistics: node count, edge count, communities, confidence breakdown.",
