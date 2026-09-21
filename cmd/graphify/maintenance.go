@@ -276,8 +276,8 @@ func watchTick(root string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	prev := cache.Load(filepath.Join(root, "graphify-out", cache.FileName))
-	prevStat := cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName))
+	prev := cache.Load(filepath.Join(root, "graphify-out", cache.FileName), cache.Stamp(version))
+	prevStat := cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName), cache.Stamp(version))
 	seen := map[string]bool{}
 	for _, f := range files {
 		slash := filepath.ToSlash(f)

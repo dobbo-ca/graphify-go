@@ -14,21 +14,21 @@ func TestStatIndexRoundTrip(t *testing.T) {
 	path := filepath.Join(dir, StatFileName)
 
 	want := StatIndex{"a.go": {Size: 12, MtimeNs: 345, Hash: "deadbeef"}}
-	if err := SaveStat(path, want); err != nil {
+	if err := SaveStat(path, Stamp("v1"), want); err != nil {
 		t.Fatalf("SaveStat: %v", err)
 	}
-	got := LoadStat(path)
+	got := LoadStat(path, Stamp("v1"))
 	if got["a.go"] != want["a.go"] {
 		t.Errorf("round-trip mismatch: got %+v, want %+v", got["a.go"], want["a.go"])
 	}
 
-	if len(LoadStat(filepath.Join(dir, "missing.json"))) != 0 {
+	if len(LoadStat(filepath.Join(dir, "missing.json"), Stamp("v1"))) != 0 {
 		t.Error("LoadStat of a missing file should be empty")
 	}
 	if err := os.WriteFile(path, []byte("{not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if len(LoadStat(path)) != 0 {
+	if len(LoadStat(path, Stamp("v1"))) != 0 {
 		t.Error("LoadStat of corrupt JSON should be empty")
 	}
 }
@@ -160,5 +160,47 @@ func TestHashFileLegacyEntry(t *testing.T) {
 	}
 	if entry.IndexedAtNs == 0 {
 		t.Error("rewritten entry should carry indexed_at_ns")
+	}
+}
+
+// TestStampMismatchDiscards checks that a cache and stat sidecar written by one
+// binary version are ignored by another, so an extractor fix shipped in a new
+// build invalidates every cached result instead of being served stale ones.
+func TestStampMismatchDiscards(t *testing.T) {
+	dir := t.TempDir()
+	cachePath := filepath.Join(dir, FileName)
+	statPath := filepath.Join(dir, StatFileName)
+
+	want := Cache{"a.go": {Hash: "abc"}}
+	wantStat := StatIndex{"a.go": {Size: 1, MtimeNs: 2, Hash: "abc"}}
+	if err := Save(cachePath, Stamp("v1.0.0"), want); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if err := SaveStat(statPath, Stamp("v1.0.0"), wantStat); err != nil {
+		t.Fatalf("SaveStat: %v", err)
+	}
+
+	// Same stamp: round-trips.
+	if got := Load(cachePath, Stamp("v1.0.0")); got["a.go"].Hash != "abc" {
+		t.Errorf("same-stamp Load: got %+v, want the saved entry", got)
+	}
+	if got := LoadStat(statPath, Stamp("v1.0.0")); got["a.go"] != wantStat["a.go"] {
+		t.Errorf("same-stamp LoadStat: got %+v, want %+v", got["a.go"], wantStat["a.go"])
+	}
+
+	// Different binary version: both are discarded.
+	if got := Load(cachePath, Stamp("v1.1.0")); len(got) != 0 {
+		t.Errorf("mismatched-stamp Load should be empty, got %+v", got)
+	}
+	if got := LoadStat(statPath, Stamp("v1.1.0")); len(got) != 0 {
+		t.Errorf("mismatched-stamp LoadStat should be empty, got %+v", got)
+	}
+
+	// An unstamped (pre-upgrade) file is discarded too.
+	if err := os.WriteFile(cachePath, []byte(`{"a.go":{"hash":"abc"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := Load(cachePath, Stamp("v1.0.0")); len(got) != 0 {
+		t.Errorf("unstamped Load should be empty, got %+v", got)
 	}
 }

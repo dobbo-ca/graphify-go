@@ -252,10 +252,10 @@ func writeOutputs(root string, files []string, results []extract.Result, newCach
 	if err := os.WriteFile(filepath.Join(outDir, "GRAPH_REPORT.md"), []byte(md), 0o644); err != nil {
 		return nil, nil, err
 	}
-	if err := cache.Save(filepath.Join(outDir, cache.FileName), newCache); err != nil {
+	if err := cache.Save(filepath.Join(outDir, cache.FileName), cache.Stamp(version), newCache); err != nil {
 		return nil, nil, err
 	}
-	if err := cache.SaveStat(filepath.Join(outDir, cache.StatFileName), newStat); err != nil {
+	if err := cache.SaveStat(filepath.Join(outDir, cache.StatFileName), cache.Stamp(version), newStat); err != nil {
 		return nil, nil, err
 	}
 	return g, communities, nil
@@ -440,8 +440,8 @@ func cmdUpdate(args []string) error {
 	if len(files) == 0 {
 		return fmt.Errorf("no supported source files found under %s", root)
 	}
-	prev := cache.Load(filepath.Join(root, "graphify-out", cache.FileName))
-	prevStat := cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName))
+	prev := cache.Load(filepath.Join(root, "graphify-out", cache.FileName), cache.Stamp(version))
+	prevStat := cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName), cache.Stamp(version))
 	// --force / GRAPHIFY_FORCE means a full re-scan, matching upstream: drop the
 	// caches so every file is re-read and re-parsed. Without this the flag only
 	// relaxed the anti-shrink guard, leaving a poisoned cache with no remedy
