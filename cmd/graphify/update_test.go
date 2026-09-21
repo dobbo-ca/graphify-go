@@ -29,7 +29,7 @@ func TestIncrementalUpdate(t *testing.T) {
 		t.Fatalf("build: %v", err)
 	}
 	// build writes the stat sidecar with an entry per collected file.
-	statIdx := cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName))
+	statIdx := cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName), cache.Stamp(version))
 	if len(statIdx) != 2 {
 		t.Errorf("stat sidecar: got %d entries, want 2", len(statIdx))
 	}
@@ -41,8 +41,8 @@ func TestIncrementalUpdate(t *testing.T) {
 
 	// An unchanged update reuses every file and re-parses none.
 	files, _ := detect.CollectFiles(root)
-	prev := cache.Load(filepath.Join(root, "graphify-out", cache.FileName))
-	prevStat := cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName))
+	prev := cache.Load(filepath.Join(root, "graphify-out", cache.FileName), cache.Stamp(version))
+	prevStat := cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName), cache.Stamp(version))
 	_, _, _, stats := assemble(root, files, prev, prevStat)
 	if stats.parsed != 0 || stats.reused != len(files) || stats.dropped != 0 {
 		t.Errorf("unchanged update: got %+v, want 0 reparsed / %d reused / 0 removed", stats, len(files))
@@ -62,8 +62,8 @@ func TestIncrementalUpdate(t *testing.T) {
 	// Changing one file re-parses exactly that file.
 	write("b.go", "package p\n\nfunc B() {}\n\nfunc C() {}\n")
 	files, _ = detect.CollectFiles(root)
-	prev = cache.Load(filepath.Join(root, "graphify-out", cache.FileName))
-	prevStat = cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName))
+	prev = cache.Load(filepath.Join(root, "graphify-out", cache.FileName), cache.Stamp(version))
+	prevStat = cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName), cache.Stamp(version))
 	_, _, _, stats = assemble(root, files, prev, prevStat)
 	if stats.parsed != 1 || stats.reused != len(files)-1 {
 		t.Errorf("one-file change: got %+v, want 1 reparsed / %d reused", stats, len(files)-1)
@@ -170,7 +170,7 @@ func TestRefusedShrinkAbortsAllOutputs(t *testing.T) {
 	newStat := cache.StatIndex{}
 
 	// force=false: the refusal must abort every write, leaving all four outputs byte-identical.
-	if _, _, err := writeOutputs(root, files, results, newCache, newStat, semanticOpts{}, false, false); err != nil {
+	if _, _, err := writeOutputs(root, detect.WalkReport{Files: files}, results, newCache, newStat, semanticOpts{}, false, false); err != nil {
 		t.Fatalf("writeOutputs (refused shrink) returned error, want a nil-error warning: %v", err)
 	}
 	for name, b := range snapshot() {
@@ -180,7 +180,7 @@ func TestRefusedShrinkAbortsAllOutputs(t *testing.T) {
 	}
 
 	// force=true: the same shrink is accepted and every output is rewritten.
-	if _, _, err := writeOutputs(root, files, results, newCache, newStat, semanticOpts{}, true, false); err != nil {
+	if _, _, err := writeOutputs(root, detect.WalkReport{Files: files}, results, newCache, newStat, semanticOpts{}, true, false); err != nil {
 		t.Fatalf("writeOutputs (forced shrink): %v", err)
 	}
 	for name, b := range snapshot() {
@@ -204,4 +204,59 @@ func graphNodeCount(t *testing.T, path string) int {
 		t.Fatalf("unmarshal %s: %v", path, err)
 	}
 	return len(g.Nodes)
+}
+
+// TestForceBypassesCache is the regression for graphify-go-2af.6: --force (and
+// GRAPHIFY_FORCE=1) mean a full re-scan, so a poisoned cache entry — one whose
+// hash still matches the file but whose stored result is wrong — is re-parsed
+// rather than reused. A plain update keeps trusting it.
+func TestForceBypassesCache(t *testing.T) {
+	root := t.TempDir()
+	src := "package p\n\nfunc A() {}\n\nfunc C() {}\n"
+	if err := os.WriteFile(filepath.Join(root, "a.go"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdBuild([]string{root}); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	graphPath := filepath.Join(root, "graphify-out", "graph.json")
+	full := graphNodeCount(t, graphPath)
+
+	// Poison the cache: keep the (correct) hash of a.go, but store the result of
+	// a version without C. Any run that trusts the cache will drop C.
+	cachePath := filepath.Join(root, "graphify-out", cache.FileName)
+	poison := func() {
+		c := cache.Load(cachePath, cache.Stamp(version))
+		e := c["a.go"]
+		e.Result = extract.FileFromBytes("a.go", []byte("package p\n\nfunc A() {}\n"))
+		c["a.go"] = e
+		if err := cache.Save(cachePath, cache.Stamp(version), c); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	poison()
+	if err := cmdUpdate([]string{root}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if got := graphNodeCount(t, graphPath); got >= full {
+		t.Fatalf("plain update: got %d nodes, want fewer than %d (the poisoned entry should have been reused)", got, full)
+	}
+
+	poison()
+	if err := cmdUpdate([]string{root, "--force"}); err != nil {
+		t.Fatalf("update --force: %v", err)
+	}
+	if got := graphNodeCount(t, graphPath); got != full {
+		t.Errorf("update --force: got %d nodes, want %d (--force must ignore the cache)", got, full)
+	}
+
+	poison()
+	t.Setenv("GRAPHIFY_FORCE", "1")
+	if err := cmdUpdate([]string{root}); err != nil {
+		t.Fatalf("update GRAPHIFY_FORCE=1: %v", err)
+	}
+	if got := graphNodeCount(t, graphPath); got != full {
+		t.Errorf("GRAPHIFY_FORCE=1 update: got %d nodes, want %d", got, full)
+	}
 }

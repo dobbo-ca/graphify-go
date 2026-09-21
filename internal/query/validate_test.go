@@ -22,7 +22,7 @@ func writeGraphJSON(t *testing.T, content string) string {
 
 func TestValidateClean(t *testing.T) {
 	p := writeGraphJSON(t, affectedJSON)
-	issues, nodes, links, err := Validate(p)
+	issues, nodes, links, _, err := Validate(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ const brokenJSON = `{"directed":true,"multigraph":false,"graph":{},
 
 func TestValidateFindsProblems(t *testing.T) {
 	p := writeGraphJSON(t, brokenJSON)
-	issues, _, _, err := Validate(p)
+	issues, _, _, _, err := Validate(p)
 	if err != nil {
 		t.Fatal(err)
 	}

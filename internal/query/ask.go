@@ -16,23 +16,25 @@ import (
 // depth, and renders the resulting subgraph as a token-budgeted text block.
 //
 // This mirrors upstream graphify's flagship `query` command (serve.py's
-// _query_graph_text). The Go graph carries no edge `context` data, so upstream's
-// context-filter machinery is intentionally omitted.
-func Ask(g *Graph, question string, dfs bool, depth, tokenBudget int) string {
+// _query_graph_text). relations, when non-empty, restricts traversal to edges
+// with those relation types (upstream's context_filter), narrowing the subgraph
+// before the token budget has to truncate it.
+func Ask(g *Graph, question string, dfs bool, depth, tokenBudget int, relations []string) string {
 	terms := queryTerms(question)
 	scored := scoreNodes(g, terms)
 	seeds := pickSeeds(g, scored, 3, 0.2)
 	if len(seeds) == 0 {
 		return "No matching nodes found."
 	}
+	adj := relationAdj(g, relations)
 	var nodes map[string]bool
 	var edges [][2]string
 	mode := "BFS"
 	if dfs {
 		mode = "DFS"
-		nodes, edges = dfsTraverse(g, seeds, depth)
+		nodes, edges = dfsTraverse(g, adj, seeds, depth)
 	} else {
-		nodes, edges = bfsTraverse(g, seeds, depth)
+		nodes, edges = bfsTraverse(g, adj, seeds, depth)
 	}
 	seedLabels := make([]string, len(seeds))
 	for i, id := range seeds {
@@ -188,6 +190,7 @@ func scoreNodes(g *Graph, terms []string) []scoredNode {
 		norm := normLabel(nd)
 		bare := strings.TrimRight(norm, "()")
 		source := strings.ToLower(nd.SourceFile)
+		attrs := attributesText(nd)
 		score := 0.0
 		if joined != "" {
 			nidLower := strings.ToLower(nd.ID)
@@ -209,6 +212,9 @@ func scoreNodes(g *Graph, terms []string) []scoredNode {
 				score += substringMatchBonus * w
 			}
 			if strings.Contains(source, t) {
+				score += sourceMatchBonus * w
+			}
+			if attrs != "" && strings.Contains(attrs, t) {
 				score += sourceMatchBonus * w
 			}
 		}
@@ -272,12 +278,41 @@ func pickSeeds(g *Graph, scored []scoredNode, maxK int, gapRatio float64) []stri
 	return seeds
 }
 
+// relationAdj returns the adjacency to traverse: the graph's full adjacency when
+// relations is empty, otherwise one built only from links whose relation is
+// listed (upstream's context_filter).
+func relationAdj(g *Graph, relations []string) map[string]map[string]bool {
+	if len(relations) == 0 {
+		return g.adj
+	}
+	want := make(map[string]bool, len(relations))
+	for _, r := range relations {
+		want[r] = true
+	}
+	adj := map[string]map[string]bool{}
+	for i := range g.Links {
+		l := &g.Links[i]
+		if !want[l.Relation] {
+			continue
+		}
+		if adj[l.Source] == nil {
+			adj[l.Source] = map[string]bool{}
+		}
+		if adj[l.Target] == nil {
+			adj[l.Target] = map[string]bool{}
+		}
+		adj[l.Source][l.Target] = true
+		adj[l.Target][l.Source] = true
+	}
+	return adj
+}
+
 // hubThreshold is the degree above which non-seed nodes are treated as hubs and
 // not expanded as transit: the p99 of the degree distribution, floored at 50.
-func hubThreshold(g *Graph) int {
-	degrees := make([]int, 0, len(g.Nodes))
-	for id := range g.adj {
-		degrees = append(degrees, len(g.adj[id]))
+func hubThreshold(adj map[string]map[string]bool) int {
+	degrees := make([]int, 0, len(adj))
+	for id := range adj {
+		degrees = append(degrees, len(adj[id]))
 	}
 	if len(degrees) == 0 {
 		return 50
@@ -296,8 +331,8 @@ func hubThreshold(g *Graph) int {
 // bfsTraverse expands outward from the seeds up to depth hops, skipping
 // expansion through high-degree hubs (except seeds). It returns the visited node
 // set and the edges traversed, in discovery order.
-func bfsTraverse(g *Graph, seeds []string, depth int) (map[string]bool, [][2]string) {
-	hub := hubThreshold(g)
+func bfsTraverse(g *Graph, adj map[string]map[string]bool, seeds []string, depth int) (map[string]bool, [][2]string) {
+	hub := hubThreshold(adj)
 	seedSet := toSet(seeds)
 	visited := toSet(seeds)
 	frontier := append([]string(nil), seeds...)
@@ -306,10 +341,10 @@ func bfsTraverse(g *Graph, seeds []string, depth int) (map[string]bool, [][2]str
 		var next []string
 		nextSet := map[string]bool{}
 		for _, n := range frontier {
-			if !seedSet[n] && len(g.adj[n]) >= hub {
+			if !seedSet[n] && len(adj[n]) >= hub {
 				continue
 			}
-			for _, nb := range g.neighbors(n) {
+			for _, nb := range neighbors(adj, n) {
 				if !visited[nb] {
 					if !nextSet[nb] {
 						nextSet[nb] = true
@@ -324,13 +359,13 @@ func bfsTraverse(g *Graph, seeds []string, depth int) (map[string]bool, [][2]str
 		}
 		frontier = next
 	}
-	return visited, edges
+	return visited, completeInducedEdges(g, adj, visited, edges)
 }
 
 // dfsTraverse explores depth-first from the seeds up to depth hops, with the
 // same hub-skipping rule as bfsTraverse.
-func dfsTraverse(g *Graph, seeds []string, depth int) (map[string]bool, [][2]string) {
-	hub := hubThreshold(g)
+func dfsTraverse(g *Graph, adj map[string]map[string]bool, seeds []string, depth int) (map[string]bool, [][2]string) {
+	hub := hubThreshold(adj)
 	seedSet := toSet(seeds)
 	visited := map[string]bool{}
 	var edges [][2]string
@@ -349,17 +384,48 @@ func dfsTraverse(g *Graph, seeds []string, depth int) (map[string]bool, [][2]str
 			continue
 		}
 		visited[top.node] = true
-		if !seedSet[top.node] && len(g.adj[top.node]) >= hub {
+		if !seedSet[top.node] && len(adj[top.node]) >= hub {
 			continue
 		}
-		for _, nb := range g.neighbors(top.node) {
+		for _, nb := range neighbors(adj, top.node) {
 			if !visited[nb] {
 				stack = append(stack, frame{nb, top.d + 1})
 				edges = append(edges, [2]string{top.node, nb})
 			}
 		}
 	}
-	return visited, edges
+	return visited, completeInducedEdges(g, adj, visited, edges)
+}
+
+// completeInducedEdges appends every edge between two visited nodes that the
+// traversal did not record, so the result is the induced subgraph rather than a
+// spanning tree. It only scans adjacency incident to the visited set.
+func completeInducedEdges(g *Graph, adj map[string]map[string]bool, visited map[string]bool, edges [][2]string) [][2]string {
+	seen := make(map[[2]string]bool, len(edges))
+	for _, e := range edges {
+		seen[e] = true
+		seen[[2]string{e[1], e[0]}] = true
+	}
+	ids := make([]string, 0, len(visited))
+	for id := range visited {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, u := range ids {
+		for _, v := range neighbors(adj, u) {
+			if !visited[v] || seen[[2]string{u, v}] {
+				continue
+			}
+			e := [2]string{u, v}
+			if g.edge[e] == nil && g.edge[[2]string{v, u}] != nil {
+				e = [2]string{v, u}
+			}
+			seen[[2]string{u, v}] = true
+			seen[[2]string{v, u}] = true
+			edges = append(edges, e)
+		}
+	}
+	return edges
 }
 
 // subgraphToText renders the traversed subgraph as NODE/EDGE lines, seeds first
@@ -443,6 +509,20 @@ func subgraphToText(g *Graph, nodes map[string]bool, edges [][2]string, tokenBud
 
 // normLabel returns the lowercase norm_label of a node, falling back to a
 // lowercased label.
+// attributesText flattens a node's Terraform block attributes into one
+// lowercased "key value" string so a query like "t3.large" reaches the resource
+// that sets it. Empty for the (vast majority of) nodes with no attributes.
+func attributesText(n *Node) string {
+	if len(n.Attributes) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(n.Attributes)*2)
+	for k, v := range n.Attributes {
+		parts = append(parts, k, v)
+	}
+	return strings.ToLower(strings.Join(parts, " "))
+}
+
 func normLabel(n *Node) string {
 	if n.NormLabel != "" {
 		return strings.ToLower(n.NormLabel)
@@ -468,9 +548,9 @@ func nodeLabel(g *Graph, id string) string {
 
 // neighbors returns a node's neighbour ids in sorted order, for deterministic
 // traversal.
-func (g *Graph) neighbors(id string) []string {
-	ns := make([]string, 0, len(g.adj[id]))
-	for n := range g.adj[id] {
+func neighbors(adj map[string]map[string]bool, id string) []string {
+	ns := make([]string, 0, len(adj[id]))
+	for n := range adj[id] {
 		ns = append(ns, n)
 	}
 	sort.Strings(ns)

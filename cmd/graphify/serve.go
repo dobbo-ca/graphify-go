@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -27,20 +28,69 @@ const mcpProtocolVersion = "2024-11-05"
 // per-agent process re-launches cheaply, so those are unnecessary for the first
 // cut. The 7 tools mirror upstream graphify's serve.py over the existing Go
 // query/analyze primitives.
-func cmdServe(graphPath string) error {
+func cmdServe(args []string) error {
+	positionals, graphPath := parseGraphFlag(args)
+	if len(positionals) > 1 {
+		return fmt.Errorf("usage: graphify serve [graph.json] [--graph path]")
+	}
+	if len(positionals) == 1 {
+		graphPath = positionals[0]
+	}
 	g, err := query.Load(graphPath)
 	if err != nil {
 		return err
 	}
-	s := &mcpServer{g: g, communities: communitiesOf(g), god: modelOf(g)}
-	return s.run(os.Stdin, os.Stdout)
+	return newMCPServer(g).run(os.Stdin, os.Stdout)
 }
 
-// mcpServer holds the loaded graph and derived state shared by every tool call.
-type mcpServer struct {
+// graphCtx is everything a tool call needs about one project's graph.
+type graphCtx struct {
 	g           *query.Graph
 	communities map[int][]string // community id -> node ids, from persisted node fields
 	god         *model.Graph     // in-memory adapter so analyze.GodNodes can filter file/concept nodes
+}
+
+// maxContexts caps how many other projects stay resident alongside the one
+// serve was launched in, bounding memory for a long-lived server.
+const maxContexts = 8
+
+// mcpServer holds the graph context in scope for the current tool call plus the
+// graphs loaded for other projects via the project_path argument.
+type mcpServer struct {
+	graphCtx
+	contexts map[string]*graphCtx // absolute project dir -> loaded graph
+}
+
+func newMCPServer(g *query.Graph) *mcpServer {
+	return &mcpServer{graphCtx: newGraphCtx(g), contexts: map[string]*graphCtx{}}
+}
+
+func newGraphCtx(g *query.Graph) graphCtx {
+	return graphCtx{g: g, communities: communitiesOf(g), god: modelOf(g)}
+}
+
+// contextFor loads (and caches) the graph of another project directory, so one
+// running server can answer about any repo carrying graphify-out/graph.json.
+// The fixed graphify-out/graph.json suffix is the guard: a project_path can
+// only ever reach a graph file, never arbitrary JSON on disk.
+func (s *mcpServer) contextFor(project string) (*graphCtx, error) {
+	key, err := filepath.Abs(project)
+	if err != nil {
+		return nil, err
+	}
+	if c, ok := s.contexts[key]; ok {
+		return c, nil
+	}
+	g, err := query.Load(filepath.Join(key, "graphify-out", "graph.json"))
+	if err != nil {
+		return nil, err
+	}
+	if len(s.contexts) >= maxContexts {
+		clear(s.contexts) // ponytail: flush-all instead of LRU eviction; port an LRU if anyone really serves >8 projects
+	}
+	c := newGraphCtx(g)
+	s.contexts[key] = &c
+	return &c, nil
 }
 
 // communitiesOf reconstructs the community -> node-id map from the community
@@ -182,18 +232,30 @@ func (s *mcpServer) callTool(req rpcRequest) rpcResponse {
 			return s.fail(req, -32602, "invalid arguments")
 		}
 	}
+	// project_path retargets this one call at another project's graph; it is
+	// never a tool argument, so pop it before handing args to the handler.
+	if project := argString(args, "project_path"); project != "" {
+		c, err := s.contextFor(project)
+		if err != nil {
+			return s.textResult(req, "Error: "+err.Error())
+		}
+		defer func(prev graphCtx) { s.graphCtx = prev }(s.graphCtx)
+		s.graphCtx = *c
+	}
+	delete(args, "project_path")
 	return s.textResult(req, h(s, args))
 }
 
 // toolHandlers maps each MCP tool name to its handler.
 var toolHandlers = map[string]func(*mcpServer, map[string]any) string{
-	"query_graph":   (*mcpServer).toolQueryGraph,
-	"get_node":      (*mcpServer).toolGetNode,
-	"get_neighbors": (*mcpServer).toolGetNeighbors,
-	"get_community": (*mcpServer).toolGetCommunity,
-	"god_nodes":     (*mcpServer).toolGodNodes,
-	"graph_stats":   (*mcpServer).toolGraphStats,
-	"shortest_path": (*mcpServer).toolShortestPath,
+	"query_graph":            (*mcpServer).toolQueryGraph,
+	"get_node":               (*mcpServer).toolGetNode,
+	"get_neighbors":          (*mcpServer).toolGetNeighbors,
+	"get_community":          (*mcpServer).toolGetCommunity,
+	"god_nodes":              (*mcpServer).toolGodNodes,
+	"surprising_connections": (*mcpServer).toolSurprising,
+	"graph_stats":            (*mcpServer).toolGraphStats,
+	"shortest_path":          (*mcpServer).toolShortestPath,
 }
 
 func (s *mcpServer) toolQueryGraph(args map[string]any) string {
@@ -213,14 +275,14 @@ func (s *mcpServer) toolQueryGraph(args map[string]any) string {
 	if budget < 1 {
 		budget = 2000
 	}
-	return query.Ask(s.g, question, dfs, depth, budget)
+	return query.Ask(s.g, question, dfs, depth, budget, argStrings(args, "context_filter"))
 }
 
 func (s *mcpServer) toolGetNode(args map[string]any) string {
 	label := argString(args, "label")
 	ex, err := query.Explain(s.g, label)
 	if err != nil {
-		return fmt.Sprintf("No node matching '%s' found.", label)
+		return explainError(label, err)
 	}
 	n := ex.Node
 	comm := ""
@@ -241,10 +303,10 @@ func (s *mcpServer) toolGetNeighbors(args map[string]any) string {
 	label := argString(args, "label")
 	ex, err := query.Explain(s.g, label)
 	if err != nil {
-		return fmt.Sprintf("No node matching '%s' found.", label)
+		return explainError(label, err)
 	}
 	relFilter := strings.ToLower(argString(args, "relation_filter"))
-	lines := []string{"Neighbors of " + security.SanitizeLabel(labelOrID(ex.Node)) + ":"}
+	var items []string
 	for _, nb := range ex.Neighbors {
 		if relFilter != "" && !strings.Contains(strings.ToLower(nb.Relation), relFilter) {
 			continue
@@ -253,10 +315,11 @@ func (s *mcpServer) toolGetNeighbors(args map[string]any) string {
 		if nb.Direction == "<-" {
 			arrow = "<--"
 		}
-		lines = append(lines, fmt.Sprintf("  %s %s [%s]", arrow,
+		items = append(items, fmt.Sprintf("  %s %s [%s]", arrow,
 			security.SanitizeLabel(nb.Label), security.SanitizeLabel(nb.Relation)))
 	}
-	return strings.Join(lines, "\n")
+	header := "Neighbors of " + security.SanitizeLabel(labelOrID(ex.Node)) + ":"
+	return budgetLines(header, items, argTokenBudget(args))
 }
 
 func (s *mcpServer) toolGetCommunity(args map[string]any) string {
@@ -266,23 +329,76 @@ func (s *mcpServer) toolGetCommunity(args map[string]any) string {
 		return fmt.Sprintf("Community %d not found.", cid)
 	}
 	sort.Strings(nodes)
-	lines := []string{fmt.Sprintf("Community %d (%d nodes):", cid, len(nodes))}
+	items := make([]string, 0, len(nodes))
 	for _, id := range nodes {
 		n := s.god.Nodes[id]
 		label, src := id, ""
 		if n != nil {
 			label, src = n.Label, n.SourceFile
 		}
-		lines = append(lines, "  "+security.SanitizeLabel(label)+" ["+security.SanitizeLabel(src)+"]")
+		items = append(items, "  "+security.SanitizeLabel(label)+" ["+security.SanitizeLabel(src)+"]")
+	}
+	header := fmt.Sprintf("Community %d (%d nodes):", cid, len(nodes))
+	return budgetLines(header, items, argTokenBudget(args))
+}
+
+// argTokenBudget reads token_budget, defaulting to 2000.
+func argTokenBudget(args map[string]any) int {
+	budget := argInt(args, "token_budget", 2000)
+	if budget < 1 {
+		budget = 2000
+	}
+	return budget
+}
+
+// budgetLines joins header + items, cutting items that do not fit in the
+// ~3-chars-per-token budget and prepending a truncation notice so the caller
+// sees it before reading the list.
+func budgetLines(header string, items []string, tokenBudget int) string {
+	charBudget := tokenBudget * 3
+	used, shown := len(header), len(items)
+	for i, l := range items {
+		used += len(l) + 1
+		if used > charBudget {
+			shown = i
+			break
+		}
+	}
+	out := append([]string{header}, items[:shown]...)
+	if shown < len(items) {
+		out = append([]string{fmt.Sprintf(
+			"Truncated: %d of %d shown (~%d-token budget; raise token_budget or narrow the query)",
+			shown, len(items), tokenBudget)}, out...)
+	}
+	return strings.Join(out, "\n")
+}
+
+func (s *mcpServer) toolGodNodes(args map[string]any) string {
+	nodes := analyze.GodNodes(s.god, argInt(args, "top_n", 10), argInt(args, "exclude_hubs_percentile", 0))
+	lines := []string{"God nodes (most connected):"}
+	for i, n := range nodes {
+		lines = append(lines, fmt.Sprintf("  %d. %s - %d edges", i+1, security.SanitizeLabel(n.Label), n.Degree))
 	}
 	return strings.Join(lines, "\n")
 }
 
-func (s *mcpServer) toolGodNodes(args map[string]any) string {
-	nodes := analyze.GodNodes(s.god, argInt(args, "top_n", 10))
-	lines := []string{"God nodes (most connected):"}
-	for i, n := range nodes {
-		lines = append(lines, fmt.Sprintf("  %d. %s - %d edges", i+1, security.SanitizeLabel(n.Label), n.Degree))
+// toolSurprising exposes the report's cross-file "surprising connections" —
+// the one build-time analysis an agent cannot reach via query/explain, because
+// it does not know which names to ask for.
+func (s *mcpServer) toolSurprising(args map[string]any) string {
+	found := analyze.Surprising(s.god, s.communities, argInt(args, "top_n", 5))
+	if len(found) == 0 {
+		return "No surprising connections - all connections are within the same source files."
+	}
+	lines := []string{"Surprising connections (cross-file, ranked by how non-obvious):"}
+	for i, c := range found {
+		note := ""
+		if c.Note != "" {
+			note = " (" + c.Note + ")"
+		}
+		lines = append(lines, fmt.Sprintf("  %d. %s --%s--> %s [%s]", i+1,
+			security.SanitizeLabel(c.Source), c.Relation, security.SanitizeLabel(c.Target), c.Confidence))
+		lines = append(lines, fmt.Sprintf("     %s -> %s%s", c.SourceFiles[0], c.SourceFiles[1], note))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -301,16 +417,26 @@ func (s *mcpServer) toolGraphStats(map[string]any) string {
 		counts[c]++
 	}
 	pct := func(k string) int { return int(float64(counts[k])/float64(total)*100 + 0.5) }
-	return fmt.Sprintf(
+	out := fmt.Sprintf(
 		"Nodes: %d\nEdges: %d\nCommunities: %d\nEXTRACTED: %d%%\nINFERRED: %d%%\nAMBIGUOUS: %d%%\n",
 		len(s.g.Nodes), len(s.g.Links), len(s.communities),
 		pct("EXTRACTED"), pct("INFERRED"), pct("AMBIGUOUS"))
+	// Corpus coverage: how much of the repo no extractor could read, so a caller
+	// can tell a thin graph from a thinly-covered repo.
+	if u := s.g.UnclassifiedSummary(); u != "" {
+		out += u + "\n"
+	}
+	return out
 }
 
 func (s *mcpServer) toolShortestPath(args map[string]any) string {
 	src, tgt := argString(args, "source"), argString(args, "target")
-	res, err := query.PathEdges(s.g, src, tgt, argInt(args, "max_hops", 8))
+	undirected, _ := args["undirected"].(bool)
+	res, err := query.PathEdges(s.g, src, tgt, argInt(args, "max_hops", 8), undirected)
 	if err != nil {
+		if errors.Is(err, query.ErrNoDirectedPath) {
+			return err.Error() + "; retry with undirected=true"
+		}
 		var same *query.SameNodeError
 		var over *query.MaxHopsError
 		if errors.As(err, &same) || errors.As(err, &over) {
@@ -318,8 +444,14 @@ func (s *mcpServer) toolShortestPath(args map[string]any) string {
 		}
 		return "Error: " + err.Error()
 	}
+	return fmt.Sprintf("Shortest path (%d hops):\n  %s", len(res.Edges), renderPathChain(res))
+}
+
+// renderPathChain renders a resolved path as "a --calls [INFERRED]--> b", using
+// "<--rel--" for hops whose stored edge points against the direction of travel
+// so the arrow never asserts a direction the graph does not record.
+func renderPathChain(res *query.PathResult) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Shortest path (%d hops):\n  ", len(res.Edges))
 	b.WriteString(security.SanitizeLabel(labelOrID(&res.Nodes[0])))
 	for i, e := range res.Edges {
 		next := security.SanitizeLabel(labelOrID(&res.Nodes[i+1]))
@@ -334,6 +466,18 @@ func (s *mcpServer) toolShortestPath(args map[string]any) string {
 		}
 	}
 	return b.String()
+}
+
+// explainError renders a query.Explain failure for MCP callers: an ambiguous
+// query keeps its candidate list so the caller can disambiguate.
+func explainError(label string, err error) string {
+	var amb *query.AmbiguousError
+	if errors.As(err, &amb) {
+		// query.ambiguous already sanitizes Query and each candidate when it
+		// builds the error, so the assembled message needs no further pass.
+		return amb.Error()
+	}
+	return fmt.Sprintf("No node matching '%s' found.", label)
 }
 
 // labelOrID returns a node's label, falling back to its id.
@@ -361,9 +505,27 @@ func argInt(args map[string]any, key string, def int) int {
 	return def
 }
 
+// argStrings extracts a string-array argument, skipping non-string elements.
+func argStrings(args map[string]any, key string) []string {
+	raw, ok := args[key].([]any)
+	if !ok {
+		return nil
+	}
+	var out []string
+	for _, v := range raw {
+		if s, ok := v.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // toolDefs returns the MCP tool definitions advertised by tools/list.
 func toolDefs() []map[string]any {
 	obj := func(props map[string]any, required ...string) map[string]any {
+		// Every tool accepts project_path, so one server can answer about any
+		// project on disk, not just the one it was launched in.
+		props["project_path"] = map[string]any{"type": "string", "description": "Optional: path to another project containing graphify-out/graph.json (default: the project serve was launched with)"}
 		schema := map[string]any{"type": "object", "properties": props}
 		if len(required) > 0 {
 			schema["required"] = required
@@ -379,6 +541,8 @@ func toolDefs() []map[string]any {
 				"mode":         map[string]any{"type": "string", "enum": []string{"bfs", "dfs"}, "description": "bfs=broad context, dfs=trace a specific path"},
 				"depth":        map[string]any{"type": "integer", "description": "Traversal depth (1-6)"},
 				"token_budget": map[string]any{"type": "integer", "description": "Max output tokens"},
+				"context_filter": map[string]any{"type": "array", "items": str,
+					"description": "Optional: restrict traversal to these edge relations (e.g. [\"calls\"])"},
 			}, "question")},
 		{"name": "get_node",
 			"description": "Get full details for a specific node by label or ID.",
@@ -388,22 +552,34 @@ func toolDefs() []map[string]any {
 			"inputSchema": obj(map[string]any{
 				"label":           str,
 				"relation_filter": map[string]any{"type": "string", "description": "Optional: filter by relation type"},
+				"token_budget":    map[string]any{"type": "integer", "description": "Max output tokens (default 2000)"},
 			}, "label")},
 		{"name": "get_community",
 			"description": "Get all nodes in a community by community ID.",
-			"inputSchema": obj(map[string]any{"community_id": map[string]any{"type": "integer", "description": "Community ID (0-indexed by size)"}}, "community_id")},
+			"inputSchema": obj(map[string]any{
+				"community_id": map[string]any{"type": "integer", "description": "Community ID (0-indexed by size)"},
+				"token_budget": map[string]any{"type": "integer", "description": "Max output tokens (default 2000)"},
+			}, "community_id")},
 		{"name": "god_nodes",
 			"description": "Return the most connected nodes - the core abstractions of the knowledge graph.",
+			"inputSchema": obj(map[string]any{
+				"top_n": map[string]any{"type": "integer"},
+				"exclude_hubs_percentile": map[string]any{"type": "integer",
+					"description": "Suppress nodes whose degree exceeds this percentile (0-100) of the degree distribution, matching cluster()'s hub exclusion"},
+			})},
+		{"name": "surprising_connections",
+			"description": "Return non-obvious cross-file connections, ranked by how surprising they are (bridging separate communities ranks highest). Use to discover what unexpectedly couples two subsystems.",
 			"inputSchema": obj(map[string]any{"top_n": map[string]any{"type": "integer"}})},
 		{"name": "graph_stats",
 			"description": "Return summary statistics: node count, edge count, communities, confidence breakdown.",
 			"inputSchema": obj(map[string]any{})},
 		{"name": "shortest_path",
-			"description": "Find the shortest path between two concepts in the knowledge graph. Each hop is annotated with its relation and confidence.",
+			"description": "Find the shortest path between two concepts in the knowledge graph, following edge direction. Each hop is annotated with its relation and confidence.",
 			"inputSchema": obj(map[string]any{
-				"source":   map[string]any{"type": "string", "description": "Source concept label or keyword"},
-				"target":   map[string]any{"type": "string", "description": "Target concept label or keyword"},
-				"max_hops": map[string]any{"type": "integer", "description": "Reject paths longer than this many hops (default 8)"},
+				"source":     map[string]any{"type": "string", "description": "Source concept label or keyword"},
+				"target":     map[string]any{"type": "string", "description": "Target concept label or keyword"},
+				"max_hops":   map[string]any{"type": "integer", "description": "Reject paths longer than this many hops (default 8)"},
+				"undirected": map[string]any{"type": "boolean", "description": "Ignore edge direction (default false: follow edges forwards only)"},
 			}, "source", "target")},
 	}
 }

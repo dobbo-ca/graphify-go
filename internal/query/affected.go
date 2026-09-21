@@ -1,8 +1,10 @@
 package query
 
 import (
+	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // depRelations are the edge relations that mean "source depends on target", so
@@ -39,7 +41,7 @@ type AffectedOptions struct {
 func Affected(g *Graph, changedFiles []string, opts AffectedOptions) AffectedResult {
 	want := make(map[string]bool, len(changedFiles))
 	for _, f := range changedFiles {
-		want[filepath.ToSlash(f)] = true
+		want[normalizeSeed(f)] = true
 	}
 
 	relSet := depRelations
@@ -63,7 +65,7 @@ func Affected(g *Graph, changedFiles []string, opts AffectedOptions) AffectedRes
 	var seeds []string
 	for i := range g.Nodes {
 		n := &g.Nodes[i]
-		if n.SourceFile != "" && want[filepath.ToSlash(n.SourceFile)] {
+		if n.SourceFile != "" && want[normalizeSeed(n.SourceFile)] {
 			changedSet[n.ID] = true
 			seeds = append(seeds, n.ID)
 		}
@@ -100,6 +102,26 @@ func Affected(g *Graph, changedFiles []string, opts AffectedOptions) AffectedRes
 		Changed:  g.collect(changedSet),
 		Impacted: g.collect(impactedSet),
 	}
+}
+
+// normalizeSeed puts a file seed into the repo-relative, slash-separated form
+// that node.SourceFile uses: it strips a leading "./" and rewrites an absolute
+// path as relative to the working directory. Seeds that are not paths — and
+// absolute paths outside the working directory — are returned unchanged, so
+// label matching is unaffected.
+func normalizeSeed(s string) string {
+	if filepath.IsAbs(s) {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return s
+		}
+		rel, err := filepath.Rel(cwd, s)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return s
+		}
+		s = rel
+	}
+	return strings.TrimPrefix(filepath.ToSlash(s), "./")
 }
 
 // collect returns the nodes whose IDs are in set, sorted by source location then

@@ -391,3 +391,36 @@ func TestToJSONComputedName(t *testing.T) {
 		t.Errorf("norm_label = %q, want it to contain eg-prod-app", n.NormLabel)
 	}
 }
+
+// TestToJSONSanitizesComputedName checks that an oversized, control-char-laden
+// computed name (e.g. a null-label module with a huge literal namespace) is
+// capped and stripped on the way into graph.json.
+func TestToJSONSanitizesComputedName(t *testing.T) {
+	g := model.New()
+	g.AddNode(model.Node{
+		ID: "n0", Label: "module.big", FileType: "code", SourceFile: "main.tf",
+		ComputedName: strings.Repeat("a", 5000) + "\x00bad\x07",
+	})
+	path := filepath.Join(t.TempDir(), "graph.json")
+	if err := ToJSON(g, map[int][]string{}, path, "", false); err != nil {
+		t.Fatalf("ToJSON: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	var out jsonGraph
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	got := out.Nodes[0].ComputedName
+	if len(got) != 256 {
+		t.Errorf("computed_name length = %d, want 256", len(got))
+	}
+	if strings.ContainsAny(got, "\x00\x07") {
+		t.Errorf("computed_name retained control chars: %q", got)
+	}
+	if strings.ContainsAny(out.Nodes[0].NormLabel, "\x00\x07") || len(out.Nodes[0].NormLabel) > 300 {
+		t.Errorf("norm_label not sanitized: %d bytes", len(out.Nodes[0].NormLabel))
+	}
+}

@@ -33,3 +33,24 @@ func TestNormalizeIDMatchesMakeID(t *testing.T) {
 		t.Errorf("NormalizeID(Some-Type) = %q, want some_type", got)
 	}
 }
+
+func TestCleanIsIdempotentAndCaselessStable(t *testing.T) {
+	// Casefolding expands some characters into a base letter plus a combining
+	// mark; folding after the non-word filter left that mark unfiltered, so the
+	// result was not a fixed point of NormalizeID (upstream's ghost-node class).
+	for _, in := range []string{
+		"İslemYap",     // Turkish dotted capital I -> "i" + U+0307
+		"ᾴ",            // Greek alpha with oxia and ypogegrammeni
+		"́ͅ",           // bare ypogegrammeni + combining acute
+		"pkg.SomeType", // ASCII control
+		"café",
+	} {
+		id := MakeID(in)
+		if got := NormalizeID(id); got != id {
+			t.Errorf("NormalizeID(MakeID(%q)) = %q, want %q", in, got, id)
+		}
+		if got := MakeID(fold.String(in)); got != id {
+			t.Errorf("MakeID(fold(%q)) = %q, want %q", in, got, id)
+		}
+	}
+}

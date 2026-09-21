@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,7 +38,7 @@ func newServer(t *testing.T) *mcpServer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &mcpServer{g: g, communities: communitiesOf(g), god: modelOf(g)}
+	return newMCPServer(g)
 }
 
 func TestToolQueryGraph(t *testing.T) {
@@ -228,8 +229,8 @@ func TestServeProtocolHandshake(t *testing.T) {
 		t.Fatalf("tools/list result not an object: %+v", resps[1].Result)
 	}
 	tools, ok := list["tools"].([]any)
-	if !ok || len(tools) != 7 {
-		t.Errorf("expected 7 tools advertised, got %+v", list["tools"])
+	if !ok || len(tools) != 8 {
+		t.Errorf("expected 8 tools advertised, got %+v", list["tools"])
 	}
 }
 
@@ -295,7 +296,197 @@ func TestCmdServeLoadError(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.Chdir(wd)
-	if err := cmdServe(defaultGraphPath); err == nil {
+	if err := cmdServe(nil); err == nil {
 		t.Error("cmdServe with no graph.json = nil, want load error")
+	}
+}
+
+// bigServer builds a hub node with n neighbours, all in community 0.
+func bigServer(t *testing.T, n int) *mcpServer {
+	t.Helper()
+	nodes := []string{`{"id":"hub","label":"hub()","file_type":"code","source_file":"hub.go","source_location":"L1","community":0,"norm_label":"hub()"}`}
+	var links []string
+	for i := 0; i < n; i++ {
+		nodes = append(nodes, fmt.Sprintf(
+			`{"id":"n%d","label":"neighbor%d()","file_type":"code","source_file":"n.go","source_location":"L1","community":0,"norm_label":"neighbor%d()"}`, i, i, i))
+		links = append(links, fmt.Sprintf(`{"source":"hub","target":"n%d","relation":"calls","confidence":"EXTRACTED"}`, i))
+	}
+	doc := fmt.Sprintf(`{"directed":true,"multigraph":false,"graph":{},"nodes":[%s],"links":[%s]}`,
+		strings.Join(nodes, ","), strings.Join(links, ","))
+	p := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(p, []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g, err := query.Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return newMCPServer(g)
+}
+
+func TestToolGetNeighborsTokenBudget(t *testing.T) {
+	s := bigServer(t, 500)
+	out := s.toolGetNeighbors(map[string]any{"label": "hub", "token_budget": float64(200)})
+	first := strings.SplitN(out, "\n", 2)[0]
+	if !strings.HasPrefix(first, "Truncated: ") || !strings.Contains(first, " of 500 shown") {
+		t.Errorf("want truncation notice on first line, got %q", first)
+	}
+	if len(out) > 200*3+len(first)+100 {
+		t.Errorf("output %d chars exceeds budget:\n%s", len(out), out)
+	}
+}
+
+func TestToolGetCommunityTokenBudget(t *testing.T) {
+	s := bigServer(t, 500)
+	out := s.toolGetCommunity(map[string]any{"community_id": float64(0), "token_budget": float64(200)})
+	if !strings.HasPrefix(out, "Truncated: ") {
+		t.Errorf("want truncation notice first, got:\n%s", out[:120])
+	}
+}
+
+func TestToolGetNeighborsUnderBudgetNotTruncated(t *testing.T) {
+	s := newServer(t)
+	out := s.toolGetNeighbors(map[string]any{"label": "authValidate"})
+	if strings.Contains(out, "Truncated") {
+		t.Errorf("small output should not be truncated:\n%s", out)
+	}
+}
+
+// TestCallToolProjectPath is the cross-project acceptance check: a server
+// launched on graph A answers a call carrying project_path=B about B, and the
+// default context is restored afterwards.
+func TestCallToolProjectPath(t *testing.T) {
+	s := newServer(t)
+	project := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(project, "graphify-out"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	other := `{"directed":true,"multigraph":false,"graph":{},"nodes":[
+		{"id":"other_fn","label":"otherFn()","file_type":"code","source_file":"other.go","source_location":"L1","norm_label":"otherfn()"}],"links":[]}`
+	if err := os.WriteFile(filepath.Join(project, "graphify-out", "graph.json"), []byte(other), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	call := func(args map[string]any) string {
+		raw, err := json.Marshal(map[string]any{"name": "get_node", "arguments": args})
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp := s.callTool(rpcRequest{JSONRPC: "2.0", ID: json.RawMessage(`1`), Method: "tools/call", Params: raw})
+		if resp.Error != nil {
+			t.Fatalf("call failed: %+v", resp.Error)
+		}
+		b, err := json.Marshal(resp.Result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+
+	if out := call(map[string]any{"label": "otherFn", "project_path": project}); !strings.Contains(out, "other.go") {
+		t.Errorf("project_path call did not read the other project:\n%s", out)
+	}
+	// The default context is back in place for the next call.
+	if out := call(map[string]any{"label": "authValidate"}); !strings.Contains(out, "auth.go") {
+		t.Errorf("default context not restored:\n%s", out)
+	}
+}
+
+func TestCallToolProjectPathMissingGraph(t *testing.T) {
+	s := newServer(t)
+	raw, _ := json.Marshal(map[string]any{"name": "graph_stats", "arguments": map[string]any{"project_path": t.TempDir()}})
+	resp := s.callTool(rpcRequest{JSONRPC: "2.0", ID: json.RawMessage(`1`), Method: "tools/call", Params: raw})
+	b, _ := json.Marshal(resp.Result)
+	if !strings.Contains(string(b), "Error:") {
+		t.Errorf("want load error text, got %s", b)
+	}
+}
+
+func TestToolDefsCarryProjectPath(t *testing.T) {
+	for _, d := range toolDefs() {
+		props := d["inputSchema"].(map[string]any)["properties"].(map[string]any)
+		if _, ok := props["project_path"]; !ok {
+			t.Errorf("tool %v schema missing project_path", d["name"])
+		}
+	}
+}
+
+func TestContextCacheCap(t *testing.T) {
+	s := newServer(t)
+	for i := 0; i <= maxContexts; i++ {
+		project := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(project, "graphify-out"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(project, "graphify-out", "graph.json"), []byte(serveGraph), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.contextFor(project); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(s.contexts) > maxContexts {
+		t.Errorf("context cache grew to %d, want <= %d", len(s.contexts), maxContexts)
+	}
+}
+
+// surpriseGraph gives every entity degree >= 2 so analyze's method-stub filter
+// (label ending in "()" with degree <= 1) does not swallow the cross-file edge.
+const surpriseGraph = `{
+  "directed": true, "multigraph": false, "graph": {},
+  "nodes": [
+    {"id":"auth_validate","label":"authValidate()","file_type":"code","source_file":"auth.go","source_location":"L10","community":0,"norm_label":"authvalidate()"},
+    {"id":"auth_check","label":"checkToken()","file_type":"code","source_file":"auth.go","source_location":"L20","community":0,"norm_label":"checktoken()"},
+    {"id":"util_log","label":"log()","file_type":"code","source_file":"util.go","source_location":"L1","community":1,"norm_label":"log()"},
+    {"id":"util_fmt","label":"fmtMsg()","file_type":"code","source_file":"util.go","source_location":"L9","community":1,"norm_label":"fmtmsg()"}
+  ],
+  "links": [
+    {"source":"auth_validate","target":"auth_check","relation":"calls","confidence":"INFERRED"},
+    {"source":"auth_validate","target":"util_fmt","relation":"calls","confidence":"EXTRACTED"},
+    {"source":"auth_check","target":"util_log","relation":"calls","confidence":"EXTRACTED"},
+    {"source":"util_log","target":"util_fmt","relation":"calls","confidence":"EXTRACTED"}
+  ]
+}`
+
+func newSurpriseServer(t *testing.T) *mcpServer {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(p, []byte(surpriseGraph), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g, err := query.Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return newMCPServer(g)
+}
+
+func TestToolSurprising(t *testing.T) {
+	s := newSurpriseServer(t)
+	out := s.toolSurprising(map[string]any{})
+	if !strings.Contains(out, "checkToken() --calls--> log() [EXTRACTED]") {
+		t.Errorf("missing cross-file connection:\n%s", out)
+	}
+	if !strings.Contains(out, "auth.go -> util.go (bridges separate communities)") {
+		t.Errorf("missing file/community annotation:\n%s", out)
+	}
+	// authValidate -> checkToken lives in one file and must not be reported.
+	if strings.Contains(out, "--calls--> checkToken()") {
+		t.Errorf("same-file edge should be excluded:\n%s", out)
+	}
+}
+
+func TestToolSurprisingTopN(t *testing.T) {
+	s := newSurpriseServer(t)
+	if out := s.toolSurprising(map[string]any{"top_n": float64(0)}); !strings.Contains(out, "No surprising connections") {
+		t.Errorf("got %q, want empty message", out)
+	}
+}
+
+func TestToolGodNodesExcludeHubsPercentile(t *testing.T) {
+	s := newServer(t)
+	out := s.toolGodNodes(map[string]any{"top_n": float64(5), "exclude_hubs_percentile": float64(50)})
+	if strings.Contains(out, "checkToken() - 2 edges") {
+		t.Errorf("p50 should suppress the top hub:\n%s", out)
 	}
 }

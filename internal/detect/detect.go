@@ -87,10 +87,28 @@ var skipDirs = map[string]bool{
 // setuptools metadata dirs (foo.egg-info) are generated, never source.
 var skipDirSuffixes = []string{".egg-info"}
 
+const (
+	// graphifyOut is the output dir; memoryDir under it holds the Q&A docs
+	// `graphify save-result` writes back into the graph.
+	graphifyOut = "graphify-out"
+	memoryDir   = graphifyOut + "/memory"
+)
+
+// inMemoryDir reports whether slashRel is graphify-out/memory or a path below it.
+func inMemoryDir(slashRel string) bool {
+	return slashRel == memoryDir || strings.HasPrefix(slashRel, memoryDir+"/")
+}
+
 // skipDir reports whether a directory named n should be pruned from the walk
 // (exact-name skip set or a skippable suffix like *.egg-info).
 func skipDir(n string) bool {
 	if skipDirs[n] {
+		return true
+	}
+	// Mirrors upstream's GRAPHIFY_OUT_NAME: when the out directory is renamed
+	// via GRAPHIFY_OUT and lives inside the scanned tree, its own artifacts
+	// (graph.json, GRAPH_REPORT.md, caches) must not be ingested as source.
+	if v := os.Getenv("GRAPHIFY_OUT"); v != "" && n == filepath.Base(v) {
 		return true
 	}
 	for _, s := range skipDirSuffixes {
@@ -200,6 +218,7 @@ func shebangExtOfFile(path string) string {
 // package-manifest pass in internal/extract (manifest.go).
 var packageManifestFiles = map[string]bool{
 	"pyproject.toml": true,
+	"Cargo.toml":     true,
 	"go.mod":         true,
 	"pom.xml":        true,
 }
@@ -317,6 +336,10 @@ type WalkReport struct {
 	Files      []string // collected source files, relative to root, in WalkDir order
 	WalkErrors []string // "<path>: <error>" for each entry the walk could not read
 	Skipped    int      // files seen but dropped for an unsupported extension / no extractor
+	// SkippedExts breaks Skipped down by lowercased extension ("(no extension)"
+	// for extensionless files), so a report can name the languages a corpus is
+	// written in that no extractor covers. Sums to Skipped.
+	SkippedExts map[string]int
 }
 
 // CollectFilesReport walks root exactly like CollectFiles but additionally
@@ -346,6 +369,13 @@ func CollectFilesReport(root string) (WalkReport, error) {
 			if path == root {
 				return nil
 			}
+			// graphify-out is a skipDir, but its memory/ subtree is scanned
+			// anyway: the Q&A docs `graphify save-result` files there are meant
+			// to become graph content on the next update, and they are
+			// gitignored along with the rest of graphify-out.
+			if slashRel == graphifyOut || inMemoryDir(slashRel) {
+				return nil
+			}
 			if skipDir(d.Name()) || ign.ignored(slashRel, true) {
 				return filepath.SkipDir
 			}
@@ -355,16 +385,27 @@ func CollectFilesReport(root string) (WalkReport, error) {
 		if skipFiles[name] {
 			return nil
 		}
+		if strings.HasPrefix(slashRel, graphifyOut+"/") && !inMemoryDir(slashRel) {
+			return nil // graph.json and friends are output, not source
+		}
 		ext := strings.ToLower(filepath.Ext(name))
 		if !SupportedExtensions[ext] && !mcpConfigFiles[name] {
 			// An extensionless file may still be a script: sniff its first line
 			// for a shebang naming an interpreter that has a Go extractor.
 			if ext != "" || shebangExtOfFile(path) == "" {
 				rep.Skipped++ // seen but no extractor handles this type
+				key := ext
+				if key == "" {
+					key = "(no extension)"
+				}
+				if rep.SkippedExts == nil {
+					rep.SkippedExts = map[string]int{}
+				}
+				rep.SkippedExts[key]++
 				return nil
 			}
 		}
-		if isSensitive(rel) || ign.ignored(slashRel, false) {
+		if isSensitive(rel) || (!inMemoryDir(slashRel) && ign.ignored(slashRel, false)) {
 			return nil
 		}
 		rep.Files = append(rep.Files, rel)

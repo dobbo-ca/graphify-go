@@ -39,9 +39,20 @@ type ImportAlias struct {
 	Local, Imported, ModuleStem, Loc string
 }
 
-// Imp is an unresolved import: File imported the module named Spec.
+// TypeRef is an unresolved supertype reference: the type FromID declared Name
+// as a parent, with Relation "inherits" (extends / base class) or "implements"
+// (interface conformance). Resolve binds Name to a definition the same way a
+// call is bound.
+type TypeRef struct {
+	FromID, Name, Relation, File, Loc string
+}
+
+// Imp is an unresolved import: File imported the module named Spec. TypeOnly
+// marks a TypeScript `import type ...`, which is erased at compile time and so
+// cannot participate in a runtime import cycle.
 type Imp struct {
 	FileID, File, Spec, Loc string
+	TypeOnly                bool
 }
 
 // ModRef is a Terraform module block's source before resolution: the module
@@ -77,6 +88,7 @@ type Result struct {
 	Edges         []model.Edge
 	Defs          []Def
 	Calls         []Call
+	TypeRefs      []TypeRef
 	Imps          []Imp
 	ModRefs       []ModRef
 	NullLabels    []NullLabelRef
@@ -258,9 +270,33 @@ func (b *builder) callMember(callerID, callee, loc string) {
 	b.res.Calls = append(b.res.Calls, Call{CallerID: callerID, Callee: callee, File: b.file, Loc: loc, IsMember: true})
 }
 
-func (b *builder) imp(spec, loc string) {
+// typeRef records a supertype reference for Resolve to bind by name.
+func (b *builder) typeRef(fromID, name, relation, loc string) {
+	if fromID == "" || name == "" {
+		return
+	}
+	b.res.TypeRefs = append(b.res.TypeRefs, TypeRef{FromID: fromID, Name: name, Relation: relation, File: b.file, Loc: loc})
+}
+
+// baseTypeName reduces a supertype's source text to the bare name Resolve can
+// look up: generic/constructor arguments are cut (`Foo<Bar>`, `A[int]`, `P(x)`
+// -> `Foo`, `A`, `P`) and a qualified path keeps its last segment (`p.q.A` -> `A`).
+func baseTypeName(text string) string {
+	if i := strings.IndexAny(text, "<[("); i >= 0 {
+		text = text[:i]
+	}
+	if i := strings.LastIndex(text, "."); i >= 0 {
+		text = text[i+1:]
+	}
+	return strings.TrimSpace(text)
+}
+
+func (b *builder) imp(spec, loc string) { b.impTyped(spec, loc, false) }
+
+// impTyped is imp with an explicit type-only flag (TypeScript `import type`).
+func (b *builder) impTyped(spec, loc string, typeOnly bool) {
 	if spec != "" {
-		b.res.Imps = append(b.res.Imps, Imp{FileID: b.fileID, File: b.file, Spec: spec, Loc: loc})
+		b.res.Imps = append(b.res.Imps, Imp{FileID: b.fileID, File: b.file, Spec: spec, Loc: loc, TypeOnly: typeOnly})
 	}
 }
 

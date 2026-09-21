@@ -5,7 +5,9 @@
 package query
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -17,32 +19,77 @@ import (
 
 // Graph is a loaded graph.json.
 type Graph struct {
-	Nodes []Node `json:"nodes"`
-	Links []Link `json:"links"`
+	Nodes []Node     `json:"nodes"`
+	Links []Link     `json:"links"`
+	Attrs GraphAttrs `json:"graph"`
 
 	byID map[string]*Node
 	adj  map[string]map[string]bool
 	edge map[[2]string]*Link // directed (source,target) -> link, for relation lookup
 }
 
+// GraphAttrs mirrors graph.json's graph-level attribute dict. It carries the
+// corpus-coverage counters the build recorded: files walked past because no
+// extractor handles their type.
+type GraphAttrs struct {
+	UnclassifiedFiles int            `json:"unclassified_files"`
+	UnclassifiedExts  map[string]int `json:"unclassified_extensions"`
+}
+
+// UnclassifiedSummary reports how many files the build saw but could not
+// classify, naming the three biggest extensions, so a consumer can judge
+// whether the graph covers enough of the repo to trust. It returns "" when the
+// corpus was fully classified (or was built before this was recorded).
+func (g *Graph) UnclassifiedSummary() string {
+	if g.Attrs.UnclassifiedFiles == 0 {
+		return ""
+	}
+	exts := make([]string, 0, len(g.Attrs.UnclassifiedExts))
+	for e := range g.Attrs.UnclassifiedExts {
+		exts = append(exts, e)
+	}
+	sort.Slice(exts, func(i, j int) bool {
+		a, b := g.Attrs.UnclassifiedExts[exts[i]], g.Attrs.UnclassifiedExts[exts[j]]
+		if a != b {
+			return a > b
+		}
+		return exts[i] < exts[j]
+	})
+	if len(exts) > 3 {
+		exts = exts[:3]
+	}
+	line := fmt.Sprintf("Unclassified: %d file(s) no extractor handles", g.Attrs.UnclassifiedFiles)
+	if len(exts) == 0 {
+		return line
+	}
+	parts := make([]string, len(exts))
+	for i, e := range exts {
+		parts[i] = fmt.Sprintf("%s %d", security.SanitizeLabel(e), g.Attrs.UnclassifiedExts[e])
+	}
+	return line + " (" + strings.Join(parts, ", ") + ")"
+}
+
 // Node mirrors a graph.json node.
 type Node struct {
-	ID             string `json:"id"`
-	Label          string `json:"label"`
-	FileType       string `json:"file_type"`
-	SourceFile     string `json:"source_file"`
-	SourceLocation string `json:"source_location"`
-	Community      *int   `json:"community"`
-	NormLabel      string `json:"norm_label"`
-	ComputedName   string `json:"computed_name"`
+	ID             string            `json:"id"`
+	Label          string            `json:"label"`
+	FileType       string            `json:"file_type"`
+	SourceFile     string            `json:"source_file"`
+	SourceLocation string            `json:"source_location"`
+	Community      *int              `json:"community"`
+	NormLabel      string            `json:"norm_label"`
+	ComputedName   string            `json:"computed_name"`
+	Attributes     map[string]string `json:"attributes"`
 }
 
 // Link mirrors a graph.json edge.
 type Link struct {
-	Source     string `json:"source"`
-	Target     string `json:"target"`
-	Relation   string `json:"relation"`
-	Confidence string `json:"confidence"`
+	Source         string `json:"source"`
+	Target         string `json:"target"`
+	Relation       string `json:"relation"`
+	Confidence     string `json:"confidence"`
+	SourceFile     string `json:"source_file"`
+	SourceLocation string `json:"source_location"`
 }
 
 // Load reads and validates a graph.json at path. The path must resolve inside a
@@ -55,6 +102,9 @@ func Load(path string) (*Graph, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Strip a UTF-8 BOM: some editors/Windows tooling prepend one and
+	// encoding/json rejects it outright.
+	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
 	var g Graph
 	if err := json.Unmarshal(data, &g); err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
@@ -105,9 +155,12 @@ func Query(g *Graph, pattern string) ([]Match, error) {
 	return out, nil
 }
 
-// Neighbor is an adjacent node in a given direction.
+// Neighbor is an adjacent node in a given direction. Degree is the neighbour's
+// own undirected degree, and File its source file, so callers can rank a
+// high-degree node's connections and group the ones they cut.
 type Neighbor struct {
-	ID, Label, Relation, Direction, Location string
+	ID, Label, Relation, Direction, Location, File string
+	Degree                                         int
 }
 
 // Explanation is a node plus its grouped neighbours.
@@ -120,7 +173,10 @@ type Explanation struct {
 // (-> outgoing, <- incoming). id may be a full node ID or a label substring with
 // a unique match.
 func Explain(g *Graph, id string) (*Explanation, error) {
-	n := g.resolve(id)
+	n, err := g.resolve(id)
+	if err != nil {
+		return nil, err
+	}
 	if n == nil {
 		return nil, fmt.Errorf("no node matching %q", id)
 	}
@@ -136,43 +192,40 @@ func Explain(g *Graph, id string) (*Explanation, error) {
 			continue
 		}
 		o := g.byID[other]
-		label, location := other, ""
+		label, location, file := other, "", ""
 		if o != nil {
-			label, location = o.Label, loc(o)
+			label, location, file = o.Label, loc(o), o.SourceFile
 		}
-		nbrs = append(nbrs, Neighbor{ID: other, Label: label, Relation: l.Relation, Direction: dir, Location: location})
+		// Prefer the traversed edge's own call site over the neighbour's
+		// definition line: "who calls this and where" wants the call site.
+		if el := edgeLoc(l); el != "" {
+			location = el
+		}
+		nbrs = append(nbrs, Neighbor{ID: other, Label: label, Relation: l.Relation,
+			Direction: dir, Location: location, File: file, Degree: len(g.adj[other])})
 	}
+	// Most-connected neighbours first, so a caller showing only the head of the
+	// list keeps the important ones; (relation, label, direction) breaks ties
+	// deterministically.
 	sort.Slice(nbrs, func(i, j int) bool {
-		if nbrs[i].Relation != nbrs[j].Relation {
-			return nbrs[i].Relation < nbrs[j].Relation
+		a, b := nbrs[i], nbrs[j]
+		switch {
+		case a.Degree != b.Degree:
+			return a.Degree > b.Degree
+		case a.Relation != b.Relation:
+			return a.Relation < b.Relation
+		case a.Label != b.Label:
+			return a.Label < b.Label
+		default:
+			return a.Direction < b.Direction
 		}
-		return nbrs[i].Label < nbrs[j].Label
 	})
 	return &Explanation{Node: n, Neighbors: nbrs}, nil
 }
 
-// Path returns the shortest path (by node labels/ids) between two nodes via BFS
-// on the undirected graph, or an error if no path exists.
-func Path(g *Graph, from, to string) ([]Node, error) {
-	a, b := g.resolve(from), g.resolve(to)
-	if a == nil {
-		return nil, fmt.Errorf("no node matching %q", from)
-	}
-	if b == nil {
-		return nil, fmt.Errorf("no node matching %q", to)
-	}
-	ids, ok := g.bfsPath(a.ID, b.ID)
-	if !ok {
-		return nil, fmt.Errorf("no path between %q and %q", a.Label, b.Label)
-	}
-	out := make([]Node, 0, len(ids))
-	for _, id := range ids {
-		if n := g.byID[id]; n != nil {
-			out = append(out, *n)
-		}
-	}
-	return out, nil
-}
+// ErrNoDirectedPath is wrapped by PathEdges when a directed search finds
+// no route; callers surface their own "retry undirected" hint.
+var ErrNoDirectedPath = errors.New("no directed path")
 
 // PathEdge annotates one step of a shortest path: the relation and confidence
 // of the edge traversed to reach the step's node, and whether that edge is
@@ -213,15 +266,22 @@ func (e *MaxHopsError) Error() string {
 	return fmt.Sprintf("path exceeds max_hops=%d (%d hops found)", e.MaxHops, e.Hops)
 }
 
-// PathEdges resolves from/to and returns the shortest undirected path between
-// them annotated with each traversed edge's relation and confidence. It uses
-// the same resolve() semantics as Path. When both queries resolve to the same
+// PathEdges resolves from/to and returns the shortest path between them
+// annotated with each traversed edge's relation and confidence, following edge
+// direction unless undirected is set. When both queries resolve to the same
 // node it returns a *SameNodeError; when the path is longer than maxHops (and
 // maxHops > 0) it returns a *MaxHopsError.
-func PathEdges(g *Graph, from, to string, maxHops int) (*PathResult, error) {
-	a, b := g.resolve(from), g.resolve(to)
+func PathEdges(g *Graph, from, to string, maxHops int, undirected bool) (*PathResult, error) {
+	a, err := g.resolve(from)
+	if err != nil {
+		return nil, err
+	}
 	if a == nil {
 		return nil, fmt.Errorf("no node matching %q", from)
+	}
+	b, err := g.resolve(to)
+	if err != nil {
+		return nil, err
 	}
 	if b == nil {
 		return nil, fmt.Errorf("no node matching %q", to)
@@ -229,9 +289,9 @@ func PathEdges(g *Graph, from, to string, maxHops int) (*PathResult, error) {
 	if a.ID == b.ID {
 		return nil, &SameNodeError{From: from, To: to, ID: a.ID}
 	}
-	ids, ok := g.bfsPath(a.ID, b.ID)
+	ids, ok := g.bfsPath(a.ID, b.ID, undirected)
 	if !ok {
-		return nil, fmt.Errorf("no path between %q and %q", a.Label, b.Label)
+		return nil, noPathErr(a, b, undirected)
 	}
 	if hops := len(ids) - 1; maxHops > 0 && hops > maxHops {
 		return nil, &MaxHopsError{MaxHops: maxHops, Hops: hops}
@@ -260,9 +320,19 @@ func PathEdges(g *Graph, from, to string, maxHops int) (*PathResult, error) {
 	return res, nil
 }
 
-// bfsPath returns the node IDs on a shortest undirected path from aID to bID
-// (inclusive, ordered from->to), or ok=false when none exists.
-func (g *Graph) bfsPath(aID, bID string) ([]string, bool) {
+// noPathErr reports a failed search, wrapping ErrNoDirectedPath when the search
+// followed edge direction so callers can offer the undirected retry.
+func noPathErr(a, b *Node, undirected bool) error {
+	if undirected {
+		return fmt.Errorf("no path between %q and %q", a.Label, b.Label)
+	}
+	return fmt.Errorf("%w between %q and %q", ErrNoDirectedPath, a.Label, b.Label)
+}
+
+// bfsPath returns the node IDs on a shortest path from aID to bID (inclusive,
+// ordered from->to), or ok=false when none exists. It follows edge direction
+// unless undirected is set.
+func (g *Graph) bfsPath(aID, bID string, undirected bool) ([]string, bool) {
 	prev := map[string]string{aID: ""}
 	queue := []string{aID}
 	for len(queue) > 0 {
@@ -277,6 +347,9 @@ func (g *Graph) bfsPath(aID, bID string) ([]string, bool) {
 		}
 		sort.Strings(nbrs)
 		for _, nb := range nbrs {
+			if !undirected && g.edge[[2]string{cur, nb}] == nil {
+				continue // edge points nb -> cur; not traversable directed
+			}
 			if _, seen := prev[nb]; !seen {
 				prev[nb] = cur
 				queue = append(queue, nb)
@@ -296,29 +369,116 @@ func (g *Graph) bfsPath(aID, bID string) ([]string, bool) {
 	return ids, true
 }
 
-// resolve finds a node by exact ID, then exact (case-insensitive) label, then a
-// unique case-insensitive label or ID substring.
-func (g *Graph) resolve(s string) *Node {
-	if n, ok := g.byID[s]; ok {
-		return n
+// AmbiguousError is returned by resolve when a query matches more than one
+// node, so answering would mean guessing.
+type AmbiguousError struct {
+	Query      string
+	Candidates []string // "label (file:line)" per match, capped
+	More       int      // matches omitted from Candidates
+}
+
+func (e *AmbiguousError) Error() string {
+	msg := fmt.Sprintf("%q is ambiguous, matches: %s", e.Query, strings.Join(e.Candidates, ", "))
+	if e.More > 0 {
+		msg += fmt.Sprintf(" (and %d more)", e.More)
 	}
-	low := strings.ToLower(s)
-	for i := range g.Nodes {
-		if strings.ToLower(g.Nodes[i].Label) == low {
-			return &g.Nodes[i]
+	return msg + "; disambiguate with path/to/file::Symbol or the exact node ID"
+}
+
+// maxCandidates caps how many matches an AmbiguousError lists.
+const maxCandidates = 10
+
+// ambiguous builds an *AmbiguousError from more than one matching node. total
+// is the number of matches before capping; it equals len(hits) unless the
+// caller already capped hits itself. Candidates are sanitized here, at the
+// point the message is built, so every caller (CLI and MCP) inherits the
+// guard without needing to re-sanitize the assembled message.
+func ambiguous(s string, hits []*Node, total int) *AmbiguousError {
+	e := &AmbiguousError{Query: security.SanitizeLabel(s)}
+	for _, n := range hits {
+		if len(e.Candidates) == maxCandidates {
+			break
+		}
+		c := n.Label
+		if l := loc(n); l != "" {
+			c += " (" + l + ")"
+		}
+		e.Candidates = append(e.Candidates, security.SanitizeLabel(c))
+	}
+	if total > maxCandidates {
+		e.More = total - maxCandidates
+	}
+	return e
+}
+
+// resolve finds a node by exact ID, then by a path::Symbol qualifier, then by
+// exact (case-insensitive) label, then by a case-insensitive label or ID
+// substring. Matching more than one node at any tier is an *AmbiguousError
+// rather than an arbitrary pick; matching none returns (nil, nil).
+func (g *Graph) resolve(s string) (*Node, error) {
+	if n, ok := g.byID[s]; ok {
+		return n, nil
+	}
+	if i := strings.LastIndex(s, "::"); i > 0 && i+2 < len(s) {
+		path, sym := strings.ToLower(s[:i]), strings.ToLower(s[i+2:])
+		var hits []*Node
+		for j := range g.Nodes {
+			n := &g.Nodes[j]
+			sf := strings.ToLower(n.SourceFile)
+			if strings.ToLower(n.Label) == sym && (sf == path || strings.HasSuffix(sf, "/"+path)) {
+				hits = append(hits, n)
+			}
+		}
+		if len(hits) > 0 {
+			if len(hits) > 1 {
+				return nil, ambiguous(s, hits, len(hits))
+			}
+			return hits[0], nil
 		}
 	}
-	var hit *Node
+	low := strings.ToLower(s)
+	if low == "" {
+		return nil, nil
+	}
+	var exact []*Node
+	for i := range g.Nodes {
+		if strings.ToLower(g.Nodes[i].Label) == low {
+			exact = append(exact, &g.Nodes[i])
+		}
+	}
+	if len(exact) > 0 {
+		if len(exact) > 1 {
+			return nil, ambiguous(s, exact, len(exact))
+		}
+		return exact[0], nil
+	}
+	var subs []*Node
+	total := 0
 	for i := range g.Nodes {
 		n := &g.Nodes[i]
 		if strings.Contains(strings.ToLower(n.Label), low) || strings.Contains(strings.ToLower(n.ID), low) {
-			if hit != nil {
-				return nil // ambiguous
+			total++
+			if len(subs) < maxCandidates {
+				subs = append(subs, n)
 			}
-			hit = n
 		}
 	}
-	return hit
+	switch total {
+	case 0:
+		return nil, nil
+	case 1:
+		return subs[0], nil
+	default:
+		return nil, ambiguous(s, subs, total)
+	}
+}
+
+// edgeLoc formats the call site an edge was extracted from, if it has one.
+func edgeLoc(l Link) string {
+	if l.SourceLocation == "" || l.SourceFile == "" {
+		return ""
+	}
+	return l.SourceFile + ":" + strings.TrimPrefix(l.SourceLocation, "L")
 }
 
 func loc(n *Node) string {

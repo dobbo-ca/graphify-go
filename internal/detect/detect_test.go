@@ -3,6 +3,7 @@ package detect
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -221,6 +222,12 @@ func TestCollectFilesReportCountsSkipped(t *testing.T) {
 	if len(rep.Files) != 1 || filepath.ToSlash(rep.Files[0]) != "main.go" {
 		t.Errorf("expected only main.go collected, got %v", rep.Files)
 	}
+	// The per-extension breakdown names the offending types, so a report can say
+	// *what* the uncovered corpus is written in, not just how much of it there is.
+	want := map[string]int{".unknownext": 1, ".png": 1, "(no extension)": 1}
+	if !reflect.DeepEqual(rep.SkippedExts, want) {
+		t.Errorf("SkippedExts = %v, want %v", rep.SkippedExts, want)
+	}
 }
 
 // .mts/.cts are TypeScript module/CommonJS source and must be collected, while
@@ -325,5 +332,56 @@ func mustWrite(t *testing.T, path, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// graphify-out is generated output and stays out of the graph — except its
+// memory/ subtree, where `graphify save-result` files Q&A docs precisely so the
+// next update graphs them. The exception must survive the gitignore rule that
+// normally covers the whole output dir.
+func TestCollectFilesIncludesMemoryDir(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, ".gitignore"), "graphify-out/\n")
+	mustWrite(t, filepath.Join(root, "main.go"), "package main")
+	mustWrite(t, filepath.Join(root, "graphify-out", "graph.json"), `{"nodes":[]}`)
+	mustWrite(t, filepath.Join(root, "graphify-out", "raw", "notes.md"), "# raw")
+	mustWrite(t, filepath.Join(root, "graphify-out", "memory", "query_1_ab_q.md"), "---\ntype: \"query\"\n---\n\n# Q: q")
+
+	files, err := CollectFiles(root)
+	if err != nil {
+		t.Fatalf("CollectFiles: %v", err)
+	}
+	var got []string
+	for _, f := range files {
+		got = append(got, filepath.ToSlash(f))
+	}
+	want := map[string]bool{"main.go": true, "graphify-out/memory/query_1_ab_q.md": true}
+	for _, f := range got {
+		if !want[f] {
+			t.Errorf("unexpected file %q in %v", f, got)
+		}
+		delete(want, f)
+	}
+	for f := range want {
+		t.Errorf("missing file %q in %v", f, got)
+	}
+}
+
+// A renamed out directory (GRAPHIFY_OUT) that lives inside the scanned tree
+// must be skipped like "graphify-out", or the second build ingests the first
+// build's own graph.json/report as source.
+func TestCollectFilesSkipsRenamedGraphifyOut(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "main.go"), "package main\n")
+	mustWrite(t, filepath.Join(root, "gfyout", "graph.json"), `{"nodes":[]}`)
+	mustWrite(t, filepath.Join(root, "gfyout", "GRAPH_REPORT.md"), "# report\n")
+	t.Setenv("GRAPHIFY_OUT", filepath.Join(root, "gfyout"))
+
+	files, err := CollectFiles(root)
+	if err != nil {
+		t.Fatalf("CollectFiles: %v", err)
+	}
+	if len(files) != 1 || filepath.ToSlash(files[0]) != "main.go" {
+		t.Errorf("expected only main.go, got %v", files)
 	}
 }

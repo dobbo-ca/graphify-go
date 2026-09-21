@@ -207,3 +207,162 @@ module "plain" {
 		t.Error("expected module.plain to be untagged")
 	}
 }
+
+// Block attributes are persisted on the node so "which resources run t3.large"
+// is a graph query instead of a file read. Sensitive keys keep the key and
+// redact the value: graph.json is committed in CI, so a hardcoded secret must
+// never reach it.
+func TestExtractTerraformAttributes(t *testing.T) {
+	src := []byte(`resource "aws_instance" "web" {
+  instance_type = "t3.large"
+  count         = 2
+  monitoring    = true
+  ami           = var.ami_id
+  vpc_security_group_ids = ["sg-1", "sg-2"]
+  tags = {
+    Name = "web"
+  }
+  db_password = "hunter2"
+}
+
+locals {
+  x = "y"
+}
+`)
+	res := FileFromBytes("main.tf", src)
+	var got map[string]string
+	for _, n := range res.Nodes {
+		if n.Label == "aws_instance.web" {
+			got = n.Attributes
+		}
+		if n.Label == "local.x" && n.Attributes != nil {
+			t.Errorf("locals entries must not carry attributes, got %v", n.Attributes)
+		}
+	}
+	if got == nil {
+		t.Fatal("aws_instance.web has no attributes")
+	}
+	want := map[string]string{
+		"instance_type":          "t3.large",
+		"count":                  "2",
+		"monitoring":             "true",
+		"ami":                    "var.ami_id",
+		"vpc_security_group_ids": "sg-1, sg-2",
+		"db_password":            redactedValue,
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("attribute %q = %q, want %q", k, got[k], v)
+		}
+	}
+	if v, ok := got["tags"]; ok {
+		t.Errorf("nested object attribute should be dropped, got tags=%q", v)
+	}
+}
+
+// Redaction is keyed on the attribute NAME, so every common secret spelling is
+// caught regardless of where it appears.
+func TestExtractTerraformAttributeRedaction(t *testing.T) {
+	src := []byte(`resource "x" "y" {
+  db_password           = "p"
+  aws_secret_access_key = "s"
+  client_secret         = "c"
+  api_key               = "k"
+  connection_string     = "conn"
+  ami                   = "ami-123"
+}
+`)
+	res := FileFromBytes("main.tf", src)
+	var got map[string]string
+	for _, n := range res.Nodes {
+		if n.Label == "x.y" {
+			got = n.Attributes
+		}
+	}
+	for _, k := range []string{"db_password", "aws_secret_access_key", "client_secret", "api_key", "connection_string"} {
+		if got[k] != redactedValue {
+			t.Errorf("attribute %q = %q, want %q", k, got[k], redactedValue)
+		}
+	}
+	if got["ami"] != "ami-123" {
+		t.Errorf("non-sensitive attribute was lost: ami=%q", got["ami"])
+	}
+
+	// The secret's name can live in the block LABEL, and Terraform's own
+	// `sensitive = true` is the strongest author-declared signal; both must
+	// redact the value-carrying attribute (`default` / `value`).
+	src = []byte(`variable "db_password" {
+  type      = string
+  sensitive = true
+  default   = "hunter2"
+}
+
+output "conn" {
+  sensitive = true
+  value     = "postgres://admin:hunter2@db"
+}
+
+output "api_token" {
+  value = "tok-abc"
+}
+
+resource "aws_instance" "web" {
+  instance_type = "t3.large"
+  user_data     = <<-EOT
+    #!/bin/bash
+    export AWS_SECRET=AKIAhunter2SECRET
+  EOT
+}
+`)
+	res = FileFromBytes("main.tf", src)
+	byLabel := map[string]map[string]string{}
+	for _, n := range res.Nodes {
+		byLabel[n.Label] = n.Attributes
+	}
+	for _, c := range []struct{ label, key string }{
+		{"var.db_password", "default"},
+		{"output.conn", "value"},
+		{"output.api_token", "value"},
+	} {
+		if v := byLabel[c.label][c.key]; v != redactedValue {
+			t.Errorf("%s.%s = %q, want %q", c.label, c.key, v, redactedValue)
+		}
+	}
+	// A sensitive block redacts every value, not just the obvious one.
+	if v := byLabel["var.db_password"]["type"]; v != redactedValue {
+		t.Errorf("var.db_password type = %q, want %q", v, redactedValue)
+	}
+	if v, ok := byLabel["aws_instance.web"]["user_data"]; ok {
+		t.Errorf("bootstrap script must be dropped, got user_data=%q", v)
+	}
+	if v := byLabel["aws_instance.web"]["instance_type"]; v != "t3.large" {
+		t.Errorf("instance_type = %q, want t3.large", v)
+	}
+}
+
+// A comment between `=` and the value is a named child of the attribute, so the
+// value must be found by skipping comments — otherwise the comment is stored as
+// the value and `sensitive = true` stops redacting.
+func TestExtractTerraformAttributeCommentBeforeValue(t *testing.T) {
+	src := []byte(`variable "thing" {
+  sensitive = // yes
+    true
+  default = "hunter2"
+}
+
+resource "aws_instance" "web" {
+  instance_type = /* c */ "t3.large"
+}
+`)
+	res := FileFromBytes("main.tf", src)
+	byLabel := map[string]map[string]string{}
+	for _, n := range res.Nodes {
+		byLabel[n.Label] = n.Attributes
+	}
+	if v := byLabel["var.thing"]["default"]; v != redactedValue {
+		t.Errorf("var.thing default = %q, want %q", v, redactedValue)
+	}
+	if v := byLabel["aws_instance.web"]["instance_type"]; v != "t3.large" {
+		t.Errorf("instance_type = %q, want t3.large", v)
+	}
+}

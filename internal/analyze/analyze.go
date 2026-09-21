@@ -15,20 +15,44 @@ import (
 
 // GodNode is a highly-connected core abstraction.
 type GodNode struct {
-	ID     string
-	Label  string
-	Degree int
+	ID     string `json:"id"`
+	Label  string `json:"label"`
+	Degree int    `json:"degree"`
 }
 
 // GodNodes returns the topN most-connected real entities. File-hub nodes,
 // external-dependency/concept nodes, and method stubs are excluded because they
 // accumulate edges mechanically without being meaningful abstractions.
-func GodNodes(g *model.Graph, topN int) []GodNode {
+//
+// excludeHubsPercentile (1-100) additionally suppresses nodes whose degree
+// exceeds that percentile of the degree distribution, using the same threshold
+// computation cluster() applies, so callers can look past the mega-hubs that
+// dominate every ranking. Zero keeps the historical ranking.
+func GodNodes(g *model.Graph, topN, excludeHubsPercentile int) []GodNode {
 	ids := append([]string(nil), g.NodeIDs()...)
+	hubThreshold, hasThreshold := 0, false
+	if excludeHubsPercentile > 0 && len(ids) > 0 {
+		degrees := make([]int, len(ids))
+		for i, id := range ids {
+			degrees[i] = g.Degree(id)
+		}
+		sort.Ints(degrees)
+		idx := len(degrees) * excludeHubsPercentile / 100
+		if idx > 0 {
+			idx--
+		}
+		if idx >= len(degrees) {
+			idx = len(degrees) - 1
+		}
+		hubThreshold, hasThreshold = degrees[idx], true
+	}
 	sort.SliceStable(ids, func(i, j int) bool { return g.Degree(ids[i]) > g.Degree(ids[j]) })
 	var out []GodNode
 	for _, id := range ids {
-		if isFileNode(g, id) || isConceptNode(g, id) {
+		if hasThreshold && g.Degree(id) > hubThreshold {
+			continue
+		}
+		if isFileNode(g, id) || isConceptNode(g, id) || isJSONKeyNode(g, id) {
 			continue
 		}
 		out = append(out, GodNode{ID: id, Label: g.Nodes[id].Label, Degree: g.Degree(id)})
@@ -37,6 +61,25 @@ func GodNodes(g *model.Graph, topN int) []GodNode {
 		}
 	}
 	return out
+}
+
+// jsonNoiseLabels are generic JSON keys (package.json, schemas) that accumulate
+// edges mechanically without naming an abstraction.
+var jsonNoiseLabels = map[string]bool{
+	"start": true, "end": true, "name": true, "id": true, "type": true,
+	"properties": true, "value": true, "key": true, "data": true, "items": true,
+	"title": true, "description": true, "version": true, "dependencies": true,
+	"devdependencies": true, "peerdependencies": true, "optionaldependencies": true,
+	"bundleddependencies": true, "bundledependencies": true,
+}
+
+// isJSONKeyNode reports whether a node is a generic key inside a .json file.
+func isJSONKeyNode(g *model.Graph, id string) bool {
+	n := g.Nodes[id]
+	if !strings.HasSuffix(strings.ToLower(n.SourceFile), ".json") {
+		return false
+	}
+	return jsonNoiseLabels[strings.ToLower(strings.TrimSpace(n.Label))]
 }
 
 // semanticRelations are the LLM-inferred edge relations the enrichment stage
@@ -123,7 +166,9 @@ type Cycle struct {
 func ImportCycles(g *model.Graph, maxLen, topN int) []Cycle {
 	adj := map[string][]string{}
 	for _, e := range g.Edges() {
-		if e.Relation != "imports_from" {
+		// Type-only imports are erased at compile time, so they cannot form a
+		// runtime cycle (upstream find_import_cycles skips them too).
+		if e.Relation != "imports_from" || e.TypeOnly {
 			continue
 		}
 		uf, vf := g.Nodes[e.Source].SourceFile, g.Nodes[e.Target].SourceFile

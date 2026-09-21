@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -68,20 +69,9 @@ func TestExplainNeighbors(t *testing.T) {
 	}
 }
 
-func TestPath(t *testing.T) {
-	g := loadSample(t)
-	p, err := Path(g, "a()", "c()")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(p) != 3 || p[0].Label != "a()" || p[2].Label != "c()" {
-		t.Fatalf("path = %+v, want a->b->c", p)
-	}
-}
-
 func TestPathEdges(t *testing.T) {
 	g := loadSample(t)
-	res, err := PathEdges(g, "a()", "c()", 8)
+	res, err := PathEdges(g, "a()", "c()", 8, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +84,7 @@ func TestPathEdges(t *testing.T) {
 		}
 	}
 	// Reversed query orients both hops backwards against the stored edges.
-	rev, err := PathEdges(g, "c()", "a()", 8)
+	rev, err := PathEdges(g, "c()", "a()", 8, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,9 +95,24 @@ func TestPathEdges(t *testing.T) {
 	}
 }
 
+func TestPathDirectedByDefault(t *testing.T) {
+	g := loadSample(t)
+	// c -> a only exists against the direction of the stored call edges.
+	if _, err := PathEdges(g, "c()", "a()", 8, false); !errors.Is(err, ErrNoDirectedPath) {
+		t.Fatalf("err = %v, want ErrNoDirectedPath", err)
+	}
+	res, err := PathEdges(g, "c()", "a()", 8, true)
+	if err != nil {
+		t.Fatalf("undirected: %v", err)
+	}
+	if len(res.Nodes) != 3 || res.Nodes[0].Label != "c()" || res.Nodes[2].Label != "a()" {
+		t.Fatalf("undirected path = %+v, want c->b->a", res.Nodes)
+	}
+}
+
 func TestPathEdgesSameNode(t *testing.T) {
 	g := loadSample(t)
-	_, err := PathEdges(g, "a()", "a()", 8)
+	_, err := PathEdges(g, "a()", "a()", 8, false)
 	var same *SameNodeError
 	if !errors.As(err, &same) {
 		t.Fatalf("err = %v, want *SameNodeError", err)
@@ -119,12 +124,165 @@ func TestPathEdgesSameNode(t *testing.T) {
 
 func TestPathEdgesMaxHops(t *testing.T) {
 	g := loadSample(t)
-	_, err := PathEdges(g, "a()", "c()", 1)
+	_, err := PathEdges(g, "a()", "c()", 1, false)
 	var over *MaxHopsError
 	if !errors.As(err, &over) {
 		t.Fatalf("err = %v, want *MaxHopsError", err)
 	}
 	if over.MaxHops != 1 || over.Hops != 2 {
 		t.Errorf("got max=%d hops=%d, want max=1 hops=2", over.MaxHops, over.Hops)
+	}
+}
+
+const edgeLocGraph = `{
+  "directed": false, "multigraph": false, "graph": {},
+  "nodes": [
+    {"id":"a_caller","label":"zorkcaller()","file_type":"code","source_file":"a.go","source_location":"L3","community":0,"norm_label":"zorkcaller()"},
+    {"id":"a_target","label":"zorktarget()","file_type":"code","source_file":"a.go","source_location":"L12","community":0,"norm_label":"zorktarget()"},
+    {"id":"a_other","label":"zorkother()","file_type":"code","source_file":"a.go","source_location":"L20","community":0,"norm_label":"zorkother()"}
+  ],
+  "links": [
+    {"source":"a_caller","target":"a_target","relation":"calls","confidence":"EXTRACTED","source_file":"a.go","source_location":"L8"},
+    {"source":"a_other","target":"a_target","relation":"calls","confidence":"INFERRED"}
+  ]
+}`
+
+func TestExplainUsesEdgeCallSite(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(p, []byte(edgeLocGraph), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ex, err := Explain(g, "zorktarget()")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, n := range ex.Neighbors {
+		got[n.Label] = n.Location
+	}
+	// Edge carries the call site: cite it, not the caller's definition line (L3).
+	if got["zorkcaller()"] != "a.go:8" {
+		t.Errorf("caller location = %q, want a.go:8", got["zorkcaller()"])
+	}
+	// Edge has no location: fall back to the neighbour node's own line.
+	if got["zorkother()"] != "a.go:20" {
+		t.Errorf("fallback location = %q, want a.go:20", got["zorkother()"])
+	}
+}
+
+// TestExplainNeighborsDegreeOrdered checks that Explain returns the most
+// connected neighbours first, so a caller capping the list keeps the hubs.
+func TestExplainNeighborsDegreeOrdered(t *testing.T) {
+	g := loadSample(t)
+	ex, err := Explain(g, "b()")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i < len(ex.Neighbors); i++ {
+		if ex.Neighbors[i-1].Degree < ex.Neighbors[i].Degree {
+			t.Fatalf("neighbors not degree-descending: %+v", ex.Neighbors)
+		}
+	}
+	for _, n := range ex.Neighbors {
+		if n.Degree == 0 {
+			t.Errorf("neighbor %q has zero degree", n.Label)
+		}
+	}
+}
+
+const dupGraph = `{
+  "directed": false, "multigraph": false, "graph": {},
+  "nodes": [
+    {"id":"p_foo","label":"Foo()","file_type":"code","source_file":"pkg/p.go","source_location":"L3","norm_label":"Foo()"},
+    {"id":"q_foo","label":"Foo()","file_type":"code","source_file":"pkg/q.go","source_location":"L9","norm_label":"Foo()"}
+  ],
+  "links": []
+}`
+
+func loadDup(t *testing.T) *Graph {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(p, []byte(dupGraph), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return g
+}
+
+func TestExplainAmbiguousLabel(t *testing.T) {
+	g := loadDup(t)
+	_, err := Explain(g, "Foo()")
+	var amb *AmbiguousError
+	if !errors.As(err, &amb) {
+		t.Fatalf("err = %v, want *AmbiguousError", err)
+	}
+	if len(amb.Candidates) != 2 {
+		t.Fatalf("candidates = %v, want 2", amb.Candidates)
+	}
+	for _, want := range []string{"pkg/p.go:3", "pkg/q.go:9"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing candidate %s", err.Error(), want)
+		}
+	}
+}
+
+func TestExplainPathQualifierSelectsOne(t *testing.T) {
+	g := loadDup(t)
+	ex, err := Explain(g, "pkg/q.go::Foo()")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ex.Node.ID != "q_foo" {
+		t.Errorf("node = %q, want q_foo", ex.Node.ID)
+	}
+}
+
+func TestPathEdgesAmbiguous(t *testing.T) {
+	g := loadDup(t)
+	_, err := PathEdges(g, "Foo()", "pkg/q.go::Foo()", 0, false)
+	var amb *AmbiguousError
+	if !errors.As(err, &amb) {
+		t.Fatalf("err = %v, want *AmbiguousError", err)
+	}
+}
+
+const suffixGraph = `{
+  "directed": false, "multigraph": false, "graph": {},
+  "nodes": [
+    {"id":"h_new","label":"New()","file_type":"code","source_file":"pkg/x/req_handler.go","source_location":"L3","norm_label":"New()"}
+  ],
+  "links": []
+}`
+
+func TestResolveEmptyQueryNoMatch(t *testing.T) {
+	g := loadSample(t)
+	n, err := g.resolve("")
+	if n != nil || err != nil {
+		t.Fatalf("resolve(\"\") = (%v, %v), want (nil, nil)", n, err)
+	}
+}
+
+func TestExplainPathQualifierNeedsBoundary(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(p, []byte(suffixGraph), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// "handler.go" is not a path-boundary suffix of "pkg/x/req_handler.go".
+	if _, err := Explain(g, "handler.go::New()"); err == nil {
+		t.Fatal("err = nil, want no-match error")
+	}
+	if _, err := Explain(g, "x/req_handler.go::New()"); err != nil {
+		t.Fatalf("err = %v, want match", err)
 	}
 }

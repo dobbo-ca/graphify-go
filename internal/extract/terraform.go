@@ -2,6 +2,7 @@ package extract
 
 import (
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	tshcl "github.com/tree-sitter-grammars/tree-sitter-hcl/bindings/go"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
+	"github.com/dobbo-ca/graphify-go/internal/security"
 )
 
 // extractTerraform pulls Terraform/HCL blocks and the references between them.
@@ -91,15 +93,18 @@ func extractTerraform(rel string, src []byte) Result {
 		}
 		btype, labels, bbody := tfBlock(b, src)
 		loc := line(b)
+		owner := ""
 		switch btype {
 		case "resource":
 			if len(labels) >= 2 {
-				refsFrom(def(labels[0]+"."+labels[1], labels[0]+"."+labels[1], loc), bbody)
+				owner = def(labels[0]+"."+labels[1], labels[0]+"."+labels[1], loc)
+				refsFrom(owner, bbody)
 			}
 		case "data":
 			if len(labels) >= 2 {
 				a := "data." + labels[0] + "." + labels[1]
-				refsFrom(def(a, a, loc), bbody)
+				owner = def(a, a, loc)
+				refsFrom(owner, bbody)
 			}
 		case "module":
 			if len(labels) >= 1 {
@@ -114,6 +119,7 @@ func extractTerraform(rel string, src []byte) Result {
 					computed = composeID(in)
 				}
 				id := defNode(addr, label, loc, computed)
+				owner = id
 				refsFrom(id, bbody)
 				if s != "" {
 					res.ModRefs = append(res.ModRefs, ModRef{FromID: id, Source: s, File: rel, Loc: loc})
@@ -133,15 +139,16 @@ func extractTerraform(rel string, src []byte) Result {
 			}
 		case "variable":
 			if len(labels) >= 1 {
-				def("var."+labels[0], "var."+labels[0], loc)
+				owner = def("var."+labels[0], "var."+labels[0], loc)
 			}
 		case "output":
 			if len(labels) >= 1 {
-				refsFrom(def("output."+labels[0], "output."+labels[0], loc), bbody)
+				owner = def("output."+labels[0], "output."+labels[0], loc)
+				refsFrom(owner, bbody)
 			}
 		case "provider":
 			if len(labels) >= 1 {
-				def("provider."+labels[0], "provider."+labels[0], loc)
+				owner = def("provider."+labels[0], "provider."+labels[0], loc)
 			}
 		case "locals":
 			if bbody == nil {
@@ -159,8 +166,152 @@ func extractTerraform(rel string, src []byte) Result {
 				refsFrom(def("local."+key, "local."+key, line(a)), a)
 			}
 		}
+		if attrs := blockAttributes(bbody, src, labels); owner != "" && attrs != nil {
+			for i := range res.Nodes {
+				if res.Nodes[i].ID == owner {
+					res.Nodes[i].Attributes = attrs
+					break
+				}
+			}
+		}
 	}
 	return res
+}
+
+// maxAttributes caps how many attributes one block contributes, mirroring
+// upstream's _METADATA_MAX_ATTRIBUTES / _METADATA_MAX_LIST_ITEMS. Value length
+// is capped by security.SanitizeLabel.
+const (
+	maxAttributes = 100
+	maxListItems  = 50
+)
+
+// sensitiveKeyRe matches attribute keys whose VALUE must never reach graph.json
+// — this repo commits that artifact in CI, so a hardcoded `db_password` in a
+// .tf would land in the tree and in an agent's context. The key survives
+// redaction so `instance_type`/`ami` queries still work and a reader can still
+// see THAT a secret is set. Mirrors upstream _SENSITIVE_KEY_RE.
+var sensitiveKeyRe = regexp.MustCompile(`(?i)(password|passwd|secret|token|api[-_]?key|access[-_]?key|private[-_]?key|credential|client[-_]?secret|connection[-_]?string|sas[-_]?token|auth|passphrase)`)
+
+const redactedValue = "[redacted]"
+
+// scriptKeys are bootstrap-script attributes: multi-line shell / cloud-init
+// bodies with no query value that routinely carry a hardcoded credential.
+// They are dropped outright rather than truncated.
+var scriptKeys = map[string]bool{
+	"user_data":                   true,
+	"user_data_base64":            true,
+	"user_data_replace_on_change": true,
+	"custom_data":                 true,
+	"metadata_startup_script":     true,
+}
+
+// blockAttributes reads a block body's direct attributes into a flat
+// key -> value map for search. Nested objects are dropped (the flat map cannot
+// hold them); sensitive keys keep the key and redact the value. A block is
+// sensitive as a whole when one of its labels reads as a secret name
+// (variable "db_password" carries its value in `default`) or when it declares
+// Terraform's own `sensitive = true`.
+func blockAttributes(body *ts.Node, src []byte, labels []string) map[string]string {
+	if body == nil {
+		return nil
+	}
+	blockSensitive := false
+	for _, l := range labels {
+		if sensitiveKeyRe.MatchString(l) {
+			blockSensitive = true
+		}
+	}
+	for i := uint(0); i < body.ChildCount() && !blockSensitive; i++ {
+		a := body.Child(i)
+		if a == nil || a.Kind() != "attribute" || a.NamedChildCount() < 2 {
+			continue
+		}
+		if tfChild(a, "identifier", src) == "sensitive" && attrValue(attrValueNode(a), src) == "true" {
+			blockSensitive = true
+		}
+	}
+	attrs := map[string]string{}
+	for i := uint(0); i < body.ChildCount(); i++ {
+		a := body.Child(i)
+		if a == nil || a.Kind() != "attribute" {
+			continue
+		}
+		key := tfChild(a, "identifier", src)
+		if key == "" || a.NamedChildCount() < 2 {
+			continue
+		}
+		switch {
+		case scriptKeys[key]:
+			continue
+		case (blockSensitive && key != "sensitive") || sensitiveKeyRe.MatchString(key):
+			attrs[key] = redactedValue
+		default:
+			v := attrValue(attrValueNode(a), src)
+			if v == "" {
+				continue
+			}
+			attrs[key] = v
+		}
+		if len(attrs) >= maxAttributes {
+			break
+		}
+	}
+	if len(attrs) == 0 {
+		return nil
+	}
+	return attrs
+}
+
+// attrValueNode returns an attribute's value expression: its first named child
+// after the identifier that is not a comment (a comment between `=` and the
+// value is itself a named child, so index 1 is not reliably the expression).
+func attrValueNode(a *ts.Node) *ts.Node {
+	for i := uint(1); i < a.NamedChildCount(); i++ {
+		c := a.NamedChild(i)
+		if c != nil && c.Kind() != "comment" {
+			return c
+		}
+	}
+	return nil
+}
+
+// attrValue renders an attribute value expression as one string: a literal
+// string as its text, a literal tuple as its elements joined by ", ", and
+// anything else (numbers, bools, var refs, interpolations, function calls) as
+// its raw source text. Objects yield "" and are dropped by the caller.
+func attrValue(e *ts.Node, src []byte) string {
+	cur := e
+	for cur != nil && cur.NamedChildCount() == 1 {
+		switch cur.Kind() {
+		case "expression", "literal_value", "collection_value":
+			cur = cur.NamedChild(0)
+			continue
+		}
+		break
+	}
+	if cur == nil {
+		return ""
+	}
+	switch cur.Kind() {
+	case "string_lit":
+		return security.SanitizeLabel(stringLitText(cur, src))
+	case "object":
+		return ""
+	case "tuple":
+		var items []string
+		for i := uint(0); i < cur.NamedChildCount() && len(items) < maxListItems; i++ {
+			el := cur.NamedChild(i)
+			if el == nil || el.Kind() != "expression" { // skips tuple_start/tuple_end
+				continue
+			}
+			if v := attrValue(el, src); v != "" {
+				items = append(items, v)
+			}
+		}
+		return strings.Join(items, ", ")
+	}
+	return security.SanitizeLabel(strings.TrimSpace(cur.Utf8Text(src)))
 }
 
 // listSep joins/splits a list value carried inside a segVal (Args holds scalars

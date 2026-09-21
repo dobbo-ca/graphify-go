@@ -49,12 +49,12 @@ func enrich(root string, ext model.Extraction, opts semanticOpts) (model.Extract
 		return ext, nil
 	}
 
-	prev := loadSemanticCache(filepath.Join(root, "graphify-out", semanticCacheFile))
+	prev := loadSemanticCache(filepath.Join(outDirFor(root), semanticCacheFile))
 	out, newCache, err := semantic.Enrich(ctx, semantic.Config{Backend: backend}, ext, notes, prev)
 	if err != nil {
 		return ext, err
 	}
-	if err := saveSemanticCache(filepath.Join(root, "graphify-out", semanticCacheFile), newCache); err != nil {
+	if err := saveSemanticCache(filepath.Join(outDirFor(root), semanticCacheFile), newCache); err != nil {
 		// A cache-write failure is non-fatal: the enrichment is already in the
 		// graph; we just won't get the incremental token savings next run.
 		fmt.Fprintf(os.Stderr, "  semantic: cache not saved (%v)\n", err)

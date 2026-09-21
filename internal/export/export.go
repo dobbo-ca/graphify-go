@@ -17,7 +17,9 @@ import (
 	"golang.org/x/text/unicode/norm"
 
 	"github.com/dobbo-ca/graphify-go/internal/cluster"
+	"github.com/dobbo-ca/graphify-go/internal/fsutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
+	"github.com/dobbo-ca/graphify-go/internal/security"
 )
 
 var confidenceScore = map[string]float64{"EXTRACTED": 1.0, "INFERRED": 0.5, "AMBIGUOUS": 0.2}
@@ -35,14 +37,15 @@ var ErrGraphShrink = errors.New("refusing to overwrite graph.json with a smaller
 var ErrGraphUnverifiable = errors.New("refusing to overwrite unparseable graph.json")
 
 type jsonNode struct {
-	ID             string `json:"id"`
-	Label          string `json:"label"`
-	FileType       string `json:"file_type"`
-	SourceFile     string `json:"source_file"`
-	SourceLocation string `json:"source_location,omitempty"`
-	Community      *int   `json:"community"`
-	NormLabel      string `json:"norm_label"`
-	ComputedName   string `json:"computed_name,omitempty"`
+	ID             string            `json:"id"`
+	Label          string            `json:"label"`
+	FileType       string            `json:"file_type"`
+	SourceFile     string            `json:"source_file"`
+	SourceLocation string            `json:"source_location,omitempty"`
+	Community      *int              `json:"community"`
+	NormLabel      string            `json:"norm_label"`
+	ComputedName   string            `json:"computed_name,omitempty"`
+	Attributes     map[string]string `json:"attributes,omitempty"`
 }
 
 type jsonLink struct {
@@ -56,10 +59,18 @@ type jsonLink struct {
 	ConfidenceScore float64 `json:"confidence_score"`
 }
 
+// graphAttrs holds the graph-level attributes stored under graph.json's "graph"
+// key (networkx's G.graph dict). It records corpus coverage: how many files the
+// walk saw that no extractor handles, and which extensions they were.
+type graphAttrs struct {
+	UnclassifiedFiles int            `json:"unclassified_files"`
+	UnclassifiedExts  map[string]int `json:"unclassified_extensions,omitempty"`
+}
+
 type jsonGraph struct {
 	Directed      bool       `json:"directed"`
 	Multigraph    bool       `json:"multigraph"`
-	Graph         struct{}   `json:"graph"`
+	Graph         graphAttrs `json:"graph"`
 	Nodes         []jsonNode `json:"nodes"`
 	Links         []jsonLink `json:"links"`
 	Hyperedges    []any      `json:"hyperedges"`
@@ -86,6 +97,13 @@ func ToJSON(g *model.Graph, communities map[int][]string, path, builtAtCommit st
 	var out jsonGraph
 	out.Hyperedges = []any{}
 	out.BuiltAtCommit = builtAtCommit
+	for ext, n := range g.Unclassified {
+		if out.Graph.UnclassifiedExts == nil {
+			out.Graph.UnclassifiedExts = map[string]int{}
+		}
+		out.Graph.UnclassifiedExts[ext] = n
+		out.Graph.UnclassifiedFiles += n
+	}
 
 	for _, id := range g.NodeIDs() {
 		n := g.Nodes[id]
@@ -94,13 +112,18 @@ func ToJSON(g *model.Graph, communities map[int][]string, path, builtAtCommit st
 			comm = &c
 		}
 		nl := normLabel(n.Label)
-		if n.ComputedName != "" {
-			nl = nl + " " + normLabel(n.ComputedName)
+		// Computed names are built from repo content (null-label inputs,
+		// frontmatter); cap and strip them once here, where every producer
+		// converges on serialization.
+		cn := security.SanitizeLabel(n.ComputedName)
+		if cn != "" {
+			nl = nl + " " + normLabel(cn)
 		}
 		out.Nodes = append(out.Nodes, jsonNode{
 			ID: n.ID, Label: n.Label, FileType: n.FileType,
 			SourceFile: n.SourceFile, SourceLocation: n.SourceLocation,
-			Community: comm, NormLabel: nl, ComputedName: n.ComputedName,
+			Community: comm, NormLabel: nl, ComputedName: cn,
+			Attributes: n.Attributes,
 		})
 	}
 	for _, e := range g.Edges() {
@@ -119,7 +142,7 @@ func ToJSON(g *model.Graph, communities map[int][]string, path, builtAtCommit st
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return fsutil.WriteFileAtomic(path, data, 0o644)
 }
 
 // CheckShrink decides whether writing g over an existing graph.json at path would

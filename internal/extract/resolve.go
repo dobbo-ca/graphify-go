@@ -27,12 +27,15 @@ func Resolve(results []Result, files []string) model.Extraction {
 	// Index definitions by name (global) and by file+name (local-first calls),
 	// and remember each definition's file for disambiguation.
 	global := map[string][]string{}
-	local := map[string]string{}  // file\x00name -> id
-	idFile := map[string]string{} // def id -> defining file
+	local := map[string][]string{} // file\x00name -> ids
+	idFile := map[string]string{}  // def id -> defining file
 	for _, r := range results {
 		for _, d := range r.Defs {
 			global[d.Name] = append(global[d.Name], d.ID)
-			local[d.File+"\x00"+d.Name] = d.ID
+			key := d.File + "\x00" + d.Name
+			if !contains(local[key], d.ID) {
+				local[key] = append(local[key], d.ID)
+			}
 			idFile[d.ID] = d.File
 		}
 	}
@@ -73,7 +76,13 @@ func Resolve(results []Result, files []string) model.Extraction {
 			if resolved[c.CallerID+"\x00"+c.Callee+"\x00"+c.Loc] {
 				continue
 			}
-			tgt := local[c.File+"\x00"+c.Callee]
+			tgt := ""
+			// Two types in one file can each own a method of the same name; a
+			// bare call then has no unambiguous local target, so fall through
+			// to disambiguate rather than guess.
+			if ids := local[c.File+"\x00"+c.Callee]; len(ids) == 1 {
+				tgt = ids[0]
+			}
 			if tgt == "" {
 				tgt = disambiguate(global[c.Callee], c.File, idFile, importedFiles[c.File])
 			}
@@ -95,15 +104,51 @@ func Resolve(results []Result, files []string) model.Extraction {
 		}
 	}
 
+	// Inheritance: a declared supertype name binds the same way a call does —
+	// same file first, then disambiguated among the definitions sharing the name.
+	// An unresolvable base (a library type outside the corpus) drops rather than
+	// creating a stub node.
+	for _, r := range results {
+		for _, t := range r.TypeRefs {
+			tgt := ""
+			if ids := typeDefs(local[t.File+"\x00"+t.Name], t.Name, idFile); len(ids) == 1 {
+				tgt = ids[0]
+			}
+			if tgt == "" {
+				tgt = disambiguate(typeDefs(global[t.Name], t.Name, idFile), t.File, idFile, importedFiles[t.File])
+			}
+			if tgt == "" || tgt == t.FromID || langfamily.Cross(t.File, idFile[tgt]) {
+				continue
+			}
+			out.Edges = append(out.Edges, model.Edge{
+				Source: t.FromID, Target: tgt, Relation: t.Relation,
+				Confidence: "INFERRED", SourceFile: t.File, SourceLocation: t.Loc,
+			})
+		}
+	}
+
 	// Imports: relative specifiers resolve to a corpus file (imports_from, used
 	// for cycle detection); bare specifiers become external dependency nodes.
 	extSeen := map[string]bool{}
+	// A file can import from the same module twice (a type import plus a value
+	// import); only one imports_from edge survives dedupe, so TypeOnly must be
+	// the AND over every import of that target, not whichever parsed first.
+	impEdge := map[string]int{}
 	for _, r := range results {
 		for _, im := range r.Imps {
 			if target := resolveRelImport(im.File, im.Spec, corpus); target != "" {
+				tgtID := idutil.MakeID(target)
+				if i, ok := impEdge[im.FileID+"\x00"+tgtID]; ok {
+					if !im.TypeOnly {
+						out.Edges[i].TypeOnly = false
+					}
+					continue
+				}
+				impEdge[im.FileID+"\x00"+tgtID] = len(out.Edges)
 				out.Edges = append(out.Edges, model.Edge{
-					Source: im.FileID, Target: idutil.MakeID(target), Relation: "imports_from",
+					Source: im.FileID, Target: tgtID, Relation: "imports_from",
 					Confidence: "EXTRACTED", SourceFile: im.File, SourceLocation: im.Loc,
+					TypeOnly: im.TypeOnly,
 				})
 				continue
 			}
@@ -175,6 +220,10 @@ func Resolve(results []Result, files []string) model.Extraction {
 	// Stage C: complete partial cloudposse null-label ids across local wrapper
 	// chains, using the module-source edges and invocation args captured above.
 	resolveNullLabels(results, &out)
+
+	// C# interface dispatch: join a single-implementer interface's method to the
+	// implementing method so directed walks do not stop at the interface.
+	resolveCSharpDispatch(&out)
 	return out
 }
 
@@ -182,9 +231,13 @@ func Resolve(results []Result, files []string) model.Extraction {
 var mdExts = []string{".md", ".mdx", ".markdown"}
 
 // mdCodeSymbol is the identifier shape a backtick `code` span must match to be a
-// candidate reference to a code definition. Spans with spaces, dashes or dots
-// (`git status`, `--flag`, `pkg.Fn`) are rejected as noise.
-var mdCodeSymbol = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+// candidate reference to a code definition. The span may be qualified with `.`
+// or `::` (`pkg.Widget`, `Widget::render`); spans with spaces or dashes
+// (`git status`, `--flag`) are rejected as noise.
+var mdCodeSymbol = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(?:(?:::|\.)[A-Za-z_][A-Za-z0-9_]*)*$`)
+
+// mdCodeSep splits a qualified code span into its segments.
+var mdCodeSep = regexp.MustCompile(`::|\.`)
 
 // resolveMarkdown stitches markdown link references into `references` edges and
 // adds the `contains` edges implied by directory structure (a directory's
@@ -203,6 +256,9 @@ func resolveMarkdown(results []Result, files []string, corpus map[string]bool, o
 		}
 	}
 
+	// Tokens each definition may be qualified by, so `pkg.Widget` can resolve.
+	quals := defQualifiers(results)
+
 	seenSym := map[string]bool{} // FromID\x00defID, to not emit a symbol edge twice
 	for _, r := range results {
 		for _, m := range r.MDRefs {
@@ -217,7 +273,7 @@ func resolveMarkdown(results []Result, files []string, corpus map[string]bool, o
 			// Not a markdown link: a backtick `symbol` matching a unique code
 			// definition becomes a references edge to that definition. Drop on
 			// ambiguity (0 or >1 candidates) and on non-identifier noise.
-			id := uniqueCodeDef(m.Target, symDefs)
+			id := uniqueCodeDef(m.Target, symDefs, quals)
 			if id == "" {
 				continue
 			}
@@ -258,17 +314,73 @@ func resolveMarkdown(results []Result, files []string, corpus map[string]bool, o
 	}
 }
 
+// defQualifiers maps each code definition id to the tokens a qualified markdown
+// mention may cite it by: the labels of the nodes containing it (a class owning
+// a method) and the segments of its source path. This is what lets `pkg.Widget`
+// bind to a Widget defined under pkg/ while `time.sleep` stays off a repo's own
+// sleep.
+func defQualifiers(results []Result) map[string]map[string]bool {
+	label := map[string]string{}
+	parent := map[string]string{} // contained id -> containing id
+	for _, r := range results {
+		for _, n := range r.Nodes {
+			label[n.ID] = n.Label
+		}
+		for _, e := range r.Edges {
+			if e.Relation == "contains" {
+				parent[e.Target] = e.Source
+			}
+		}
+	}
+	out := make(map[string]map[string]bool)
+	for _, r := range results {
+		for _, d := range r.Defs {
+			toks := map[string]bool{}
+			for _, seg := range strings.Split(filepath.ToSlash(d.File), "/") {
+				toks[seg] = true
+				toks[strings.TrimSuffix(seg, path.Ext(seg))] = true
+			}
+			// Walk the containment chain, bounded so a cyclic edge can't hang.
+			for id, n := parent[d.ID], 0; id != "" && n < 16; id, n = parent[id], n+1 {
+				if l := label[id]; l != "" {
+					toks[l] = true
+				}
+			}
+			out[d.ID] = toks
+		}
+	}
+	return out
+}
+
 // uniqueCodeDef resolves a backtick code-span symbol to the single code
-// definition that bears that name, or "" when the span is not an identifier or
-// when zero/several definitions share the name (drop-on-ambiguity).
-func uniqueCodeDef(sym string, index map[string][]string) string {
+// definition it names, or "" when the span is not an identifier or when
+// zero/several definitions survive (drop-on-ambiguity). For a qualified span
+// (`pkg.Widget`, `Widget::render`) the last segment is the name and every
+// preceding segment must be a qualifier the candidate answers to.
+func uniqueCodeDef(sym string, index map[string][]string, quals map[string]map[string]bool) string {
 	if !mdCodeSymbol.MatchString(sym) {
 		return ""
 	}
-	if ids := index[sym]; len(ids) == 1 {
-		return ids[0]
+	segs := mdCodeSep.Split(sym, -1)
+	name, prefix := segs[len(segs)-1], segs[:len(segs)-1]
+	var hit string
+	for _, id := range index[name] {
+		ok := true
+		for _, q := range prefix {
+			if !quals[id][q] {
+				ok = false
+				break
+			}
+		}
+		if !ok {
+			continue
+		}
+		if hit != "" {
+			return "" // several definitions match
+		}
+		hit = id
 	}
-	return ""
+	return hit
 }
 
 // resolveMDTarget maps a markdown link target to a markdown file in the corpus,
@@ -391,6 +503,22 @@ func isLocalSource(s string) bool {
 	return s == "." || s == ".." || strings.HasPrefix(s, "./") || strings.HasPrefix(s, "../") || strings.HasPrefix(s, "/")
 }
 
+// typeDefs narrows a by-name candidate list to the top-level type definitions in
+// it. A supertype reference can only bind to a type, and a Java constructor is
+// registered under its class's name (`A.A()`), which would otherwise make every
+// `class B extends A` lookup ambiguous and silently drop the edge. A top-level
+// type's id is MakeID(fileStem(file), name) while a member's is nested under its
+// owner, so the id shape separates the two.
+func typeDefs(ids []string, name string, idFile map[string]string) []string {
+	var out []string
+	for _, id := range ids {
+		if idutil.MakeID(fileStem(idFile[id]), name) == id {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // disambiguate picks the call target among definitions sharing the called
 // name. One candidate wins outright. When several share the name it prefers a
 // unique definition in a file the caller imports, then a unique definition in
@@ -408,6 +536,16 @@ func disambiguate(ids []string, callerFile string, idFile map[string]string, imp
 	}
 	dir := path.Dir(filepath.ToSlash(callerFile))
 	return unique(ids, func(id string) bool { return path.Dir(idFile[id]) == dir })
+}
+
+// contains reports whether ids already holds id.
+func contains(ids []string, id string) bool {
+	for _, x := range ids {
+		if x == id {
+			return true
+		}
+	}
+	return false
 }
 
 // unique returns the only id matching pred, or "" if zero or more than one do.
@@ -428,10 +566,21 @@ func unique(ids []string, pred func(string) bool) string {
 // trying common extensions and index files. Returns "" for bare (external)
 // specifiers or unresolved paths.
 func resolveRelImport(fromFile, spec string, corpus map[string]bool) string {
+	// The `@/` alias is the de-facto project-root convention in Next.js/Vite/
+	// modern-TS repos; resolve it against the corpus root so those imports
+	// become imports_from edges instead of external dependency nodes.
+	if strings.HasPrefix(spec, "@/") {
+		return resolveModulePath(path.Clean(strings.TrimPrefix(spec, "@/")), corpus)
+	}
 	if spec == "" || (spec[0] != '.' && spec[0] != '/') {
 		return "" // bare specifier — an external package
 	}
-	base := path.Clean(path.Join(path.Dir(filepath.ToSlash(fromFile)), spec))
+	return resolveModulePath(path.Clean(path.Join(path.Dir(filepath.ToSlash(fromFile)), spec)), corpus)
+}
+
+// resolveModulePath probes a corpus-relative module path as-is, then with each
+// JS/TS extension, then as a directory index file. Returns "" if none exist.
+func resolveModulePath(base string, corpus map[string]bool) string {
 	if corpus[base] {
 		return base
 	}

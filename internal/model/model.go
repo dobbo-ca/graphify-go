@@ -13,6 +13,10 @@ type Node struct {
 	SourceFile     string `json:"source_file"`
 	SourceLocation string `json:"source_location,omitempty"`
 	ComputedName   string `json:"computed_name,omitempty"`
+	// Attributes holds a block's literal key/value pairs (Terraform only today),
+	// so "which resources run t3.large" is a graph query. omitempty keeps
+	// graph.json byte-identical for corpora that set nothing.
+	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
 // Edge is a directed relationship between two nodes. The graph stores edges
@@ -27,6 +31,9 @@ type Edge struct {
 	SourceLocation  string  `json:"source_location,omitempty"`
 	Weight          float64 `json:"weight,omitempty"`
 	ConfidenceScore float64 `json:"confidence_score,omitempty"`
+	// TypeOnly marks an import edge erased at compile time (TypeScript
+	// `import type`), which cannot form a runtime import cycle.
+	TypeOnly bool `json:"type_only,omitempty"`
 }
 
 // Extraction is one extractor's output for one file.
@@ -44,6 +51,12 @@ type Graph struct {
 	adj   map[string]map[string]bool // undirected neighbour set
 	seen  map[string]bool            // dedup key "src\x00tgt\x00relation"
 	order []string                   // node insertion order, for stable iteration
+
+	// Unclassified counts, per lowercased extension, the files the corpus walk
+	// saw but no extractor handles. It is a graph-level attribute (networkx's
+	// G.graph dict), not part of the node/edge data: it tells a consumer how
+	// much of the repo the graph actually covers.
+	Unclassified map[string]int
 }
 
 // New returns an empty graph.

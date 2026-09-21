@@ -18,7 +18,7 @@ const minCommunitySize = 3
 // Generate builds the GRAPH_REPORT.md body.
 func Generate(g *model.Graph, communities map[int][]string, root, builtAtCommit string) string {
 	scores := cluster.Scores(g, communities)
-	gods := analyze.GodNodes(g, 10)
+	gods := analyze.GodNodes(g, 10, 0)
 	surprises := analyze.Surprising(g, communities, 5)
 	cycles := analyze.ImportCycles(g, 5, 20)
 

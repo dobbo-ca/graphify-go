@@ -19,6 +19,7 @@ import (
 // identically to the others once parsed).
 var manifestEcosystems = map[string]string{
 	"pyproject.toml": "python",
+	"Cargo.toml":     "cargo",
 	"go.mod":         "go",
 	"pom.xml":        "maven",
 }
@@ -33,7 +34,7 @@ type manifestInfo struct {
 }
 
 // IntrospectManifests parses every package manifest under root (pyproject.toml,
-// go.mod, pom.xml) into a canonical file_type "package" node per module — keyed by
+// Cargo.toml, go.mod, pom.xml) into a canonical file_type "package" node per module — keyed by
 // package NAME so a package referenced from several manifests collapses to one hub
 // node — plus "depends_on" edges module->dependency. It mirrors upstream
 // graphify/manifest_ingest.py; unlike upstream it also emits a stub package node
@@ -133,6 +134,12 @@ func parseManifest(eco, path string) (name string, deps []string) {
 			return "", nil
 		}
 		return parsePyproject(data)
+	case "cargo":
+		data, err := loadTOML(path)
+		if err != nil {
+			return "", nil
+		}
+		return parseCargo(data)
 	case "maven":
 		text, err := os.ReadFile(path)
 		if err != nil {
@@ -182,6 +189,48 @@ func parseGoMod(text string) (string, []string) {
 		}
 	}
 	return name, deps
+}
+
+// parseCargo reads the crate name from [package] and its runtime dependency names
+// from [dependencies] plus every [target.<cfg>.dependencies] table (dev- and
+// build-dependencies are excluded, matching parsePyproject's runtime-only scope).
+// A virtual workspace root ([workspace] with no [package]) declares no package of
+// its own and yields an empty name. Mirrors upstream manifest_ingest._parse_cargo.
+func parseCargo(data map[string]any) (string, []string) {
+	pkg, _ := data["package"].(map[string]any)
+	name, _ := pkg["name"].(string)
+	if name == "" {
+		return "", nil
+	}
+	deps := cargoDepNames(data["dependencies"])
+	if targets, ok := data["target"].(map[string]any); ok {
+		cfgs := make([]string, 0, len(targets))
+		for cfg := range targets {
+			cfgs = append(cfgs, cfg)
+		}
+		sort.Strings(cfgs) // map iteration order must not affect the output
+		for _, cfg := range cfgs {
+			if t, ok := targets[cfg].(map[string]any); ok {
+				deps = append(deps, cargoDepNames(t["dependencies"])...)
+			}
+		}
+	}
+	return name, deps
+}
+
+// cargoDepNames returns the keys of a Cargo dependency table (the dependency
+// NAMES); a value that is not a table contributes nothing.
+func cargoDepNames(value any) []string {
+	table, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	names := make([]string, 0, len(table))
+	for name := range table {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 var pep508SplitRe = regexp.MustCompile(`[\s<>=!~;\[\(]`)

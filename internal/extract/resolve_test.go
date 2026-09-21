@@ -100,3 +100,37 @@ func TestResolveAmbiguousBySameDir(t *testing.T) {
 		t.Error("did not expect CALLER --calls--> FAR (different directory)")
 	}
 }
+
+// TestResolveSameNameMethodsInOneFile checks that when one file declares two
+// types each owning a method of the same name, an unqualified call to that name
+// binds to neither (drop-on-ambiguity) instead of the last one parsed, while an
+// unambiguous same-file name still resolves.
+func TestResolveSameNameMethodsInOneFile(t *testing.T) {
+	results := []Result{{
+		Defs: []Def{
+			{ID: "x_a_build", Name: "Build", File: "x.cs"},
+			{ID: "x_a_helper", Name: "Helper", File: "x.cs"},
+			{ID: "x_b_helper", Name: "Helper", File: "x.cs"},
+			{ID: "x_b_only", Name: "Only", File: "x.cs"},
+		},
+		Calls: []Call{
+			{CallerID: "x_a_build", Callee: "Helper", File: "x.cs", Loc: "L3"},
+			{CallerID: "x_a_build", Callee: "Only", File: "x.cs", Loc: "L4"},
+		},
+	}}
+	ext := Resolve(results, []string{"x.cs"})
+
+	var es []edge
+	for _, e := range ext.Edges {
+		es = append(es, edge{e.Source, e.Target, e.Relation})
+	}
+	if hasCall(es, "x_a_build", "x_b_helper") {
+		t.Error("did not expect x_a_build --calls--> x_b_helper (ambiguous same-file name)")
+	}
+	if hasCall(es, "x_a_build", "x_a_helper") {
+		t.Error("did not expect a guessed edge to x_a_helper either; the name is ambiguous")
+	}
+	if !hasCall(es, "x_a_build", "x_b_only") {
+		t.Error("expected x_a_build --calls--> x_b_only (unambiguous same-file name)")
+	}
+}

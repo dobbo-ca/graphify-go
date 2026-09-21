@@ -35,7 +35,7 @@ func (b *builder) jsStatement(n *ts.Node, src []byte) {
 		}
 	case "import_statement":
 		if s := n.ChildByFieldName("source"); s != nil {
-			b.imp(unquote(s.Utf8Text(src)), line(n))
+			b.impTyped(unquote(s.Utf8Text(src)), line(n), jsTypeOnlyImport(n))
 		}
 	case "function_declaration", "generator_function_declaration":
 		b.jsFunc(n, src)
@@ -46,6 +46,19 @@ func (b *builder) jsStatement(n *ts.Node, src []byte) {
 	case "lexical_declaration", "variable_declaration":
 		b.jsVarFuncs(n, src)
 	}
+}
+
+// jsTypeOnlyImport reports whether an import_statement is a whole-statement
+// `import type { T } from "m"`. The `type` keyword is a direct child only in
+// that form; for a mixed `import { type A, B }` tree-sitter nests it inside the
+// specifier, so a direct-child check keeps mixed imports as value imports.
+func jsTypeOnlyImport(n *ts.Node) bool {
+	for i := uint(0); i < n.ChildCount(); i++ {
+		if n.Child(i).Kind() == "type" {
+			return true
+		}
+	}
+	return false
 }
 
 // degenerateName reports whether a symbol name carries no identifier signal — it
