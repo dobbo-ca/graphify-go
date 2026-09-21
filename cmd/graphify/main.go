@@ -1179,6 +1179,7 @@ usage:
   graphify ask "<question>"    NL retrieval: relevant subgraph as text [--dfs --budget N --context REL --graph path]
   graphify explain <node>      show a node and its neighbours [--graph path]
   graphify path <from> <to>    shortest dependency path between two nodes [--undirected --graph path]
+  graphify god-nodes           most-connected nodes [--top N --graph path --json]
   graphify affected [file...|-] nodes defined in changed files + their dependents [--depth N --relation R]
   graphify diff <old> <new>    node/edge delta between two graph.json snapshots
   graphify merge-driver <base> <current> <other>  git merge driver: union-merge two graph.json files
