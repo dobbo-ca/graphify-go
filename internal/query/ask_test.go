@@ -274,3 +274,28 @@ func TestAskContextFilter(t *testing.T) {
 		t.Errorf("imports neighbour leaked under DFS --context calls:\n%s", dfs)
 	}
 }
+
+// A node's Terraform attributes feed the search text, so an agent can ask
+// "which resource runs t3.large" and land on the resource that sets it.
+func TestAskMatchesAttributes(t *testing.T) {
+	src := `{
+  "directed": true, "multigraph": false, "graph": {},
+  "nodes": [
+    {"id":"web","label":"aws_instance.web","file_type":"code","source_file":"main.tf","source_location":"L1","community":0,"norm_label":"aws_instance.web","attributes":{"instance_type":"t3.large"}},
+    {"id":"db","label":"aws_instance.db","file_type":"code","source_file":"main.tf","source_location":"L9","community":0,"norm_label":"aws_instance.db","attributes":{"instance_type":"t3.micro"}}
+  ],
+  "links": []
+}`
+	p := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := Ask(g, "t3.large", false, 1, 2000, nil)
+	if !strings.HasPrefix(firstNodeLine(out), "NODE aws_instance.web") {
+		t.Errorf("attribute match did not seed aws_instance.web, got:\n%s", out)
+	}
+}

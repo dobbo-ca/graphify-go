@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -32,7 +33,7 @@ func nodeIDs(res Result) map[string]bool {
 
 func hasNode(res Result, want model.Node) bool {
 	for _, n := range res.Nodes {
-		if n == want {
+		if reflect.DeepEqual(n, want) { // model.Node holds a map, so not comparable
 			return true
 		}
 	}

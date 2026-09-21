@@ -37,14 +37,15 @@ var ErrGraphShrink = errors.New("refusing to overwrite graph.json with a smaller
 var ErrGraphUnverifiable = errors.New("refusing to overwrite unparseable graph.json")
 
 type jsonNode struct {
-	ID             string `json:"id"`
-	Label          string `json:"label"`
-	FileType       string `json:"file_type"`
-	SourceFile     string `json:"source_file"`
-	SourceLocation string `json:"source_location,omitempty"`
-	Community      *int   `json:"community"`
-	NormLabel      string `json:"norm_label"`
-	ComputedName   string `json:"computed_name,omitempty"`
+	ID             string            `json:"id"`
+	Label          string            `json:"label"`
+	FileType       string            `json:"file_type"`
+	SourceFile     string            `json:"source_file"`
+	SourceLocation string            `json:"source_location,omitempty"`
+	Community      *int              `json:"community"`
+	NormLabel      string            `json:"norm_label"`
+	ComputedName   string            `json:"computed_name,omitempty"`
+	Attributes     map[string]string `json:"attributes,omitempty"`
 }
 
 type jsonLink struct {
@@ -122,6 +123,7 @@ func ToJSON(g *model.Graph, communities map[int][]string, path, builtAtCommit st
 			ID: n.ID, Label: n.Label, FileType: n.FileType,
 			SourceFile: n.SourceFile, SourceLocation: n.SourceLocation,
 			Community: comm, NormLabel: nl, ComputedName: cn,
+			Attributes: n.Attributes,
 		})
 	}
 	for _, e := range g.Edges() {
