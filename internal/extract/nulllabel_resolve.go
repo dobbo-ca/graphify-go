@@ -6,7 +6,6 @@ import (
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
-	"github.com/dobbo-ca/graphify-go/internal/security"
 )
 
 // maxChainDepth bounds how many local wrapper hops a var-ref or context is
@@ -242,7 +241,7 @@ func exactCount(id string) int {
 func setComputed(out *model.Extraction, id, name string) {
 	for i := range out.Nodes {
 		if out.Nodes[i].ID == id {
-			out.Nodes[i].ComputedName = security.SanitizeLabel(name)
+			out.Nodes[i].ComputedName = name
 			return
 		}
 	}

@@ -7,7 +7,6 @@ import (
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
-	"github.com/dobbo-ca/graphify-go/internal/security"
 )
 
 // mdLink matches an inline markdown link [text](target). The target is captured
@@ -185,7 +184,7 @@ func computedMeta(fm map[string]string) string {
 	if t := fm["tags"]; t != "" {
 		parts = append(parts, strings.Trim(t, "[]"))
 	}
-	return security.SanitizeLabel(strings.Join(parts, " "))
+	return strings.Join(parts, " ")
 }
 
 // unquoteFM strips matching surrounding single or double quotes from a
