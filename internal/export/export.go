@@ -19,6 +19,7 @@ import (
 	"github.com/dobbo-ca/graphify-go/internal/cluster"
 	"github.com/dobbo-ca/graphify-go/internal/fsutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
+	"github.com/dobbo-ca/graphify-go/internal/security"
 )
 
 var confidenceScore = map[string]float64{"EXTRACTED": 1.0, "INFERRED": 0.5, "AMBIGUOUS": 0.2}
@@ -110,13 +111,17 @@ func ToJSON(g *model.Graph, communities map[int][]string, path, builtAtCommit st
 			comm = &c
 		}
 		nl := normLabel(n.Label)
-		if n.ComputedName != "" {
-			nl = nl + " " + normLabel(n.ComputedName)
+		// Computed names are built from repo content (null-label inputs,
+		// frontmatter); cap and strip them once here, where every producer
+		// converges on serialization.
+		cn := security.SanitizeLabel(n.ComputedName)
+		if cn != "" {
+			nl = nl + " " + normLabel(cn)
 		}
 		out.Nodes = append(out.Nodes, jsonNode{
 			ID: n.ID, Label: n.Label, FileType: n.FileType,
 			SourceFile: n.SourceFile, SourceLocation: n.SourceLocation,
-			Community: comm, NormLabel: nl, ComputedName: n.ComputedName,
+			Community: comm, NormLabel: nl, ComputedName: cn,
 		})
 	}
 	for _, e := range g.Edges() {
