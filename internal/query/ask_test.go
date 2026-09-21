@@ -38,7 +38,7 @@ func loadAsk(t *testing.T) *Graph {
 
 func TestAskSeedsRareIdentifier(t *testing.T) {
 	g := loadAsk(t)
-	out := Ask(g, "where is authValidate", false, 2, 2000)
+	out := Ask(g, "where is authValidate", false, 2, 2000, nil)
 	if !strings.Contains(out, "Traversal: BFS depth=2") {
 		t.Errorf("missing BFS header: %q", out)
 	}
@@ -54,7 +54,7 @@ func TestAskSeedsRareIdentifier(t *testing.T) {
 
 func TestAskTraversesToNeighbors(t *testing.T) {
 	g := loadAsk(t)
-	out := Ask(g, "authValidate", false, 2, 2000)
+	out := Ask(g, "authValidate", false, 2, 2000, nil)
 	// depth 2 from authValidate reaches checkToken (1 hop) and log (2 hops).
 	for _, want := range []string{"checkToken()", "log()"} {
 		if !strings.Contains(out, want) {
@@ -68,14 +68,14 @@ func TestAskTraversesToNeighbors(t *testing.T) {
 
 func TestAskNoMatch(t *testing.T) {
 	g := loadAsk(t)
-	if out := Ask(g, "nonexistentxyz", false, 2, 2000); out != "No matching nodes found." {
+	if out := Ask(g, "nonexistentxyz", false, 2, 2000, nil); out != "No matching nodes found." {
 		t.Errorf("got %q, want no-match message", out)
 	}
 }
 
 func TestAskDFSMode(t *testing.T) {
 	g := loadAsk(t)
-	out := Ask(g, "authValidate", true, 2, 2000)
+	out := Ask(g, "authValidate", true, 2, 2000, nil)
 	if !strings.Contains(out, "Traversal: DFS depth=2") {
 		t.Errorf("missing DFS header: %q", out)
 	}
@@ -84,7 +84,7 @@ func TestAskDFSMode(t *testing.T) {
 func TestAskBudgetTruncates(t *testing.T) {
 	g := loadAsk(t)
 	// A tiny budget forces the truncation branch.
-	out := Ask(g, "authValidate", false, 2, 5)
+	out := Ask(g, "authValidate", false, 2, 5, nil)
 	if !strings.Contains(out, "truncated") {
 		t.Errorf("expected truncation marker with tiny budget:\n%s", out)
 	}
@@ -221,7 +221,7 @@ func TestAskEmitsEdgeBetweenSeeds(t *testing.T) {
 	// Both endpoints are seeds, so the traversal itself records no edge between
 	// them; the induced-edge pass must still emit it, exactly once.
 	for _, dfs := range []bool{false, true} {
-		out := Ask(g, "authValidate checkToken", dfs, 1, 2000)
+		out := Ask(g, "authValidate checkToken", dfs, 1, 2000, nil)
 		n := 0
 		for _, line := range strings.Split(out, "\n") {
 			if strings.HasPrefix(line, "EDGE ") &&
@@ -232,5 +232,45 @@ func TestAskEmitsEdgeBetweenSeeds(t *testing.T) {
 		if n != 1 {
 			t.Errorf("dfs=%v: want 1 authValidate<->checkToken edge, got %d:\n%s", dfs, n, out)
 		}
+	}
+}
+
+// contextGraph gives authValidate one `calls` neighbour and one `imports`
+// neighbour so relation filtering can be observed.
+const contextGraph = `{
+  "directed": true, "multigraph": false, "graph": {},
+  "nodes": [
+    {"id":"auth_validate","label":"authValidate()","file_type":"code","source_file":"auth.go","source_location":"L10","community":0,"norm_label":"authvalidate()"},
+    {"id":"auth_check","label":"checkToken()","file_type":"code","source_file":"auth.go","source_location":"L20","community":0,"norm_label":"checktoken()"},
+    {"id":"crypto_mod","label":"crypto","file_type":"code","source_file":"crypto.go","source_location":"L1","community":1,"norm_label":"crypto"}
+  ],
+  "links": [
+    {"source":"auth_validate","target":"auth_check","relation":"calls","confidence":"INFERRED"},
+    {"source":"auth_validate","target":"crypto_mod","relation":"imports","confidence":"EXPLICIT"}
+  ]
+}`
+
+func TestAskContextFilter(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(p, []byte(contextGraph), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unfiltered := Ask(g, "authValidate", false, 2, 2000, nil)
+	if !strings.Contains(unfiltered, "checkToken()") || !strings.Contains(unfiltered, "crypto") {
+		t.Fatalf("expected both neighbours without a filter:\n%s", unfiltered)
+	}
+	out := Ask(g, "authValidate", false, 2, 2000, []string{"calls"})
+	if !strings.Contains(out, "checkToken()") {
+		t.Errorf("calls neighbour missing under --context calls:\n%s", out)
+	}
+	if strings.Contains(out, "crypto") {
+		t.Errorf("imports neighbour leaked under --context calls:\n%s", out)
+	}
+	if dfs := Ask(g, "authValidate", true, 2, 2000, []string{"calls"}); strings.Contains(dfs, "crypto") {
+		t.Errorf("imports neighbour leaked under DFS --context calls:\n%s", dfs)
 	}
 }

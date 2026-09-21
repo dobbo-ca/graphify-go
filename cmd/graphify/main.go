@@ -505,11 +505,12 @@ func cmdQuery(pattern string) error {
 // agent-native one-shot retrieval primitive.
 func cmdAsk(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf(`usage: graphify ask "<question>" [--dfs] [--budget N] [--graph path]`)
+		return fmt.Errorf(`usage: graphify ask "<question>" [--dfs] [--budget N] [--context REL] [--graph path]`)
 	}
 	question := args[0]
 	dfs := false
 	budget := 2000
+	var relations []string
 	graphPath := defaultGraphPath
 	rest := args[1:]
 	for i := 0; i < len(rest); i++ {
@@ -535,6 +536,11 @@ func cmdAsk(args []string) error {
 				return fmt.Errorf("--budget must be a positive integer")
 			}
 			budget = n
+		case rest[i] == "--context" && i+1 < len(rest):
+			relations = append(relations, rest[i+1])
+			i++
+		case strings.HasPrefix(rest[i], "--context="):
+			relations = append(relations, strings.TrimPrefix(rest[i], "--context="))
 		case rest[i] == "--graph" && i+1 < len(rest):
 			graphPath = rest[i+1]
 			i++
@@ -553,7 +559,7 @@ func cmdAsk(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(query.Ask(g, question, dfs, 2, budget))
+	fmt.Println(query.Ask(g, question, dfs, 2, budget, relations))
 	return nil
 }
 
@@ -991,7 +997,7 @@ usage:
   graphify hook <install|uninstall|status> [path]  manage git hooks that update the graph after commits
   graphify install [--uninstall]  copy the graphify skill into ~/.claude/skills (Claude Code)
   graphify query <pattern>     find nodes by name (regex, case-insensitive)
-  graphify ask "<question>"    NL retrieval: relevant subgraph as text [--dfs --budget N --graph path]
+  graphify ask "<question>"    NL retrieval: relevant subgraph as text [--dfs --budget N --context REL --graph path]
   graphify explain <node>      show a node and its neighbours [--graph path]
   graphify path <from> <to>    shortest dependency path between two nodes [--undirected --graph path]
   graphify affected [file...]  nodes defined in changed files + their dependents [--depth N --relation R]
