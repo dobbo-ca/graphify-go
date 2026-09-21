@@ -244,7 +244,7 @@ func (s *mcpServer) toolGetNeighbors(args map[string]any) string {
 		return fmt.Sprintf("No node matching '%s' found.", label)
 	}
 	relFilter := strings.ToLower(argString(args, "relation_filter"))
-	lines := []string{"Neighbors of " + security.SanitizeLabel(labelOrID(ex.Node)) + ":"}
+	var items []string
 	for _, nb := range ex.Neighbors {
 		if relFilter != "" && !strings.Contains(strings.ToLower(nb.Relation), relFilter) {
 			continue
@@ -253,10 +253,11 @@ func (s *mcpServer) toolGetNeighbors(args map[string]any) string {
 		if nb.Direction == "<-" {
 			arrow = "<--"
 		}
-		lines = append(lines, fmt.Sprintf("  %s %s [%s]", arrow,
+		items = append(items, fmt.Sprintf("  %s %s [%s]", arrow,
 			security.SanitizeLabel(nb.Label), security.SanitizeLabel(nb.Relation)))
 	}
-	return strings.Join(lines, "\n")
+	header := "Neighbors of " + security.SanitizeLabel(labelOrID(ex.Node)) + ":"
+	return budgetLines(header, items, argTokenBudget(args))
 }
 
 func (s *mcpServer) toolGetCommunity(args map[string]any) string {
@@ -266,16 +267,48 @@ func (s *mcpServer) toolGetCommunity(args map[string]any) string {
 		return fmt.Sprintf("Community %d not found.", cid)
 	}
 	sort.Strings(nodes)
-	lines := []string{fmt.Sprintf("Community %d (%d nodes):", cid, len(nodes))}
+	items := make([]string, 0, len(nodes))
 	for _, id := range nodes {
 		n := s.god.Nodes[id]
 		label, src := id, ""
 		if n != nil {
 			label, src = n.Label, n.SourceFile
 		}
-		lines = append(lines, "  "+security.SanitizeLabel(label)+" ["+security.SanitizeLabel(src)+"]")
+		items = append(items, "  "+security.SanitizeLabel(label)+" ["+security.SanitizeLabel(src)+"]")
 	}
-	return strings.Join(lines, "\n")
+	header := fmt.Sprintf("Community %d (%d nodes):", cid, len(nodes))
+	return budgetLines(header, items, argTokenBudget(args))
+}
+
+// argTokenBudget reads token_budget, defaulting to 2000.
+func argTokenBudget(args map[string]any) int {
+	budget := argInt(args, "token_budget", 2000)
+	if budget < 1 {
+		budget = 2000
+	}
+	return budget
+}
+
+// budgetLines joins header + items, cutting items that do not fit in the
+// ~3-chars-per-token budget and prepending a truncation notice so the caller
+// sees it before reading the list.
+func budgetLines(header string, items []string, tokenBudget int) string {
+	charBudget := tokenBudget * 3
+	used, shown := len(header), len(items)
+	for i, l := range items {
+		used += len(l) + 1
+		if used > charBudget {
+			shown = i
+			break
+		}
+	}
+	out := append([]string{header}, items[:shown]...)
+	if shown < len(items) {
+		out = append([]string{fmt.Sprintf(
+			"Truncated: %d of %d shown (~%d-token budget; raise token_budget or narrow the query)",
+			shown, len(items), tokenBudget)}, out...)
+	}
+	return strings.Join(out, "\n")
 }
 
 func (s *mcpServer) toolGodNodes(args map[string]any) string {
@@ -388,10 +421,14 @@ func toolDefs() []map[string]any {
 			"inputSchema": obj(map[string]any{
 				"label":           str,
 				"relation_filter": map[string]any{"type": "string", "description": "Optional: filter by relation type"},
+				"token_budget":    map[string]any{"type": "integer", "description": "Max output tokens (default 2000)"},
 			}, "label")},
 		{"name": "get_community",
 			"description": "Get all nodes in a community by community ID.",
-			"inputSchema": obj(map[string]any{"community_id": map[string]any{"type": "integer", "description": "Community ID (0-indexed by size)"}}, "community_id")},
+			"inputSchema": obj(map[string]any{
+				"community_id": map[string]any{"type": "integer", "description": "Community ID (0-indexed by size)"},
+				"token_budget": map[string]any{"type": "integer", "description": "Max output tokens (default 2000)"},
+			}, "community_id")},
 		{"name": "god_nodes",
 			"description": "Return the most connected nodes - the core abstractions of the knowledge graph.",
 			"inputSchema": obj(map[string]any{"top_n": map[string]any{"type": "integer"}})},
