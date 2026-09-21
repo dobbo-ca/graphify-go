@@ -197,6 +197,10 @@ func Resolve(results []Result, files []string) model.Extraction {
 	// Stage C: complete partial cloudposse null-label ids across local wrapper
 	// chains, using the module-source edges and invocation args captured above.
 	resolveNullLabels(results, &out)
+
+	// C# interface dispatch: join a single-implementer interface's method to the
+	// implementing method so directed walks do not stop at the interface.
+	resolveCSharpDispatch(&out)
 	return out
 }
 
