@@ -604,18 +604,14 @@ func cmdPath(args []string) error {
 	if err != nil {
 		return err
 	}
-	nodes, err := query.Path(g, positionals[0], positionals[1], undirected)
+	res, err := query.PathEdges(g, positionals[0], positionals[1], 0, undirected)
 	if errors.Is(err, query.ErrNoDirectedPath) {
 		return fmt.Errorf("%w; retry with --undirected", err)
 	}
 	if err != nil {
 		return err
 	}
-	parts := make([]string, len(nodes))
-	for i, n := range nodes {
-		parts[i] = n.Label
-	}
-	fmt.Println(strings.Join(parts, " -> "))
+	fmt.Println(renderPathChain(res))
 	return nil
 }
 

@@ -159,33 +159,9 @@ func Explain(g *Graph, id string) (*Explanation, error) {
 	return &Explanation{Node: n, Neighbors: nbrs}, nil
 }
 
-// ErrNoDirectedPath is wrapped by Path/PathEdges when a directed search finds
+// ErrNoDirectedPath is wrapped by PathEdges when a directed search finds
 // no route; callers surface their own "retry undirected" hint.
 var ErrNoDirectedPath = errors.New("no directed path")
-
-// Path returns the shortest path (by node labels/ids) between two nodes via BFS,
-// following edge direction unless undirected is set, or an error if no path
-// exists.
-func Path(g *Graph, from, to string, undirected bool) ([]Node, error) {
-	a, b := g.resolve(from), g.resolve(to)
-	if a == nil {
-		return nil, fmt.Errorf("no node matching %q", from)
-	}
-	if b == nil {
-		return nil, fmt.Errorf("no node matching %q", to)
-	}
-	ids, ok := g.bfsPath(a.ID, b.ID, undirected)
-	if !ok {
-		return nil, noPathErr(a, b, undirected)
-	}
-	out := make([]Node, 0, len(ids))
-	for _, id := range ids {
-		if n := g.byID[id]; n != nil {
-			out = append(out, *n)
-		}
-	}
-	return out, nil
-}
 
 // PathEdge annotates one step of a shortest path: the relation and confidence
 // of the edge traversed to reach the step's node, and whether that edge is
@@ -228,10 +204,9 @@ func (e *MaxHopsError) Error() string {
 
 // PathEdges resolves from/to and returns the shortest path between them
 // annotated with each traversed edge's relation and confidence, following edge
-// direction unless undirected is set. It uses the same resolve() semantics as
-// Path. When both queries resolve to the same node it returns a *SameNodeError;
-// when the path is longer than maxHops (and maxHops > 0) it returns a
-// *MaxHopsError.
+// direction unless undirected is set. When both queries resolve to the same
+// node it returns a *SameNodeError; when the path is longer than maxHops (and
+// maxHops > 0) it returns a *MaxHopsError.
 func PathEdges(g *Graph, from, to string, maxHops int, undirected bool) (*PathResult, error) {
 	a, b := g.resolve(from), g.resolve(to)
 	if a == nil {

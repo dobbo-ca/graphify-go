@@ -68,17 +68,6 @@ func TestExplainNeighbors(t *testing.T) {
 	}
 }
 
-func TestPath(t *testing.T) {
-	g := loadSample(t)
-	p, err := Path(g, "a()", "c()", false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(p) != 3 || p[0].Label != "a()" || p[2].Label != "c()" {
-		t.Fatalf("path = %+v, want a->b->c", p)
-	}
-}
-
 func TestPathEdges(t *testing.T) {
 	g := loadSample(t)
 	res, err := PathEdges(g, "a()", "c()", 8, false)
@@ -108,18 +97,15 @@ func TestPathEdges(t *testing.T) {
 func TestPathDirectedByDefault(t *testing.T) {
 	g := loadSample(t)
 	// c -> a only exists against the direction of the stored call edges.
-	if _, err := Path(g, "c()", "a()", false); !errors.Is(err, ErrNoDirectedPath) {
-		t.Fatalf("err = %v, want ErrNoDirectedPath", err)
-	}
 	if _, err := PathEdges(g, "c()", "a()", 8, false); !errors.Is(err, ErrNoDirectedPath) {
 		t.Fatalf("err = %v, want ErrNoDirectedPath", err)
 	}
-	p, err := Path(g, "c()", "a()", true)
+	res, err := PathEdges(g, "c()", "a()", 8, true)
 	if err != nil {
 		t.Fatalf("undirected: %v", err)
 	}
-	if len(p) != 3 || p[0].Label != "c()" || p[2].Label != "a()" {
-		t.Fatalf("undirected path = %+v, want c->b->a", p)
+	if len(res.Nodes) != 3 || res.Nodes[0].Label != "c()" || res.Nodes[2].Label != "a()" {
+		t.Fatalf("undirected path = %+v, want c->b->a", res.Nodes)
 	}
 }
 
