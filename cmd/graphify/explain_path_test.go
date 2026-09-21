@@ -113,3 +113,30 @@ func TestCmdPathUndirected(t *testing.T) {
 		t.Errorf("cmdPath gamma beta --undirected = %v, want success", err)
 	}
 }
+
+// TestCmdPathAnnotatesHops verifies that path prints each hop's relation and
+// confidence, and flips the arrow when the stored edge runs against the
+// direction of travel rather than asserting a call that does not exist.
+func TestCmdPathAnnotatesHops(t *testing.T) {
+	dir := t.TempDir()
+	writeTestGraph(t, filepath.Join(dir, "graphify-out", "graph.json"),
+		`{"nodes":[{"id":"a","label":"a()"},{"id":"b","label":"b()"},{"id":"c","label":"c()"}],`+
+			`"links":[{"source":"a","target":"b","relation":"calls","confidence":"INFERRED"},`+
+			`{"source":"c","target":"b","relation":"imports","confidence":"EXTRACTED"}]}`)
+
+	wd, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(wd)
+
+	out := captureStdout(t, func() {
+		if err := cmdPath([]string{"a()", "c()", "--undirected"}); err != nil {
+			t.Errorf("cmdPath a c --undirected = %v, want success", err)
+		}
+	})
+	want := "a() --calls [INFERRED]--> b() <--imports [EXTRACTED]-- c()\n"
+	if out != want {
+		t.Errorf("path output = %q, want %q", out, want)
+	}
+}

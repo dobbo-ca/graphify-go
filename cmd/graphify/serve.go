@@ -355,8 +355,14 @@ func (s *mcpServer) toolShortestPath(args map[string]any) string {
 		}
 		return "Error: " + err.Error()
 	}
+	return fmt.Sprintf("Shortest path (%d hops):\n  %s", len(res.Edges), renderPathChain(res))
+}
+
+// renderPathChain renders a resolved path as "a --calls [INFERRED]--> b", using
+// "<--rel--" for hops whose stored edge points against the direction of travel
+// so the arrow never asserts a direction the graph does not record.
+func renderPathChain(res *query.PathResult) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Shortest path (%d hops):\n  ", len(res.Edges))
 	b.WriteString(security.SanitizeLabel(labelOrID(&res.Nodes[0])))
 	for i, e := range res.Edges {
 		next := security.SanitizeLabel(labelOrID(&res.Nodes[i+1]))
