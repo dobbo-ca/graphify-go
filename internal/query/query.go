@@ -39,10 +39,12 @@ type Node struct {
 
 // Link mirrors a graph.json edge.
 type Link struct {
-	Source     string `json:"source"`
-	Target     string `json:"target"`
-	Relation   string `json:"relation"`
-	Confidence string `json:"confidence"`
+	Source         string `json:"source"`
+	Target         string `json:"target"`
+	Relation       string `json:"relation"`
+	Confidence     string `json:"confidence"`
+	SourceFile     string `json:"source_file"`
+	SourceLocation string `json:"source_location"`
 }
 
 // Load reads and validates a graph.json at path. The path must resolve inside a
@@ -139,6 +141,11 @@ func Explain(g *Graph, id string) (*Explanation, error) {
 		label, location := other, ""
 		if o != nil {
 			label, location = o.Label, loc(o)
+		}
+		// Prefer the traversed edge's own call site over the neighbour's
+		// definition line: "who calls this and where" wants the call site.
+		if el := edgeLoc(l); el != "" {
+			location = el
 		}
 		nbrs = append(nbrs, Neighbor{ID: other, Label: label, Relation: l.Relation, Direction: dir, Location: location})
 	}
@@ -319,6 +326,14 @@ func (g *Graph) resolve(s string) *Node {
 		}
 	}
 	return hit
+}
+
+// edgeLoc formats the call site an edge was extracted from, if it has one.
+func edgeLoc(l Link) string {
+	if l.SourceLocation == "" || l.SourceFile == "" {
+		return ""
+	}
+	return l.SourceFile + ":" + strings.TrimPrefix(l.SourceLocation, "L")
 }
 
 func loc(n *Node) string {
