@@ -342,8 +342,12 @@ func (s *mcpServer) toolGraphStats(map[string]any) string {
 
 func (s *mcpServer) toolShortestPath(args map[string]any) string {
 	src, tgt := argString(args, "source"), argString(args, "target")
-	res, err := query.PathEdges(s.g, src, tgt, argInt(args, "max_hops", 8))
+	undirected, _ := args["undirected"].(bool)
+	res, err := query.PathEdges(s.g, src, tgt, argInt(args, "max_hops", 8), undirected)
 	if err != nil {
+		if errors.Is(err, query.ErrNoDirectedPath) {
+			return err.Error() + "; retry with undirected=true"
+		}
 		var same *query.SameNodeError
 		var over *query.MaxHopsError
 		if errors.As(err, &same) || errors.As(err, &over) {
@@ -436,11 +440,12 @@ func toolDefs() []map[string]any {
 			"description": "Return summary statistics: node count, edge count, communities, confidence breakdown.",
 			"inputSchema": obj(map[string]any{})},
 		{"name": "shortest_path",
-			"description": "Find the shortest path between two concepts in the knowledge graph. Each hop is annotated with its relation and confidence.",
+			"description": "Find the shortest path between two concepts in the knowledge graph, following edge direction. Each hop is annotated with its relation and confidence.",
 			"inputSchema": obj(map[string]any{
-				"source":   map[string]any{"type": "string", "description": "Source concept label or keyword"},
-				"target":   map[string]any{"type": "string", "description": "Target concept label or keyword"},
-				"max_hops": map[string]any{"type": "integer", "description": "Reject paths longer than this many hops (default 8)"},
+				"source":     map[string]any{"type": "string", "description": "Source concept label or keyword"},
+				"target":     map[string]any{"type": "string", "description": "Target concept label or keyword"},
+				"max_hops":   map[string]any{"type": "integer", "description": "Reject paths longer than this many hops (default 8)"},
+				"undirected": map[string]any{"type": "boolean", "description": "Ignore edge direction (default false: follow edges forwards only)"},
 			}, "source", "target")},
 	}
 }

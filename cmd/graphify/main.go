@@ -585,15 +585,27 @@ func cmdExplain(args []string) error {
 }
 
 func cmdPath(args []string) error {
-	positionals, graphPath := parseGraphFlag(args)
+	undirected := false
+	kept := args[:0:0]
+	for _, a := range args {
+		if a == "--undirected" {
+			undirected = true
+			continue
+		}
+		kept = append(kept, a)
+	}
+	positionals, graphPath := parseGraphFlag(kept)
 	if len(positionals) != 2 {
-		return fmt.Errorf("usage: graphify path <from> <to> [--graph path]")
+		return fmt.Errorf("usage: graphify path <from> <to> [--undirected] [--graph path]")
 	}
 	g, err := loadGraphAt(graphPath)
 	if err != nil {
 		return err
 	}
-	nodes, err := query.Path(g, positionals[0], positionals[1])
+	nodes, err := query.Path(g, positionals[0], positionals[1], undirected)
+	if errors.Is(err, query.ErrNoDirectedPath) {
+		return fmt.Errorf("%w; retry with --undirected", err)
+	}
 	if err != nil {
 		return err
 	}
@@ -912,7 +924,7 @@ usage:
   graphify query <pattern>     find nodes by name (regex, case-insensitive)
   graphify ask "<question>"    NL retrieval: relevant subgraph as text [--dfs --budget N --graph path]
   graphify explain <node>      show a node and its neighbours [--graph path]
-  graphify path <from> <to>    shortest dependency path between two nodes [--graph path]
+  graphify path <from> <to>    shortest dependency path between two nodes [--undirected --graph path]
   graphify affected [file...]  nodes defined in changed files + their dependents [--depth N --relation R]
   graphify diff <old> <new>    node/edge delta between two graph.json snapshots
   graphify merge-driver <base> <current> <other>  git merge driver: union-merge two graph.json files
