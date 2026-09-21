@@ -27,6 +27,9 @@ type Edge struct {
 	SourceLocation  string  `json:"source_location,omitempty"`
 	Weight          float64 `json:"weight,omitempty"`
 	ConfidenceScore float64 `json:"confidence_score,omitempty"`
+	// TypeOnly marks an import edge erased at compile time (TypeScript
+	// `import type`), which cannot form a runtime import cycle.
+	TypeOnly bool `json:"type_only,omitempty"`
 }
 
 // Extraction is one extractor's output for one file.

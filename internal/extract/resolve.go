@@ -113,6 +113,7 @@ func Resolve(results []Result, files []string) model.Extraction {
 				out.Edges = append(out.Edges, model.Edge{
 					Source: im.FileID, Target: idutil.MakeID(target), Relation: "imports_from",
 					Confidence: "EXTRACTED", SourceFile: im.File, SourceLocation: im.Loc,
+					TypeOnly: im.TypeOnly,
 				})
 				continue
 			}
