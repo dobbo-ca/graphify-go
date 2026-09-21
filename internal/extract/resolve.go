@@ -104,6 +104,29 @@ func Resolve(results []Result, files []string) model.Extraction {
 		}
 	}
 
+	// Inheritance: a declared supertype name binds the same way a call does —
+	// same file first, then disambiguated among the definitions sharing the name.
+	// An unresolvable base (a library type outside the corpus) drops rather than
+	// creating a stub node.
+	for _, r := range results {
+		for _, t := range r.TypeRefs {
+			tgt := ""
+			if ids := local[t.File+"\x00"+t.Name]; len(ids) == 1 {
+				tgt = ids[0]
+			}
+			if tgt == "" {
+				tgt = disambiguate(global[t.Name], t.File, idFile, importedFiles[t.File])
+			}
+			if tgt == "" || tgt == t.FromID || langfamily.Cross(t.File, idFile[tgt]) {
+				continue
+			}
+			out.Edges = append(out.Edges, model.Edge{
+				Source: t.FromID, Target: tgt, Relation: t.Relation,
+				Confidence: "INFERRED", SourceFile: t.File, SourceLocation: t.Loc,
+			})
+		}
+	}
+
 	// Imports: relative specifiers resolve to a corpus file (imports_from, used
 	// for cycle detection); bare specifiers become external dependency nodes.
 	extSeen := map[string]bool{}

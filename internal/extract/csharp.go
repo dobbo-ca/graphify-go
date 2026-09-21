@@ -1,6 +1,8 @@
 package extract
 
 import (
+	"unicode"
+
 	ts "github.com/tree-sitter/go-tree-sitter"
 	tscs "github.com/tree-sitter/tree-sitter-c-sharp/bindings/go"
 
@@ -17,14 +19,14 @@ func extractCSharp(rel string, src []byte) Result {
 	defer done()
 	b := newBuilder(rel)
 
-	b.csItems(root, src)
+	b.csItems(root, src, csInterfaceNames(root, src))
 	return b.res
 }
 
 // csItems handles each declaration directly under n (a compilation_unit, a
 // namespace's declaration_list, or a file_scoped_namespace_declaration),
 // recursing into nested namespaces.
-func (b *builder) csItems(n *ts.Node, src []byte) {
+func (b *builder) csItems(n *ts.Node, src []byte, ifaces map[string]bool) {
 	for i := uint(0); i < n.ChildCount(); i++ {
 		c := n.Child(i)
 		// Top-level statements wrap their inner statement in a global_statement.
@@ -34,18 +36,18 @@ func (b *builder) csItems(n *ts.Node, src []byte) {
 		switch c.Kind() {
 		case "class_declaration", "struct_declaration", "interface_declaration",
 			"enum_declaration", "record_declaration":
-			b.csType(c, src)
+			b.csType(c, src, ifaces)
 		case "local_function_statement":
 			b.csFunc(c, src)
 		case "using_directive":
 			b.csUsing(c, src)
 		case "namespace_declaration":
 			if body := c.ChildByFieldName("body"); body != nil {
-				b.csItems(body, src)
+				b.csItems(body, src, ifaces)
 			}
 		case "file_scoped_namespace_declaration":
 			// File-scoped namespaces hold their members as unfielded children.
-			b.csItems(c, src)
+			b.csItems(c, src, ifaces)
 		}
 	}
 }
@@ -63,13 +65,14 @@ func (b *builder) csFunc(n *ts.Node, src []byte) {
 
 // csType records a type definition and the methods declared in its body, each
 // scoped under the type's name.
-func (b *builder) csType(n *ts.Node, src []byte) {
+func (b *builder) csType(n *ts.Node, src []byte, ifaces map[string]bool) {
 	name := fieldText(n, "name", src)
 	if name == "" {
 		return
 	}
 	typeID := idutil.MakeID(b.stem, name)
 	b.def(typeID, name, name, line(n))
+	b.csBases(typeID, n, src, ifaces)
 
 	body := n.ChildByFieldName("body")
 	if body == nil {
@@ -135,4 +138,52 @@ func (b *builder) csCalls(body *ts.Node, callerID string, src []byte) {
 		}
 		return true
 	})
+}
+
+// csInterfaceNames collects the interfaces declared anywhere in the file, so a
+// base can be classified as implements rather than inherits.
+func csInterfaceNames(root *ts.Node, src []byte) map[string]bool {
+	names := map[string]bool{}
+	walk(root, func(n *ts.Node) bool {
+		if n.Kind() == "interface_declaration" {
+			if name := fieldText(n, "name", src); name != "" {
+				names[name] = true
+			}
+		}
+		return true
+	})
+	return names
+}
+
+// csBases records the entries of a type's base_list. C# does not distinguish
+// a base class from an implemented interface syntactically, so a base is an
+// implements target when it is an interface declared in this file or follows the
+// IPascalCase convention, and an inherits target otherwise. Every base of an
+// interface is interface inheritance.
+func (b *builder) csBases(typeID string, n *ts.Node, src []byte, ifaces map[string]bool) {
+	isInterface := n.Kind() == "interface_declaration"
+	for i := uint(0); i < n.ChildCount(); i++ {
+		bl := n.Child(i)
+		if bl.Kind() != "base_list" {
+			continue
+		}
+		for j := uint(0); j < bl.NamedChildCount(); j++ {
+			base := baseTypeName(bl.NamedChild(j).Utf8Text(src))
+			relation := "inherits"
+			if !isInterface && csIsInterfaceName(base, ifaces) {
+				relation = "implements"
+			}
+			b.typeRef(typeID, base, relation, line(n))
+		}
+	}
+}
+
+// csIsInterfaceName reports whether base names an interface: declared as one in
+// this file, or named IPascalCase by convention.
+func csIsInterfaceName(base string, ifaces map[string]bool) bool {
+	if ifaces[base] {
+		return true
+	}
+	r := []rune(base)
+	return len(r) >= 2 && r[0] == 'I' && unicode.IsUpper(r[1])
 }

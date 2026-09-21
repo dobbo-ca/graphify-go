@@ -41,6 +41,7 @@ func (b *builder) javaType(n *ts.Node, src []byte) {
 	}
 	typeID := idutil.MakeID(b.stem, name)
 	b.def(typeID, name, name, line(n))
+	b.javaSupertypes(typeID, n, src)
 
 	body := n.ChildByFieldName("body")
 	if body == nil {
@@ -130,4 +131,40 @@ func (b *builder) javaCalls(body *ts.Node, callerID string, src []byte) {
 		}
 		return true
 	})
+}
+
+// javaSupertypes records the declared parents of a type: `extends X` on a class
+// is an inherits edge, `implements I, J` are implements edges, and `extends` on
+// an interface is interface inheritance (inherits).
+func (b *builder) javaSupertypes(typeID string, n *ts.Node, src []byte) {
+	loc := line(n)
+	if sup := n.ChildByFieldName("superclass"); sup != nil {
+		for i := uint(0); i < sup.NamedChildCount(); i++ {
+			b.typeRef(typeID, baseTypeName(sup.NamedChild(i).Utf8Text(src)), "inherits", loc)
+			break
+		}
+	}
+	if ifs := n.ChildByFieldName("interfaces"); ifs != nil {
+		b.javaTypeList(typeID, ifs, "implements", loc, src)
+	}
+	if n.Kind() == "interface_declaration" {
+		for i := uint(0); i < n.ChildCount(); i++ {
+			if c := n.Child(i); c.Kind() == "extends_interfaces" {
+				b.javaTypeList(typeID, c, "inherits", loc, src)
+			}
+		}
+	}
+}
+
+// javaTypeList records every type named in the `type_list` under n.
+func (b *builder) javaTypeList(typeID string, n *ts.Node, relation, loc string, src []byte) {
+	for i := uint(0); i < n.ChildCount(); i++ {
+		list := n.Child(i)
+		if list.Kind() != "type_list" {
+			continue
+		}
+		for j := uint(0); j < list.NamedChildCount(); j++ {
+			b.typeRef(typeID, baseTypeName(list.NamedChild(j).Utf8Text(src)), relation, loc)
+		}
+	}
 }
