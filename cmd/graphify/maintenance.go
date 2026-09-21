@@ -24,6 +24,11 @@ const hookMarker = "# graphify-managed hook"
 // merge.graphify.* git config keys (#1902).
 const mergeAttrLine = "graphify-out/graph.json merge=graphify"
 
+// postCheckoutGuards short-circuit the post-checkout hook when HEAD did not
+// move ($1 = $2) or the checkout only touched files ($3 = 0), so `git checkout
+// -- file` does not pay for a whole-tree rebuild.
+const postCheckoutGuards = "[ \"$1\" = \"$2\" ] && exit 0\n[ \"$3\" = \"0\" ] && exit 0\n"
+
 // managedGitHooks fire an incremental rebuild after history changes.
 var managedGitHooks = []string{"post-commit", "post-merge", "post-checkout"}
 
@@ -67,10 +72,16 @@ func hookInstall(root string) error {
 	if err != nil {
 		return err
 	}
-	script := fmt.Sprintf("#!/bin/sh\n%s\nexec %q update %q >/dev/null 2>&1 || true\n", hookMarker, self, absRoot)
+	body := fmt.Sprintf("exec %q update %q >/dev/null 2>&1 || true\n", self, absRoot)
 
 	var installed []string
 	for _, h := range managedGitHooks {
+		script := fmt.Sprintf("#!/bin/sh\n%s\n%s", hookMarker, body)
+		if h == "post-checkout" {
+			// git passes $1=old HEAD, $2=new HEAD, $3=1 for a branch checkout.
+			// Nothing moved, or only files were checked out ⇒ nothing to rebuild.
+			script = fmt.Sprintf("#!/bin/sh\n%s\n%s%s", hookMarker, postCheckoutGuards, body)
+		}
 		path := filepath.Join(hooksDir, h)
 		if existing, err := os.ReadFile(path); err == nil && !strings.Contains(string(existing), hookMarker) {
 			fmt.Fprintf(os.Stderr, "  warning: %s already exists and was not written by graphify — skipping\n", h)
