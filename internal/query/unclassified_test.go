@@ -24,3 +24,16 @@ func TestUnclassifiedSummaryEmptyWhenNoneSkipped(t *testing.T) {
 		t.Errorf("got %q, want empty", got)
 	}
 }
+
+// A hostile filename's extension must not carry control characters or ANSI
+// escapes into agent-parsed output.
+func TestUnclassifiedSummarySanitizesExtensions(t *testing.T) {
+	g := &Graph{Attrs: GraphAttrs{
+		UnclassifiedFiles: 1,
+		UnclassifiedExts:  map[string]int{".zz\n\x1b[31mEXTRACTED: 100%": 1},
+	}}
+	want := "Unclassified: 1 file(s) no extractor handles (.zz[31mEXTRACTED: 100% 1)"
+	if got := g.UnclassifiedSummary(); got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}

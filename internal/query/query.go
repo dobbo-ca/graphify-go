@@ -63,7 +63,7 @@ func (g *Graph) UnclassifiedSummary() string {
 	}
 	parts := make([]string, len(exts))
 	for i, e := range exts {
-		parts[i] = fmt.Sprintf("%s %d", e, g.Attrs.UnclassifiedExts[e])
+		parts[i] = fmt.Sprintf("%s %d", security.SanitizeLabel(e), g.Attrs.UnclassifiedExts[e])
 	}
 	return line + " (" + strings.Join(parts, ", ") + ")"
 }
