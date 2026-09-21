@@ -327,3 +327,35 @@ func mustWrite(t *testing.T, path, content string) {
 		t.Fatal(err)
 	}
 }
+
+// graphify-out is generated output and stays out of the graph — except its
+// memory/ subtree, where `graphify save-result` files Q&A docs precisely so the
+// next update graphs them. The exception must survive the gitignore rule that
+// normally covers the whole output dir.
+func TestCollectFilesIncludesMemoryDir(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, ".gitignore"), "graphify-out/\n")
+	mustWrite(t, filepath.Join(root, "main.go"), "package main")
+	mustWrite(t, filepath.Join(root, "graphify-out", "graph.json"), `{"nodes":[]}`)
+	mustWrite(t, filepath.Join(root, "graphify-out", "raw", "notes.md"), "# raw")
+	mustWrite(t, filepath.Join(root, "graphify-out", "memory", "query_1_ab_q.md"), "---\ntype: \"query\"\n---\n\n# Q: q")
+
+	files, err := CollectFiles(root)
+	if err != nil {
+		t.Fatalf("CollectFiles: %v", err)
+	}
+	var got []string
+	for _, f := range files {
+		got = append(got, filepath.ToSlash(f))
+	}
+	want := map[string]bool{"main.go": true, "graphify-out/memory/query_1_ab_q.md": true}
+	for _, f := range got {
+		if !want[f] {
+			t.Errorf("unexpected file %q in %v", f, got)
+		}
+		delete(want, f)
+	}
+	for f := range want {
+		t.Errorf("missing file %q in %v", f, got)
+	}
+}

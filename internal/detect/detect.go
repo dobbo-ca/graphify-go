@@ -87,6 +87,18 @@ var skipDirs = map[string]bool{
 // setuptools metadata dirs (foo.egg-info) are generated, never source.
 var skipDirSuffixes = []string{".egg-info"}
 
+const (
+	// graphifyOut is the output dir; memoryDir under it holds the Q&A docs
+	// `graphify save-result` writes back into the graph.
+	graphifyOut = "graphify-out"
+	memoryDir   = graphifyOut + "/memory"
+)
+
+// inMemoryDir reports whether slashRel is graphify-out/memory or a path below it.
+func inMemoryDir(slashRel string) bool {
+	return slashRel == memoryDir || strings.HasPrefix(slashRel, memoryDir+"/")
+}
+
 // skipDir reports whether a directory named n should be pruned from the walk
 // (exact-name skip set or a skippable suffix like *.egg-info).
 func skipDir(n string) bool {
@@ -346,6 +358,13 @@ func CollectFilesReport(root string) (WalkReport, error) {
 			if path == root {
 				return nil
 			}
+			// graphify-out is a skipDir, but its memory/ subtree is scanned
+			// anyway: the Q&A docs `graphify save-result` files there are meant
+			// to become graph content on the next update, and they are
+			// gitignored along with the rest of graphify-out.
+			if slashRel == graphifyOut || inMemoryDir(slashRel) {
+				return nil
+			}
 			if skipDir(d.Name()) || ign.ignored(slashRel, true) {
 				return filepath.SkipDir
 			}
@@ -354,6 +373,9 @@ func CollectFilesReport(root string) (WalkReport, error) {
 		name := d.Name()
 		if skipFiles[name] {
 			return nil
+		}
+		if strings.HasPrefix(slashRel, graphifyOut+"/") && !inMemoryDir(slashRel) {
+			return nil // graph.json and friends are output, not source
 		}
 		ext := strings.ToLower(filepath.Ext(name))
 		if !SupportedExtensions[ext] && !mcpConfigFiles[name] {
@@ -364,7 +386,7 @@ func CollectFilesReport(root string) (WalkReport, error) {
 				return nil
 			}
 		}
-		if isSensitive(rel) || ign.ignored(slashRel, false) {
+		if isSensitive(rel) || (!inMemoryDir(slashRel) && ign.ignored(slashRel, false)) {
 			return nil
 		}
 		rep.Files = append(rep.Files, rel)

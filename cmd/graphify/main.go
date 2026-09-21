@@ -78,6 +78,8 @@ func main() {
 		err = cmdValidate()
 	case "serve":
 		err = cmdServe(defaultGraphPath)
+	case "save-result":
+		err = cmdSaveResult(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -932,5 +934,6 @@ usage:
   graphify serve               MCP stdio server: load graph.json once, answer many queries
   graphify extract <file>      print one file's extracted nodes/edges (debug)
   graphify export <fmt> [path] convert graph.json to graphml, dot, csv, or okf
+  graphify save-result --question Q --answer A  file a Q&A result into graphify-out/memory/ so the next update graphs it [--type T --nodes N... --outcome useful|dead_end|corrected --correction TEXT]
   graphify version             print version`)
 }
