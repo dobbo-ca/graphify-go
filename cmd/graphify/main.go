@@ -22,6 +22,7 @@ import (
 	"github.com/dobbo-ca/graphify-go/internal/detect"
 	"github.com/dobbo-ca/graphify-go/internal/export"
 	"github.com/dobbo-ca/graphify-go/internal/extract"
+	"github.com/dobbo-ca/graphify-go/internal/fsutil"
 	"github.com/dobbo-ca/graphify-go/internal/graph"
 	"github.com/dobbo-ca/graphify-go/internal/model"
 	"github.com/dobbo-ca/graphify-go/internal/query"
@@ -256,7 +257,7 @@ func writeOutputs(root string, walk detect.WalkReport, results []extract.Result,
 		return nil, nil, err
 	}
 	md := report.Generate(g, communities, root, commit)
-	if err := os.WriteFile(filepath.Join(outDir, "GRAPH_REPORT.md"), []byte(md), 0o644); err != nil {
+	if err := fsutil.WriteFileAtomic(filepath.Join(outDir, "GRAPH_REPORT.md"), []byte(md), 0o644); err != nil {
 		return nil, nil, err
 	}
 	if err := cache.Save(filepath.Join(outDir, cache.FileName), cache.Stamp(version), newCache); err != nil {
