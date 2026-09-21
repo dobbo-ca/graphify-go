@@ -113,3 +113,36 @@ func TestIntrospectManifestsPom(t *testing.T) {
 	assertPackageGraph(t, root, "com.example:myapp",
 		[]string{"org.apache.commons:commons-lang3", "com.google.guava:guava"})
 }
+
+func TestIntrospectManifestsCargo(t *testing.T) {
+	root := t.TempDir()
+	// Registry deps in both forms (bare version, inline table) plus a
+	// platform-conditional dep; dev-dependencies must not appear.
+	writeManifestFile(t, root, "Cargo.toml", `[package]
+name = "mycrate"
+version = "0.1.0"
+
+[dependencies]
+serde = "1.0"
+tokio = { version = "1", features = ["full"] }
+
+[target.'cfg(unix)'.dependencies]
+nix = "0.27"
+
+[dev-dependencies]
+criterion = "0.5"
+`)
+	assertPackageGraph(t, root, "mycrate", []string{"serde", "tokio", "nix"})
+}
+
+func TestIntrospectManifestsCargoVirtualWorkspace(t *testing.T) {
+	root := t.TempDir()
+	writeManifestFile(t, root, "Cargo.toml", "[workspace]\nmembers = [\"a\"]\n")
+	res, err := IntrospectManifests(root)
+	if err != nil {
+		t.Fatalf("IntrospectManifests: %v", err)
+	}
+	if len(res.Nodes) != 0 || len(res.Edges) != 0 {
+		t.Errorf("virtual workspace root emitted %+v / %+v, want nothing", res.Nodes, res.Edges)
+	}
+}

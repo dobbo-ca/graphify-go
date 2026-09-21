@@ -212,6 +212,7 @@ func shebangExtOfFile(path string) string {
 // package-manifest pass in internal/extract (manifest.go).
 var packageManifestFiles = map[string]bool{
 	"pyproject.toml": true,
+	"Cargo.toml":     true,
 	"go.mod":         true,
 	"pom.xml":        true,
 }
