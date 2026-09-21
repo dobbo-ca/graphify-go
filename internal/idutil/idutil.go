@@ -1,7 +1,7 @@
 // Package idutil builds stable node IDs from name parts. It mirrors the Python
 // original's extract._make_id and build._normalize_id so IDs generated here are
-// byte-for-byte compatible with upstream graph.json files: NFKC-normalize,
-// replace every non-word (Unicode) run with "_", collapse repeats, strip, fold.
+// byte-for-byte compatible with upstream graph.json files: casefold+NFKC to a
+// fixpoint, replace every non-word (Unicode) run with "_", collapse repeats, strip.
 package idutil
 
 import (
@@ -41,10 +41,21 @@ func MakeID(parts ...string) string {
 // to reconcile edge endpoints whose IDs differ only in casing or punctuation.
 func NormalizeID(s string) string { return clean(s) }
 
+// clean iterates casefold-then-NFKC to a fixpoint BEFORE filtering non-word
+// characters. The two do not commute: casefolding can expand a character into a
+// base letter plus a combining mark ("İ" -> "i" + U+0307), and NFKC can then
+// recompose that mark with an adjacent one. Folding last (or once) therefore
+// left NormalizeID(MakeID(s)) != MakeID(s) for such inputs. The loop is bounded;
+// Unicode caseless folding converges in one or two steps.
 func clean(s string) string {
-	s = norm.NFKC.String(s)
+	for i := 0; i < 6; i++ {
+		next := norm.NFKC.String(fold.String(s))
+		if next == s {
+			break
+		}
+		s = next
+	}
 	s = nonWord.ReplaceAllString(s, "_")
 	s = underscores.ReplaceAllString(s, "_")
-	s = strings.Trim(s, "_")
-	return fold.String(s)
+	return strings.Trim(s, "_")
 }
