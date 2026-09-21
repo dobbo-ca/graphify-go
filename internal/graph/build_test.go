@@ -78,3 +78,31 @@ func TestBuildKeepsBothDirections(t *testing.T) {
 		t.Errorf("edges = %d, want 2 (both directions kept)", g.NumEdges())
 	}
 }
+
+func TestBuildKeepsProvenanceOnIDCollision(t *testing.T) {
+	ext := model.Extraction{
+		Nodes: []model.Node{
+			{ID: "model", Label: "Model Doc", FileType: "concept", SourceFile: "model.md", SourceLocation: "L1"},
+			// external concept node for `import model`, appended after per-file nodes
+			{ID: "model", Label: "model", FileType: "concept"},
+		},
+	}
+	g := Build(ext)
+	n := g.Nodes["model"]
+	if n.SourceFile != "model.md" || n.Label != "Model Doc" || n.SourceLocation != "L1" {
+		t.Errorf("collision erased provenance: %+v", *n)
+	}
+}
+
+func TestBuildFillsMissingAttributesFromSameFile(t *testing.T) {
+	ext := model.Extraction{
+		Nodes: []model.Node{
+			{ID: "a", Label: "a()", FileType: "code", SourceFile: "x.go", SourceLocation: "L7"},
+			{ID: "a", Label: "a()", SourceFile: "x.go"},
+		},
+	}
+	n := Build(ext).Nodes["a"]
+	if n.FileType != "code" || n.SourceLocation != "L7" {
+		t.Errorf("same-file re-add lost attributes: %+v", *n)
+	}
+}
