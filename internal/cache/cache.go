@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strconv"
 	"time"
@@ -90,46 +91,71 @@ func statSigFresh(prev StatEntry, size, mtime int64) bool {
 // StatIndex maps a slash-relative file path to its stat fastpath entry.
 type StatIndex map[string]StatEntry
 
-// Load reads a cache file. A missing or unreadable file returns an empty cache
-// and no error, so callers can treat "no cache yet" as "re-parse everything".
-func Load(path string) Cache {
+// schema is the on-disk cache layout revision. Bump it when the shape of Entry
+// or StatEntry changes so older files are discarded rather than misread.
+const schema = 1
+
+// Stamp is the cache identity for a binary: its version plus the on-disk schema
+// revision. A cache file written under a different stamp is discarded, so an
+// extractor fix shipped in a new binary invalidates every cached result instead
+// of silently serving results the old extractors produced.
+func Stamp(version string) string {
+	return fmt.Sprintf("%s-s%d", version, schema)
+}
+
+// cacheFile and statFile are the stamped envelopes written to disk.
+type cacheFile struct {
+	V     string `json:"v"`
+	Files Cache  `json:"files"`
+}
+
+type statFile struct {
+	V     string    `json:"v"`
+	Files StatIndex `json:"files"`
+}
+
+// Load reads a cache file. A missing, unreadable, or differently-stamped file
+// returns an empty cache and no error, so callers can treat "no usable cache"
+// as "re-parse everything".
+func Load(path, stamp string) Cache {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Cache{}
 	}
-	var c Cache
-	if err := json.Unmarshal(data, &c); err != nil {
+	var f cacheFile
+	if err := json.Unmarshal(data, &f); err != nil || f.V != stamp || f.Files == nil {
 		return Cache{}
 	}
-	return c
+	return f.Files
 }
 
-// Save writes the cache as compact JSON.
-func Save(path string, c Cache) error {
-	data, err := json.Marshal(c)
+// Save writes the cache as compact JSON under stamp.
+func Save(path, stamp string, c Cache) error {
+	data, err := json.Marshal(cacheFile{V: stamp, Files: c})
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
 }
 
-// LoadStat reads the stat sidecar. A missing or unreadable file returns an empty
-// index and no error, so callers fall back to reading and hashing every file.
-func LoadStat(path string) StatIndex {
+// LoadStat reads the stat sidecar. A missing, unreadable, or differently-stamped
+// file returns an empty index and no error, so callers fall back to reading and
+// hashing every file.
+func LoadStat(path, stamp string) StatIndex {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return StatIndex{}
 	}
-	var s StatIndex
-	if err := json.Unmarshal(data, &s); err != nil {
+	var f statFile
+	if err := json.Unmarshal(data, &f); err != nil || f.V != stamp || f.Files == nil {
 		return StatIndex{}
 	}
-	return s
+	return f.Files
 }
 
-// SaveStat writes the stat sidecar as compact JSON.
-func SaveStat(path string, s StatIndex) error {
-	data, err := json.Marshal(s)
+// SaveStat writes the stat sidecar as compact JSON under stamp.
+func SaveStat(path, stamp string, s StatIndex) error {
+	data, err := json.Marshal(statFile{V: stamp, Files: s})
 	if err != nil {
 		return err
 	}
