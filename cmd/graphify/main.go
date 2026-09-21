@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/dobbo-ca/graphify-go/internal/analyze"
 	"github.com/dobbo-ca/graphify-go/internal/cache"
 	"github.com/dobbo-ca/graphify-go/internal/cluster"
 	"github.com/dobbo-ca/graphify-go/internal/detect"
@@ -70,6 +71,8 @@ func main() {
 		err = cmdExplain(os.Args[2:])
 	case "path":
 		err = cmdPath(os.Args[2:])
+	case "god-nodes":
+		err = cmdGodNodes(os.Args[2:])
 	case "extract":
 		err = cmdExtract(mustArg(2, "extract <file>"))
 	case "export":
@@ -685,6 +688,57 @@ func cmdPath(args []string) error {
 		return err
 	}
 	fmt.Println(renderPathChain(res))
+	return nil
+}
+
+// cmdGodNodes prints the most-connected core abstractions of a built graph —
+// the orientation answer for an unfamiliar repo, available without running the
+// MCP server or parsing GRAPH_REPORT.md. With --json it emits them as a
+// machine-readable array.
+func cmdGodNodes(args []string) error {
+	positionals, graphPath := parseGraphFlag(args)
+	top, asJSON := 10, false
+	for i := 0; i < len(positionals); i++ {
+		var val string
+		switch a := positionals[i]; {
+		case a == "--json":
+			asJSON = true
+			continue
+		case a == "--top" && i+1 < len(positionals):
+			val = positionals[i+1]
+			i++
+		case strings.HasPrefix(a, "--top="):
+			val = strings.TrimPrefix(a, "--top=")
+		default:
+			return fmt.Errorf("usage: graphify god-nodes [--top N] [--graph path] [--json]")
+		}
+		n, err := strconv.Atoi(val)
+		if err != nil || n < 1 {
+			return fmt.Errorf("--top must be a positive integer")
+		}
+		top = n
+	}
+	g, err := loadGraphAt(graphPath)
+	if err != nil {
+		return err
+	}
+	gods := analyze.GodNodes(modelOf(g), top)
+	if asJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if gods == nil {
+			gods = []analyze.GodNode{}
+		}
+		return enc.Encode(gods)
+	}
+	if len(gods) == 0 {
+		fmt.Println("no god nodes (graph has no non-file entities)")
+		return nil
+	}
+	fmt.Println("God nodes (most connected):")
+	for i, n := range gods {
+		fmt.Printf("  %d. %-40s %d edges\n", i+1, n.Label, n.Degree)
+	}
 	return nil
 }
 
