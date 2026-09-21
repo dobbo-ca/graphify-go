@@ -5,6 +5,7 @@
 package query
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -100,6 +101,9 @@ func Load(path string) (*Graph, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Strip a UTF-8 BOM: some editors/Windows tooling prepend one and
+	// encoding/json rejects it outright.
+	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
 	var g Graph
 	if err := json.Unmarshal(data, &g); err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
