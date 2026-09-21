@@ -383,19 +383,25 @@ func (e *AmbiguousError) Error() string {
 // maxCandidates caps how many matches an AmbiguousError lists.
 const maxCandidates = 10
 
-// ambiguous builds an *AmbiguousError from more than one matching node.
-func ambiguous(s string, hits []*Node) *AmbiguousError {
-	e := &AmbiguousError{Query: s}
+// ambiguous builds an *AmbiguousError from more than one matching node. total
+// is the number of matches before capping; it equals len(hits) unless the
+// caller already capped hits itself. Candidates are sanitized here, at the
+// point the message is built, so every caller (CLI and MCP) inherits the
+// guard without needing to re-sanitize the assembled message.
+func ambiguous(s string, hits []*Node, total int) *AmbiguousError {
+	e := &AmbiguousError{Query: security.SanitizeLabel(s)}
 	for _, n := range hits {
 		if len(e.Candidates) == maxCandidates {
-			e.More = len(hits) - maxCandidates
 			break
 		}
 		c := n.Label
 		if l := loc(n); l != "" {
 			c += " (" + l + ")"
 		}
-		e.Candidates = append(e.Candidates, c)
+		e.Candidates = append(e.Candidates, security.SanitizeLabel(c))
+	}
+	if total > maxCandidates {
+		e.More = total - maxCandidates
 	}
 	return e
 }
@@ -420,12 +426,15 @@ func (g *Graph) resolve(s string) (*Node, error) {
 		}
 		if len(hits) > 0 {
 			if len(hits) > 1 {
-				return nil, ambiguous(s, hits)
+				return nil, ambiguous(s, hits, len(hits))
 			}
 			return hits[0], nil
 		}
 	}
 	low := strings.ToLower(s)
+	if low == "" {
+		return nil, nil
+	}
 	var exact []*Node
 	for i := range g.Nodes {
 		if strings.ToLower(g.Nodes[i].Label) == low {
@@ -434,24 +443,28 @@ func (g *Graph) resolve(s string) (*Node, error) {
 	}
 	if len(exact) > 0 {
 		if len(exact) > 1 {
-			return nil, ambiguous(s, exact)
+			return nil, ambiguous(s, exact, len(exact))
 		}
 		return exact[0], nil
 	}
 	var subs []*Node
+	total := 0
 	for i := range g.Nodes {
 		n := &g.Nodes[i]
 		if strings.Contains(strings.ToLower(n.Label), low) || strings.Contains(strings.ToLower(n.ID), low) {
-			subs = append(subs, n)
+			total++
+			if len(subs) < maxCandidates {
+				subs = append(subs, n)
+			}
 		}
 	}
-	switch len(subs) {
+	switch total {
 	case 0:
 		return nil, nil
 	case 1:
 		return subs[0], nil
 	default:
-		return nil, ambiguous(s, subs)
+		return nil, ambiguous(s, subs, total)
 	}
 }
 

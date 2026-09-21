@@ -473,18 +473,9 @@ func renderPathChain(res *query.PathResult) string {
 func explainError(label string, err error) string {
 	var amb *query.AmbiguousError
 	if errors.As(err, &amb) {
-		// Sanitize each candidate individually: running the whole message
-		// through SanitizeLabel would truncate it at the 256-byte label cap,
-		// dropping candidates and the disambiguation hint.
-		clean := query.AmbiguousError{
-			Query:      security.SanitizeLabel(amb.Query),
-			Candidates: make([]string, len(amb.Candidates)),
-			More:       amb.More,
-		}
-		for i, c := range amb.Candidates {
-			clean.Candidates[i] = security.SanitizeLabel(c)
-		}
-		return clean.Error()
+		// query.ambiguous already sanitizes Query and each candidate when it
+		// builds the error, so the assembled message needs no further pass.
+		return amb.Error()
 	}
 	return fmt.Sprintf("No node matching '%s' found.", label)
 }

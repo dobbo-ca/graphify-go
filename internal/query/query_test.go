@@ -261,6 +261,14 @@ const suffixGraph = `{
   "links": []
 }`
 
+func TestResolveEmptyQueryNoMatch(t *testing.T) {
+	g := loadSample(t)
+	n, err := g.resolve("")
+	if n != nil || err != nil {
+		t.Fatalf("resolve(\"\") = (%v, %v), want (nil, nil)", n, err)
+	}
+}
+
 func TestExplainPathQualifierNeedsBoundary(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "graph.json")
 	if err := os.WriteFile(p, []byte(suffixGraph), 0o644); err != nil {

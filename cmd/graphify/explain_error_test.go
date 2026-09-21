@@ -1,7 +1,10 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -30,10 +33,32 @@ func TestExplainErrorKeepsAllCandidates(t *testing.T) {
 	}
 }
 
-// Control characters in candidates are still stripped.
+// Control characters in a node label are still stripped, now at the point
+// query.ambiguous builds the *AmbiguousError rather than when explainError
+// renders it.
 func TestExplainErrorSanitizesCandidates(t *testing.T) {
-	amb := &query.AmbiguousError{Query: "X", Candidates: []string{"Bad\x00Label (a.go:1)"}}
-	got := explainError("X", amb)
+	graphJSON := `{
+  "directed": false, "multigraph": false, "graph": {},
+  "nodes": [
+    {"id":"a_x","label":"BadLabel\u0000","file_type":"code","source_file":"a.go","source_location":"L1","norm_label":"BadLabel\u0000"},
+    {"id":"b_x","label":"BadLabel\u0000","file_type":"code","source_file":"b.go","source_location":"L1","norm_label":"BadLabel\u0000"}
+  ],
+  "links": []
+}`
+	p := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(p, []byte(graphJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g, err := query.Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = query.Explain(g, "BadLabel")
+	var amb *query.AmbiguousError
+	if !errors.As(err, &amb) {
+		t.Fatalf("err = %v, want *AmbiguousError", err)
+	}
+	got := explainError("BadLabel", amb)
 	if strings.ContainsRune(got, 0) {
 		t.Errorf("explainError left a control character in %q", got)
 	}
