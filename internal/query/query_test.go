@@ -172,3 +172,23 @@ func TestExplainUsesEdgeCallSite(t *testing.T) {
 		t.Errorf("fallback location = %q, want a.go:20", got["zorkother()"])
 	}
 }
+
+// TestExplainNeighborsDegreeOrdered checks that Explain returns the most
+// connected neighbours first, so a caller capping the list keeps the hubs.
+func TestExplainNeighborsDegreeOrdered(t *testing.T) {
+	g := loadSample(t)
+	ex, err := Explain(g, "b()")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i < len(ex.Neighbors); i++ {
+		if ex.Neighbors[i-1].Degree < ex.Neighbors[i].Degree {
+			t.Fatalf("neighbors not degree-descending: %+v", ex.Neighbors)
+		}
+	}
+	for _, n := range ex.Neighbors {
+		if n.Degree == 0 {
+			t.Errorf("neighbor %q has zero degree", n.Label)
+		}
+	}
+}

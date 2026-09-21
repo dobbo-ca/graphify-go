@@ -108,9 +108,12 @@ func Query(g *Graph, pattern string) ([]Match, error) {
 	return out, nil
 }
 
-// Neighbor is an adjacent node in a given direction.
+// Neighbor is an adjacent node in a given direction. Degree is the neighbour's
+// own undirected degree, and File its source file, so callers can rank a
+// high-degree node's connections and group the ones they cut.
 type Neighbor struct {
-	ID, Label, Relation, Direction, Location string
+	ID, Label, Relation, Direction, Location, File string
+	Degree                                         int
 }
 
 // Explanation is a node plus its grouped neighbours.
@@ -139,22 +142,33 @@ func Explain(g *Graph, id string) (*Explanation, error) {
 			continue
 		}
 		o := g.byID[other]
-		label, location := other, ""
+		label, location, file := other, "", ""
 		if o != nil {
-			label, location = o.Label, loc(o)
+			label, location, file = o.Label, loc(o), o.SourceFile
 		}
 		// Prefer the traversed edge's own call site over the neighbour's
 		// definition line: "who calls this and where" wants the call site.
 		if el := edgeLoc(l); el != "" {
 			location = el
 		}
-		nbrs = append(nbrs, Neighbor{ID: other, Label: label, Relation: l.Relation, Direction: dir, Location: location})
+		nbrs = append(nbrs, Neighbor{ID: other, Label: label, Relation: l.Relation,
+			Direction: dir, Location: location, File: file, Degree: len(g.adj[other])})
 	}
+	// Most-connected neighbours first, so a caller showing only the head of the
+	// list keeps the important ones; (relation, label, direction) breaks ties
+	// deterministically.
 	sort.Slice(nbrs, func(i, j int) bool {
-		if nbrs[i].Relation != nbrs[j].Relation {
-			return nbrs[i].Relation < nbrs[j].Relation
+		a, b := nbrs[i], nbrs[j]
+		switch {
+		case a.Degree != b.Degree:
+			return a.Degree > b.Degree
+		case a.Relation != b.Relation:
+			return a.Relation < b.Relation
+		case a.Label != b.Label:
+			return a.Label < b.Label
+		default:
+			return a.Direction < b.Direction
 		}
-		return nbrs[i].Label < nbrs[j].Label
 	})
 	return &Explanation{Node: n, Neighbors: nbrs}, nil
 }

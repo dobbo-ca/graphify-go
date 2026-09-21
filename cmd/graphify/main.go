@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -577,13 +578,72 @@ func cmdExplain(args []string) error {
 		return err
 	}
 	fmt.Printf("%s  [%s]\n  %s\n", ex.Node.Label, ex.Node.FileType, locOf(ex.Node))
-	if len(ex.Neighbors) == 0 {
-		fmt.Println("  (no connections)")
-	}
-	for _, n := range ex.Neighbors {
-		fmt.Printf("  %s %-12s %-32s %s\n", n.Direction, n.Relation, n.Label, n.Location)
+	for _, line := range explainLines(ex.Neighbors) {
+		fmt.Println(line)
 	}
 	return nil
+}
+
+// explainConnCap / explainFileCap bound explain's output: a hub node in a large
+// repo has thousands of neighbours, and dumping them all buries the agent's
+// context. Neighbours arrive degree-sorted, so the head is the useful part.
+const (
+	explainConnCap = 20
+	explainFileCap = 20
+)
+
+// explainLines renders a node's connections: the top explainConnCap neighbours
+// in full, then the remainder folded into (direction, source file) counts so
+// nothing is silently dropped.
+func explainLines(nbrs []query.Neighbor) []string {
+	if len(nbrs) == 0 {
+		return []string{"  (no connections)"}
+	}
+	head := nbrs
+	if len(head) > explainConnCap {
+		head = head[:explainConnCap]
+	}
+	var out []string
+	for _, n := range head {
+		out = append(out, fmt.Sprintf("  %s %-12s %-32s %s", n.Direction, n.Relation, n.Label, n.Location))
+	}
+	tail := nbrs[len(head):]
+	if len(tail) == 0 {
+		return out
+	}
+	counts := map[[2]string]int{}
+	for _, n := range tail {
+		file := n.File
+		if file == "" {
+			file = "(unknown file)"
+		}
+		counts[[2]string{n.Direction, file}]++
+	}
+	keys := make([][2]string, 0, len(counts))
+	for k := range counts {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if counts[keys[i]] != counts[keys[j]] {
+			return counts[keys[i]] > counts[keys[j]]
+		}
+		if keys[i][1] != keys[j][1] {
+			return keys[i][1] < keys[j][1]
+		}
+		return keys[i][0] < keys[j][0]
+	})
+	out = append(out, fmt.Sprintf("  ... %d more connections. Grouped by file:", len(tail)))
+	shown := keys
+	if len(shown) > explainFileCap {
+		shown = shown[:explainFileCap]
+	}
+	for _, k := range shown {
+		out = append(out, fmt.Sprintf("    %s %-48s %d", k[0], k[1], counts[k]))
+	}
+	if rest := len(keys) - len(shown); rest > 0 {
+		out = append(out, fmt.Sprintf("    ... and %d more files", rest))
+	}
+	return out
 }
 
 func cmdPath(args []string) error {
