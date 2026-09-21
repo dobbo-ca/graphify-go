@@ -208,9 +208,13 @@ func Resolve(results []Result, files []string) model.Extraction {
 var mdExts = []string{".md", ".mdx", ".markdown"}
 
 // mdCodeSymbol is the identifier shape a backtick `code` span must match to be a
-// candidate reference to a code definition. Spans with spaces, dashes or dots
-// (`git status`, `--flag`, `pkg.Fn`) are rejected as noise.
-var mdCodeSymbol = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+// candidate reference to a code definition. The span may be qualified with `.`
+// or `::` (`pkg.Widget`, `Widget::render`); spans with spaces or dashes
+// (`git status`, `--flag`) are rejected as noise.
+var mdCodeSymbol = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(?:(?:::|\.)[A-Za-z_][A-Za-z0-9_]*)*$`)
+
+// mdCodeSep splits a qualified code span into its segments.
+var mdCodeSep = regexp.MustCompile(`::|\.`)
 
 // resolveMarkdown stitches markdown link references into `references` edges and
 // adds the `contains` edges implied by directory structure (a directory's
@@ -229,6 +233,9 @@ func resolveMarkdown(results []Result, files []string, corpus map[string]bool, o
 		}
 	}
 
+	// Tokens each definition may be qualified by, so `pkg.Widget` can resolve.
+	quals := defQualifiers(results)
+
 	seenSym := map[string]bool{} // FromID\x00defID, to not emit a symbol edge twice
 	for _, r := range results {
 		for _, m := range r.MDRefs {
@@ -243,7 +250,7 @@ func resolveMarkdown(results []Result, files []string, corpus map[string]bool, o
 			// Not a markdown link: a backtick `symbol` matching a unique code
 			// definition becomes a references edge to that definition. Drop on
 			// ambiguity (0 or >1 candidates) and on non-identifier noise.
-			id := uniqueCodeDef(m.Target, symDefs)
+			id := uniqueCodeDef(m.Target, symDefs, quals)
 			if id == "" {
 				continue
 			}
@@ -284,17 +291,73 @@ func resolveMarkdown(results []Result, files []string, corpus map[string]bool, o
 	}
 }
 
+// defQualifiers maps each code definition id to the tokens a qualified markdown
+// mention may cite it by: the labels of the nodes containing it (a class owning
+// a method) and the segments of its source path. This is what lets `pkg.Widget`
+// bind to a Widget defined under pkg/ while `time.sleep` stays off a repo's own
+// sleep.
+func defQualifiers(results []Result) map[string]map[string]bool {
+	label := map[string]string{}
+	parent := map[string]string{} // contained id -> containing id
+	for _, r := range results {
+		for _, n := range r.Nodes {
+			label[n.ID] = n.Label
+		}
+		for _, e := range r.Edges {
+			if e.Relation == "contains" {
+				parent[e.Target] = e.Source
+			}
+		}
+	}
+	out := make(map[string]map[string]bool)
+	for _, r := range results {
+		for _, d := range r.Defs {
+			toks := map[string]bool{}
+			for _, seg := range strings.Split(filepath.ToSlash(d.File), "/") {
+				toks[seg] = true
+				toks[strings.TrimSuffix(seg, path.Ext(seg))] = true
+			}
+			// Walk the containment chain, bounded so a cyclic edge can't hang.
+			for id, n := parent[d.ID], 0; id != "" && n < 16; id, n = parent[id], n+1 {
+				if l := label[id]; l != "" {
+					toks[l] = true
+				}
+			}
+			out[d.ID] = toks
+		}
+	}
+	return out
+}
+
 // uniqueCodeDef resolves a backtick code-span symbol to the single code
-// definition that bears that name, or "" when the span is not an identifier or
-// when zero/several definitions share the name (drop-on-ambiguity).
-func uniqueCodeDef(sym string, index map[string][]string) string {
+// definition it names, or "" when the span is not an identifier or when
+// zero/several definitions survive (drop-on-ambiguity). For a qualified span
+// (`pkg.Widget`, `Widget::render`) the last segment is the name and every
+// preceding segment must be a qualifier the candidate answers to.
+func uniqueCodeDef(sym string, index map[string][]string, quals map[string]map[string]bool) string {
 	if !mdCodeSymbol.MatchString(sym) {
 		return ""
 	}
-	if ids := index[sym]; len(ids) == 1 {
-		return ids[0]
+	segs := mdCodeSep.Split(sym, -1)
+	name, prefix := segs[len(segs)-1], segs[:len(segs)-1]
+	var hit string
+	for _, id := range index[name] {
+		ok := true
+		for _, q := range prefix {
+			if !quals[id][q] {
+				ok = false
+				break
+			}
+		}
+		if !ok {
+			continue
+		}
+		if hit != "" {
+			return "" // several definitions match
+		}
+		hit = id
 	}
-	return ""
+	return hit
 }
 
 // resolveMDTarget maps a markdown link target to a markdown file in the corpus,

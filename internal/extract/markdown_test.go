@@ -284,3 +284,53 @@ func TestResolveBacktickCodeSymbol(t *testing.T) {
 		t.Errorf("references edges from notes = %d, want 1 (only the unique code symbol resolves)", refs)
 	}
 }
+
+// TestResolveQualifiedCodeSymbol covers qualified backtick spans: a dotted or
+// ::-separated mention resolves when every qualifier is a path segment of the
+// definition's file or a label on its containment chain, and drops otherwise
+// (so `time.sleep` never binds to a repo's own `sleep`).
+func TestResolveQualifiedCodeSymbol(t *testing.T) {
+	doc := "# Doc\n\nSee `pkg.Widget`, `Widget::render`, `time.sleep` and `other.Widget`.\n"
+	r := extractMarkdown("notes.md", []byte(doc))
+
+	code := Result{
+		Nodes: []model.Node{{ID: "WIDGET", Label: "Widget"}},
+		Edges: []model.Edge{{Source: "WIDGET", Target: "RENDER", Relation: "contains"}},
+		Defs: []Def{
+			{ID: "WIDGET", Name: "Widget", File: "pkg/widget.go"},
+			{ID: "RENDER", Name: "render", File: "pkg/widget.go"},
+			{ID: "SLEEP", Name: "sleep", File: "util/helpers.go"},
+		},
+	}
+
+	ext := Resolve([]Result{r, code}, []string{"notes.md", "pkg/widget.go", "util/helpers.go"})
+
+	hasRef := func(tgt string) bool {
+		for _, e := range ext.Edges {
+			if e.Relation == "references" && e.Source == "notes" && e.Target == tgt {
+				return true
+			}
+		}
+		return false
+	}
+
+	if !hasRef("WIDGET") { // pkg.Widget: "pkg" is a path segment of pkg/widget.go
+		t.Error("expected notes --references--> WIDGET for `pkg.Widget`")
+	}
+	if !hasRef("RENDER") { // Widget::render: "Widget" owns render
+		t.Error("expected notes --references--> RENDER for `Widget::render`")
+	}
+	if hasRef("SLEEP") { // time.sleep: no "time" qualifier anywhere
+		t.Error("did not expect notes --references--> SLEEP for `time.sleep`")
+	}
+	// `other.Widget` must not bind either: the only references edges are the two above.
+	refs := 0
+	for _, e := range ext.Edges {
+		if e.Relation == "references" && e.Source == "notes" {
+			refs++
+		}
+	}
+	if refs != 2 {
+		t.Errorf("references edges from notes = %d, want 2", refs)
+	}
+}
