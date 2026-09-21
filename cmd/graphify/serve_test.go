@@ -38,7 +38,7 @@ func newServer(t *testing.T) *mcpServer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &mcpServer{g: g, communities: communitiesOf(g), god: modelOf(g)}
+	return newMCPServer(g)
 }
 
 func TestToolQueryGraph(t *testing.T) {
@@ -296,7 +296,7 @@ func TestCmdServeLoadError(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.Chdir(wd)
-	if err := cmdServe(defaultGraphPath); err == nil {
+	if err := cmdServe(nil); err == nil {
 		t.Error("cmdServe with no graph.json = nil, want load error")
 	}
 }
@@ -321,7 +321,7 @@ func bigServer(t *testing.T, n int) *mcpServer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &mcpServer{g: g, communities: communitiesOf(g), god: modelOf(g)}
+	return newMCPServer(g)
 }
 
 func TestToolGetNeighborsTokenBudget(t *testing.T) {
@@ -349,5 +349,83 @@ func TestToolGetNeighborsUnderBudgetNotTruncated(t *testing.T) {
 	out := s.toolGetNeighbors(map[string]any{"label": "authValidate"})
 	if strings.Contains(out, "Truncated") {
 		t.Errorf("small output should not be truncated:\n%s", out)
+	}
+}
+
+// TestCallToolProjectPath is the cross-project acceptance check: a server
+// launched on graph A answers a call carrying project_path=B about B, and the
+// default context is restored afterwards.
+func TestCallToolProjectPath(t *testing.T) {
+	s := newServer(t)
+	project := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(project, "graphify-out"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	other := `{"directed":true,"multigraph":false,"graph":{},"nodes":[
+		{"id":"other_fn","label":"otherFn()","file_type":"code","source_file":"other.go","source_location":"L1","norm_label":"otherfn()"}],"links":[]}`
+	if err := os.WriteFile(filepath.Join(project, "graphify-out", "graph.json"), []byte(other), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	call := func(args map[string]any) string {
+		raw, err := json.Marshal(map[string]any{"name": "get_node", "arguments": args})
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp := s.callTool(rpcRequest{JSONRPC: "2.0", ID: json.RawMessage(`1`), Method: "tools/call", Params: raw})
+		if resp.Error != nil {
+			t.Fatalf("call failed: %+v", resp.Error)
+		}
+		b, err := json.Marshal(resp.Result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+
+	if out := call(map[string]any{"label": "otherFn", "project_path": project}); !strings.Contains(out, "other.go") {
+		t.Errorf("project_path call did not read the other project:\n%s", out)
+	}
+	// The default context is back in place for the next call.
+	if out := call(map[string]any{"label": "authValidate"}); !strings.Contains(out, "auth.go") {
+		t.Errorf("default context not restored:\n%s", out)
+	}
+}
+
+func TestCallToolProjectPathMissingGraph(t *testing.T) {
+	s := newServer(t)
+	raw, _ := json.Marshal(map[string]any{"name": "graph_stats", "arguments": map[string]any{"project_path": t.TempDir()}})
+	resp := s.callTool(rpcRequest{JSONRPC: "2.0", ID: json.RawMessage(`1`), Method: "tools/call", Params: raw})
+	b, _ := json.Marshal(resp.Result)
+	if !strings.Contains(string(b), "Error:") {
+		t.Errorf("want load error text, got %s", b)
+	}
+}
+
+func TestToolDefsCarryProjectPath(t *testing.T) {
+	for _, d := range toolDefs() {
+		props := d["inputSchema"].(map[string]any)["properties"].(map[string]any)
+		if _, ok := props["project_path"]; !ok {
+			t.Errorf("tool %v schema missing project_path", d["name"])
+		}
+	}
+}
+
+func TestContextCacheCap(t *testing.T) {
+	s := newServer(t)
+	for i := 0; i <= maxContexts; i++ {
+		project := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(project, "graphify-out"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(project, "graphify-out", "graph.json"), []byte(serveGraph), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.contextFor(project); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(s.contexts) > maxContexts {
+		t.Errorf("context cache grew to %d, want <= %d", len(s.contexts), maxContexts)
 	}
 }
