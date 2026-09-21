@@ -123,7 +123,9 @@ type Cycle struct {
 func ImportCycles(g *model.Graph, maxLen, topN int) []Cycle {
 	adj := map[string][]string{}
 	for _, e := range g.Edges() {
-		if e.Relation != "imports_from" {
+		// Type-only imports are erased at compile time, so they cannot form a
+		// runtime cycle (upstream find_import_cycles skips them too).
+		if e.Relation != "imports_from" || e.TypeOnly {
 			continue
 		}
 		uf, vf := g.Nodes[e.Source].SourceFile, g.Nodes[e.Target].SourceFile

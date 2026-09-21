@@ -107,12 +107,25 @@ func Resolve(results []Result, files []string) model.Extraction {
 	// Imports: relative specifiers resolve to a corpus file (imports_from, used
 	// for cycle detection); bare specifiers become external dependency nodes.
 	extSeen := map[string]bool{}
+	// A file can import from the same module twice (a type import plus a value
+	// import); only one imports_from edge survives dedupe, so TypeOnly must be
+	// the AND over every import of that target, not whichever parsed first.
+	impEdge := map[string]int{}
 	for _, r := range results {
 		for _, im := range r.Imps {
 			if target := resolveRelImport(im.File, im.Spec, corpus); target != "" {
+				tgtID := idutil.MakeID(target)
+				if i, ok := impEdge[im.FileID+"\x00"+tgtID]; ok {
+					if !im.TypeOnly {
+						out.Edges[i].TypeOnly = false
+					}
+					continue
+				}
+				impEdge[im.FileID+"\x00"+tgtID] = len(out.Edges)
 				out.Edges = append(out.Edges, model.Edge{
-					Source: im.FileID, Target: idutil.MakeID(target), Relation: "imports_from",
+					Source: im.FileID, Target: tgtID, Relation: "imports_from",
 					Confidence: "EXTRACTED", SourceFile: im.File, SourceLocation: im.Loc,
+					TypeOnly: im.TypeOnly,
 				})
 				continue
 			}

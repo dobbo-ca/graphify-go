@@ -39,9 +39,12 @@ type ImportAlias struct {
 	Local, Imported, ModuleStem, Loc string
 }
 
-// Imp is an unresolved import: File imported the module named Spec.
+// Imp is an unresolved import: File imported the module named Spec. TypeOnly
+// marks a TypeScript `import type ...`, which is erased at compile time and so
+// cannot participate in a runtime import cycle.
 type Imp struct {
 	FileID, File, Spec, Loc string
+	TypeOnly                bool
 }
 
 // ModRef is a Terraform module block's source before resolution: the module
@@ -258,9 +261,12 @@ func (b *builder) callMember(callerID, callee, loc string) {
 	b.res.Calls = append(b.res.Calls, Call{CallerID: callerID, Callee: callee, File: b.file, Loc: loc, IsMember: true})
 }
 
-func (b *builder) imp(spec, loc string) {
+func (b *builder) imp(spec, loc string) { b.impTyped(spec, loc, false) }
+
+// impTyped is imp with an explicit type-only flag (TypeScript `import type`).
+func (b *builder) impTyped(spec, loc string, typeOnly bool) {
 	if spec != "" {
-		b.res.Imps = append(b.res.Imps, Imp{FileID: b.fileID, File: b.file, Spec: spec, Loc: loc})
+		b.res.Imps = append(b.res.Imps, Imp{FileID: b.fileID, File: b.file, Spec: spec, Loc: loc, TypeOnly: typeOnly})
 	}
 }
 
