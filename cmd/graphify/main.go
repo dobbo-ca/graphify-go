@@ -33,7 +33,104 @@ import (
 	"github.com/dobbo-ca/graphify-go/internal/security"
 )
 
-const defaultGraphPath = "graphify-out/graph.json"
+// outDir resolves the graphify-out directory for read commands. GRAPHIFY_OUT
+// overrides it outright (absolute path or relative name); otherwise the first
+// ancestor of the cwd holding graphify-out/graph.json wins, so query/explain/
+// path work from any subdirectory instead of only the repo root. With neither,
+// the plain relative name keeps the historical cwd-local behaviour.
+func outDir() string {
+	if v := os.Getenv("GRAPHIFY_OUT"); v != "" {
+		return v
+	}
+	dir, err := os.Getwd()
+	if err != nil {
+		return "graphify-out"
+	}
+	for {
+		cand := filepath.Join(dir, "graphify-out")
+		if _, err := os.Stat(filepath.Join(cand, "graph.json")); err == nil {
+			return cand
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "graphify-out"
+		}
+		dir = parent
+	}
+}
+
+// outDirFor resolves the out directory for a command that takes a root:
+// GRAPHIFY_OUT still wins, otherwise the root keeps its own graphify-out. It
+// never walks upward: a write must land under the tree it scanned.
+func outDirFor(root string) string {
+	if v := os.Getenv("GRAPHIFY_OUT"); v != "" {
+		return v
+	}
+	return filepath.Join(root, "graphify-out")
+}
+
+// defaultGraphPath is the graph.json every read command loads when no --graph
+// override is given.
+func defaultGraphPath() string { return filepath.Join(outDir(), "graph.json") }
+
+// rootFileName records, inside the out directory, the source tree the graph was
+// scanned from. It lets `update` recover the scan root when the out directory is
+// not the repo's own (GRAPHIFY_OUT) or the cwd is a subdirectory.
+const rootFileName = ".graphify_root"
+
+// scanRoot reports the source tree the resolved graph was built from: the
+// .graphify_root sidecar when it is consistent with where the caller is, else
+// the out directory's parent. The sidecar can ship in a clone, so a recorded
+// path is only honoured when it is an existing directory that is the out
+// directory's own parent or an ancestor of the cwd — a stale, foreign or
+// hostile marker must not redirect the scan onto an arbitrary tree.
+func scanRoot() string {
+	out := outDir()
+	base := filepath.Dir(out)
+	rec := readRootMarker(filepath.Join(out, rootFileName))
+	if rec == "" {
+		return base
+	}
+	if !filepath.IsAbs(rec) {
+		rec = filepath.Join(base, rec)
+	}
+	if !rootUsable(rec, base) {
+		fmt.Fprintf(os.Stderr, "warning: ignoring %s recording %q (not a directory containing the current directory)\n", rootFileName, rec)
+		return base
+	}
+	return rec
+}
+
+// readRootMarker reads the recorded scan root, bounded so a bogus sidecar
+// cannot be slurped whole. Missing or empty file yields "".
+func readRootMarker(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, 4096))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(strings.TrimPrefix(string(b), "\ufeff"))
+}
+
+// rootUsable reports whether a recorded scan root may be trusted.
+func rootUsable(rec, base string) bool {
+	if fi, err := os.Stat(rec); err != nil || !fi.IsDir() {
+		return false
+	}
+	if filepath.Clean(rec) == filepath.Clean(base) {
+		return true
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(rec, cwd)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
 
 // Build metadata, injected via -ldflags at release time.
 var (
@@ -226,7 +323,7 @@ func writeOutputs(root string, walk detect.WalkReport, results []extract.Result,
 	}
 	commit := gitHead(root)
 
-	outDir := filepath.Join(root, "graphify-out")
+	outDir := outDirFor(root)
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return nil, nil, err
 	}
@@ -269,6 +366,12 @@ func writeOutputs(root string, walk detect.WalkReport, results []extract.Result,
 		return nil, nil, err
 	}
 	if err := cache.SaveStat(filepath.Join(outDir, cache.StatFileName), cache.Stamp(version), newStat); err != nil {
+		return nil, nil, err
+	}
+	// Record the scanned tree so `update` from a subdirectory (or with a
+	// relocated GRAPHIFY_OUT) refreshes this graph instead of building a stray
+	// second one rooted at the cwd.
+	if err := os.WriteFile(filepath.Join(outDir, rootFileName), []byte(root+"\n"), 0o644); err != nil {
 		return nil, nil, err
 	}
 	return g, communities, nil
@@ -346,13 +449,14 @@ func cmdBuild(args []string) error {
 		return err
 	}
 	fmt.Printf("built graph: %d files · %d nodes · %d edges · %d communities → %s\n",
-		len(files), g.NumNodes(), g.NumEdges(), len(communities), filepath.Join(root, "graphify-out"))
+		len(files), g.NumNodes(), g.NumEdges(), len(communities), outDirFor(root))
 	return nil
 }
 
 // buildOpts holds the parsed build/update arguments.
 type buildOpts struct {
 	root        string
+	rootSet     bool // an explicit path argument was given (vs the "." default)
 	cargo       bool
 	noManifests bool   // --no-manifests: skip the default package-manifest pass
 	semantic    bool   // --semantic: run the opt-in LLM enrichment pass
@@ -406,6 +510,7 @@ func parseBuildOpts(args []string) (buildOpts, error) {
 			opts.backend = strings.TrimPrefix(a, "--backend=")
 		default:
 			opts.root = a
+			opts.rootSet = true
 		}
 	}
 	if opts.semantic && opts.backend == "" {
@@ -443,7 +548,13 @@ func withManifests(root string, results []extract.Result) ([]extract.Result, err
 // rest, then resolves and writes the same outputs as build. With no existing
 // cache it transparently degrades to a full build.
 func cmdUpdate(args []string) error {
-	root, cargo, noManifests, force, noCluster := parseBuildArgs(args)
+	opts, _ := parseBuildOpts(args)
+	root, cargo, noManifests, force, noCluster := opts.root, opts.cargo, opts.noManifests, opts.force, opts.noCluster
+	if !opts.rootSet {
+		// No explicit target: update the graph the read commands would load,
+		// not a new one rooted at the cwd.
+		root = scanRoot()
+	}
 	rep, err := detect.CollectFilesReport(root)
 	if err != nil {
 		return err
@@ -453,8 +564,8 @@ func cmdUpdate(args []string) error {
 	if len(files) == 0 {
 		return fmt.Errorf("no supported source files found under %s", root)
 	}
-	prev := cache.Load(filepath.Join(root, "graphify-out", cache.FileName), cache.Stamp(version))
-	prevStat := cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName), cache.Stamp(version))
+	prev := cache.Load(filepath.Join(outDirFor(root), cache.FileName), cache.Stamp(version))
+	prevStat := cache.LoadStat(filepath.Join(outDirFor(root), cache.StatFileName), cache.Stamp(version))
 	// --force / GRAPHIFY_FORCE means a full re-scan, matching upstream: drop the
 	// caches so every file is re-read and re-parsed. Without this the flag only
 	// relaxed the anti-shrink guard, leaving a poisoned cache with no remedy
@@ -481,7 +592,7 @@ func cmdUpdate(args []string) error {
 	}
 	fmt.Printf("updated graph: %d files (%d reparsed, %d reused, %d removed) · %d nodes · %d edges · %d communities → %s\n",
 		len(files), stats.parsed, stats.reused, stats.dropped,
-		g.NumNodes(), g.NumEdges(), len(communities), filepath.Join(root, "graphify-out"))
+		g.NumNodes(), g.NumEdges(), len(communities), outDirFor(root))
 	return nil
 }
 
@@ -516,7 +627,7 @@ func cmdAsk(args []string) error {
 	dfs := false
 	budget := 2000
 	var relations []string
-	graphPath := defaultGraphPath
+	graphPath := defaultGraphPath()
 	rest := args[1:]
 	for i := 0; i < len(rest); i++ {
 		switch {
@@ -553,7 +664,7 @@ func cmdAsk(args []string) error {
 			graphPath = strings.TrimPrefix(rest[i], "--graph=")
 		}
 	}
-	if graphPath != defaultGraphPath {
+	if graphPath != defaultGraphPath() {
 		safe, err := safeGraphPath(graphPath)
 		if err != nil {
 			return err
@@ -572,12 +683,7 @@ func cmdAsk(args []string) error {
 // graphify-out directory under the current working directory, preventing path
 // traversal that would read arbitrary on-disk JSON (config/credential files).
 func safeGraphPath(path string) (string, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	base := filepath.Join(cwd, "graphify-out")
-	return security.ValidateGraphPath(path, base)
+	return security.ValidateGraphPath(path, outDir())
 }
 
 func cmdExplain(args []string) error {
@@ -746,7 +852,7 @@ func cmdGodNodes(args []string) error {
 // (or --graph=<path>) override, defaulting to defaultGraphPath. It lets explain
 // and path accept an alternate graph.json the way ask and diff already do.
 func parseGraphFlag(args []string) (positionals []string, graphPath string) {
-	graphPath = defaultGraphPath
+	graphPath = defaultGraphPath()
 	for i := 0; i < len(args); i++ {
 		switch {
 		case args[i] == "--graph" && i+1 < len(args):
@@ -765,7 +871,7 @@ func parseGraphFlag(args []string) (positionals []string, graphPath string) {
 // containment guard as ask/diff when it differs from the default so an alternate
 // path cannot escape graphify-out to read arbitrary on-disk JSON.
 func loadGraphAt(graphPath string) (*query.Graph, error) {
-	if graphPath != defaultGraphPath {
+	if graphPath != defaultGraphPath() {
 		safe, err := safeGraphPath(graphPath)
 		if err != nil {
 			return nil, err
@@ -797,7 +903,7 @@ func cmdExtract(file string) error {
 // cmdExport converts a built graph.json into another format under
 // <root>/graphify-out. It reads the committed artifact rather than rebuilding.
 func cmdExport(format, root string) error {
-	outDir := filepath.Join(root, "graphify-out")
+	outDir := outDirFor(root)
 	jsonPath := filepath.Join(outDir, "graph.json")
 	if _, err := os.Stat(jsonPath); err != nil {
 		return fmt.Errorf("no graph at %s — run `graphify build` first", jsonPath)
@@ -990,7 +1096,7 @@ func cmdMergeDriver(args []string) error {
 // cmdValidate checks graph.json for structural problems and exits non-zero if
 // any are found, so it can gate CI.
 func cmdValidate() error {
-	issues, nodes, links, unclassified, err := query.Validate(defaultGraphPath)
+	issues, nodes, links, unclassified, err := query.Validate(defaultGraphPath())
 	if err != nil {
 		return err
 	}
@@ -1026,7 +1132,7 @@ func gitChangedFiles(root string) []string {
 	return files
 }
 
-func load() (*query.Graph, error) { return query.Load(defaultGraphPath) }
+func load() (*query.Graph, error) { return query.Load(defaultGraphPath()) }
 
 func locOf(n *query.Node) string {
 	if n.SourceFile == "" {

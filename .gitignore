@@ -4,6 +4,7 @@
 *.out
 .DS_Store
 graphify-out/.graphify_cache.json
+graphify-out/.graphify_root
 
 # Beads / Dolt files (added by bd init)
 .dolt/
