@@ -57,6 +57,8 @@ func main() {
 		err = cmdWatch(arg(2, "."))
 	case "hook":
 		err = cmdHook(os.Args[2:])
+	case "install":
+		err = cmdInstall(os.Args[2:])
 	case "query":
 		err = cmdQuery(mustArg(2, "query <pattern>"))
 	case "ask":
@@ -986,6 +988,7 @@ usage:
   graphify update [path] [--cargo] [--force] [--no-cluster]  rebuild incrementally, re-parsing only changed files (--force ignores the cache and re-parses everything, also GRAPHIFY_FORCE=1)
   graphify watch [path]        rebuild incrementally as files change (Ctrl-C to stop)
   graphify hook <install|uninstall|status> [path]  manage git hooks that update the graph after commits
+  graphify install [--uninstall]  copy the graphify skill into ~/.claude/skills (Claude Code)
   graphify query <pattern>     find nodes by name (regex, case-insensitive)
   graphify ask "<question>"    NL retrieval: relevant subgraph as text [--dfs --budget N --graph path]
   graphify explain <node>      show a node and its neighbours [--graph path]
