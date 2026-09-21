@@ -3,6 +3,7 @@ package detect
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -220,6 +221,12 @@ func TestCollectFilesReportCountsSkipped(t *testing.T) {
 	}
 	if len(rep.Files) != 1 || filepath.ToSlash(rep.Files[0]) != "main.go" {
 		t.Errorf("expected only main.go collected, got %v", rep.Files)
+	}
+	// The per-extension breakdown names the offending types, so a report can say
+	// *what* the uncovered corpus is written in, not just how much of it there is.
+	want := map[string]int{".unknownext": 1, ".png": 1, "(no extension)": 1}
+	if !reflect.DeepEqual(rep.SkippedExts, want) {
+		t.Errorf("SkippedExts = %v, want %v", rep.SkippedExts, want)
 	}
 }
 

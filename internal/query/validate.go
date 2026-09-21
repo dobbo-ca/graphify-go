@@ -12,19 +12,20 @@ import (
 // Validate reads graph.json at path and reports structural problems: links that
 // reference a missing node (dangling endpoints), duplicate node IDs, and nodes
 // with an empty ID. It returns the issues (empty when the graph is sound) plus
-// node and edge counts for a summary. Reading directly (rather than via Load)
+// node and edge counts for a summary, and a corpus-coverage line naming the
+// files no extractor could classify ("" when the corpus was fully classified). Reading directly (rather than via Load)
 // lets it catch duplicate IDs, which Load's id map would otherwise collapse.
-func Validate(path string) (issues []string, nodes, links int, err error) {
+func Validate(path string) (issues []string, nodes, links int, unclassified string, err error) {
 	if err = security.CheckGraphFileSize(path); err != nil {
-		return nil, 0, 0, err
+		return nil, 0, 0, "", err
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, 0, 0, err
+		return nil, 0, 0, "", err
 	}
 	var g Graph
 	if err = json.Unmarshal(data, &g); err != nil {
-		return nil, 0, 0, fmt.Errorf("parsing %s: %w", path, err)
+		return nil, 0, 0, "", fmt.Errorf("parsing %s: %w", path, err)
 	}
 
 	seen := map[string]int{}
@@ -49,5 +50,5 @@ func Validate(path string) (issues []string, nodes, links int, err error) {
 		}
 	}
 	sort.Strings(issues)
-	return issues, len(g.Nodes), len(g.Links), nil
+	return issues, len(g.Nodes), len(g.Links), g.UnclassifiedSummary(), nil
 }

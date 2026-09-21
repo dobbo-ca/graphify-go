@@ -395,10 +395,16 @@ func (s *mcpServer) toolGraphStats(map[string]any) string {
 		counts[c]++
 	}
 	pct := func(k string) int { return int(float64(counts[k])/float64(total)*100 + 0.5) }
-	return fmt.Sprintf(
+	out := fmt.Sprintf(
 		"Nodes: %d\nEdges: %d\nCommunities: %d\nEXTRACTED: %d%%\nINFERRED: %d%%\nAMBIGUOUS: %d%%\n",
 		len(s.g.Nodes), len(s.g.Links), len(s.communities),
 		pct("EXTRACTED"), pct("INFERRED"), pct("AMBIGUOUS"))
+	// Corpus coverage: how much of the repo no extractor could read, so a caller
+	// can tell a thin graph from a thinly-covered repo.
+	if u := s.g.UnclassifiedSummary(); u != "" {
+		out += u + "\n"
+	}
+	return out
 }
 
 func (s *mcpServer) toolShortestPath(args map[string]any) string {

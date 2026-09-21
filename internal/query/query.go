@@ -18,12 +18,54 @@ import (
 
 // Graph is a loaded graph.json.
 type Graph struct {
-	Nodes []Node `json:"nodes"`
-	Links []Link `json:"links"`
+	Nodes []Node     `json:"nodes"`
+	Links []Link     `json:"links"`
+	Attrs GraphAttrs `json:"graph"`
 
 	byID map[string]*Node
 	adj  map[string]map[string]bool
 	edge map[[2]string]*Link // directed (source,target) -> link, for relation lookup
+}
+
+// GraphAttrs mirrors graph.json's graph-level attribute dict. It carries the
+// corpus-coverage counters the build recorded: files walked past because no
+// extractor handles their type.
+type GraphAttrs struct {
+	UnclassifiedFiles int            `json:"unclassified_files"`
+	UnclassifiedExts  map[string]int `json:"unclassified_extensions"`
+}
+
+// UnclassifiedSummary reports how many files the build saw but could not
+// classify, naming the three biggest extensions, so a consumer can judge
+// whether the graph covers enough of the repo to trust. It returns "" when the
+// corpus was fully classified (or was built before this was recorded).
+func (g *Graph) UnclassifiedSummary() string {
+	if g.Attrs.UnclassifiedFiles == 0 {
+		return ""
+	}
+	exts := make([]string, 0, len(g.Attrs.UnclassifiedExts))
+	for e := range g.Attrs.UnclassifiedExts {
+		exts = append(exts, e)
+	}
+	sort.Slice(exts, func(i, j int) bool {
+		a, b := g.Attrs.UnclassifiedExts[exts[i]], g.Attrs.UnclassifiedExts[exts[j]]
+		if a != b {
+			return a > b
+		}
+		return exts[i] < exts[j]
+	})
+	if len(exts) > 3 {
+		exts = exts[:3]
+	}
+	line := fmt.Sprintf("Unclassified: %d file(s) no extractor handles", g.Attrs.UnclassifiedFiles)
+	if len(exts) == 0 {
+		return line
+	}
+	parts := make([]string, len(exts))
+	for i, e := range exts {
+		parts[i] = fmt.Sprintf("%s %d", security.SanitizeLabel(e), g.Attrs.UnclassifiedExts[e])
+	}
+	return line + " (" + strings.Join(parts, ", ") + ")"
 }
 
 // Node mirrors a graph.json node.

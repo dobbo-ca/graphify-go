@@ -47,6 +47,12 @@ type Graph struct {
 	adj   map[string]map[string]bool // undirected neighbour set
 	seen  map[string]bool            // dedup key "src\x00tgt\x00relation"
 	order []string                   // node insertion order, for stable iteration
+
+	// Unclassified counts, per lowercased extension, the files the corpus walk
+	// saw but no extractor handles. It is a graph-level attribute (networkx's
+	// G.graph dict), not part of the node/edge data: it tells a consumer how
+	// much of the repo the graph actually covers.
+	Unclassified map[string]int
 }
 
 // New returns an empty graph.

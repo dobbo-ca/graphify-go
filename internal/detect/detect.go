@@ -329,6 +329,10 @@ type WalkReport struct {
 	Files      []string // collected source files, relative to root, in WalkDir order
 	WalkErrors []string // "<path>: <error>" for each entry the walk could not read
 	Skipped    int      // files seen but dropped for an unsupported extension / no extractor
+	// SkippedExts breaks Skipped down by lowercased extension ("(no extension)"
+	// for extensionless files), so a report can name the languages a corpus is
+	// written in that no extractor covers. Sums to Skipped.
+	SkippedExts map[string]int
 }
 
 // CollectFilesReport walks root exactly like CollectFiles but additionally
@@ -383,6 +387,14 @@ func CollectFilesReport(root string) (WalkReport, error) {
 			// for a shebang naming an interpreter that has a Go extractor.
 			if ext != "" || shebangExtOfFile(path) == "" {
 				rep.Skipped++ // seen but no extractor handles this type
+				key := ext
+				if key == "" {
+					key = "(no extension)"
+				}
+				if rep.SkippedExts == nil {
+					rep.SkippedExts = map[string]int{}
+				}
+				rep.SkippedExts[key]++
 				return nil
 			}
 		}
