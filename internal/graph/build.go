@@ -17,7 +17,7 @@ import (
 func Build(ext model.Extraction) *model.Graph {
 	g := model.New()
 	for _, n := range ext.Nodes {
-		g.AddNode(n)
+		addNodeKeepingProvenance(g, n)
 	}
 
 	// Map a normalized form of every node ID back to the real ID, so an edge
@@ -73,6 +73,37 @@ func Build(ext model.Extraction) *model.Graph {
 		g.AddEdge(e)
 	}
 	return g
+}
+
+// addNodeKeepingProvenance inserts n, but on an ID collision it keeps whichever
+// record actually has provenance instead of plain last-write-wins: an external
+// import node (empty SourceFile) must not erase the real file:line node it
+// happens to collide with. When both records name the same source file, the
+// incoming one inherits any attribute it left empty.
+func addNodeKeepingProvenance(g *model.Graph, n model.Node) {
+	prev := g.Nodes[n.ID]
+	if prev == nil {
+		g.AddNode(n)
+		return
+	}
+	if n.SourceFile == "" && prev.SourceFile != "" {
+		return
+	}
+	if n.SourceFile == prev.SourceFile {
+		if n.Label == "" {
+			n.Label = prev.Label
+		}
+		if n.FileType == "" {
+			n.FileType = prev.FileType
+		}
+		if n.SourceLocation == "" {
+			n.SourceLocation = prev.SourceLocation
+		}
+		if n.ComputedName == "" {
+			n.ComputedName = prev.ComputedName
+		}
+	}
+	g.AddNode(n)
 }
 
 func crossLanguage(g *model.Graph, src, tgt string) bool {
