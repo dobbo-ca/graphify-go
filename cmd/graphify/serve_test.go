@@ -229,8 +229,8 @@ func TestServeProtocolHandshake(t *testing.T) {
 		t.Fatalf("tools/list result not an object: %+v", resps[1].Result)
 	}
 	tools, ok := list["tools"].([]any)
-	if !ok || len(tools) != 7 {
-		t.Errorf("expected 7 tools advertised, got %+v", list["tools"])
+	if !ok || len(tools) != 8 {
+		t.Errorf("expected 8 tools advertised, got %+v", list["tools"])
 	}
 }
 
@@ -427,5 +427,58 @@ func TestContextCacheCap(t *testing.T) {
 	}
 	if len(s.contexts) > maxContexts {
 		t.Errorf("context cache grew to %d, want <= %d", len(s.contexts), maxContexts)
+	}
+}
+
+// surpriseGraph gives every entity degree >= 2 so analyze's method-stub filter
+// (label ending in "()" with degree <= 1) does not swallow the cross-file edge.
+const surpriseGraph = `{
+  "directed": true, "multigraph": false, "graph": {},
+  "nodes": [
+    {"id":"auth_validate","label":"authValidate()","file_type":"code","source_file":"auth.go","source_location":"L10","community":0,"norm_label":"authvalidate()"},
+    {"id":"auth_check","label":"checkToken()","file_type":"code","source_file":"auth.go","source_location":"L20","community":0,"norm_label":"checktoken()"},
+    {"id":"util_log","label":"log()","file_type":"code","source_file":"util.go","source_location":"L1","community":1,"norm_label":"log()"},
+    {"id":"util_fmt","label":"fmtMsg()","file_type":"code","source_file":"util.go","source_location":"L9","community":1,"norm_label":"fmtmsg()"}
+  ],
+  "links": [
+    {"source":"auth_validate","target":"auth_check","relation":"calls","confidence":"INFERRED"},
+    {"source":"auth_validate","target":"util_fmt","relation":"calls","confidence":"EXTRACTED"},
+    {"source":"auth_check","target":"util_log","relation":"calls","confidence":"EXTRACTED"},
+    {"source":"util_log","target":"util_fmt","relation":"calls","confidence":"EXTRACTED"}
+  ]
+}`
+
+func newSurpriseServer(t *testing.T) *mcpServer {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(p, []byte(surpriseGraph), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g, err := query.Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return newMCPServer(g)
+}
+
+func TestToolSurprising(t *testing.T) {
+	s := newSurpriseServer(t)
+	out := s.toolSurprising(map[string]any{})
+	if !strings.Contains(out, "checkToken() --calls--> log() [EXTRACTED]") {
+		t.Errorf("missing cross-file connection:\n%s", out)
+	}
+	if !strings.Contains(out, "auth.go -> util.go (bridges separate communities)") {
+		t.Errorf("missing file/community annotation:\n%s", out)
+	}
+	// authValidate -> checkToken lives in one file and must not be reported.
+	if strings.Contains(out, "--calls--> checkToken()") {
+		t.Errorf("same-file edge should be excluded:\n%s", out)
+	}
+}
+
+func TestToolSurprisingTopN(t *testing.T) {
+	s := newSurpriseServer(t)
+	if out := s.toolSurprising(map[string]any{"top_n": float64(0)}); !strings.Contains(out, "No surprising connections") {
+		t.Errorf("got %q, want empty message", out)
 	}
 }
