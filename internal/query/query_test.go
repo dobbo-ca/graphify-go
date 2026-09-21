@@ -128,3 +128,43 @@ func TestPathEdgesMaxHops(t *testing.T) {
 		t.Errorf("got max=%d hops=%d, want max=1 hops=2", over.MaxHops, over.Hops)
 	}
 }
+
+const edgeLocGraph = `{
+  "directed": false, "multigraph": false, "graph": {},
+  "nodes": [
+    {"id":"a_caller","label":"zorkcaller()","file_type":"code","source_file":"a.go","source_location":"L3","community":0,"norm_label":"zorkcaller()"},
+    {"id":"a_target","label":"zorktarget()","file_type":"code","source_file":"a.go","source_location":"L12","community":0,"norm_label":"zorktarget()"},
+    {"id":"a_other","label":"zorkother()","file_type":"code","source_file":"a.go","source_location":"L20","community":0,"norm_label":"zorkother()"}
+  ],
+  "links": [
+    {"source":"a_caller","target":"a_target","relation":"calls","confidence":"EXTRACTED","source_file":"a.go","source_location":"L8"},
+    {"source":"a_other","target":"a_target","relation":"calls","confidence":"INFERRED"}
+  ]
+}`
+
+func TestExplainUsesEdgeCallSite(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(p, []byte(edgeLocGraph), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ex, err := Explain(g, "zorktarget()")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, n := range ex.Neighbors {
+		got[n.Label] = n.Location
+	}
+	// Edge carries the call site: cite it, not the caller's definition line (L3).
+	if got["zorkcaller()"] != "a.go:8" {
+		t.Errorf("caller location = %q, want a.go:8", got["zorkcaller()"])
+	}
+	// Edge has no location: fall back to the neighbour node's own line.
+	if got["zorkother()"] != "a.go:20" {
+		t.Errorf("fallback location = %q, want a.go:20", got["zorkother()"])
+	}
+}
