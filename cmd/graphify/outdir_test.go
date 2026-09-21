@@ -79,3 +79,70 @@ func TestUpdateFromSubdirUpdatesRepoGraph(t *testing.T) {
 		t.Error("update from a subdirectory built a stray graphify-out under the cwd")
 	}
 }
+
+// TestScanRootIgnoresForeignMarker verifies a .graphify_root recording a tree
+// that does not contain the cwd (a stale or committed marker) is ignored rather
+// than redirecting the scan — and clobbering — that unrelated tree.
+func TestScanRootIgnoresForeignMarker(t *testing.T) {
+	dir := t.TempDir()
+	victim := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package a\n\nfunc Alpha() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	if err := cmdBuild(nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "graphify-out", rootFileName), []byte(victim+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := scanRoot(); got != dir {
+		t.Errorf("scanRoot() = %q, want %q (foreign marker ignored)", got, dir)
+	}
+	if err := cmdUpdate(nil); err != nil {
+		t.Fatalf("cmdUpdate = %v, want success", err)
+	}
+	if _, err := os.Stat(filepath.Join(victim, "graphify-out")); err == nil {
+		t.Error("update wrote a graphify-out into the tree named by the foreign marker")
+	}
+}
+
+// TestBuildFromSubdirKeepsSubdirOut verifies `build` writes under the tree it
+// scanned instead of walking up and overwriting the repo's graph with a
+// subtree-only one.
+func TestBuildFromSubdirKeepsSubdirOut(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "nested")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package a\n\nfunc Alpha() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "b.go"), []byte("package b\n\nfunc Beta() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	if err := cmdBuild(nil); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(filepath.Join(dir, "graphify-out", "graph.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(sub)
+	if err := cmdBuild(nil); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(filepath.Join(dir, "graphify-out", "graph.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Error("build from a subdirectory overwrote the parent tree's graph")
+	}
+	if _, err := os.Stat(filepath.Join(sub, "graphify-out", "graph.json")); err != nil {
+		t.Errorf("build from a subdirectory did not write its own graphify-out: %v", err)
+	}
+}
