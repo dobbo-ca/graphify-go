@@ -78,7 +78,7 @@ func main() {
 	case "validate":
 		err = cmdValidate()
 	case "serve":
-		err = cmdServe(defaultGraphPath)
+		err = cmdServe(os.Args[2:])
 	case "save-result":
 		err = cmdSaveResult(os.Args[2:])
 	case "-h", "--help", "help":
@@ -987,7 +987,7 @@ usage:
   graphify diff <old> <new>    node/edge delta between two graph.json snapshots
   graphify merge-driver <base> <current> <other>  git merge driver: union-merge two graph.json files
   graphify validate            check graph.json for structural problems
-  graphify serve               MCP stdio server: load graph.json once, answer many queries
+  graphify serve [graph.json]  MCP stdio server: load graph.json once, answer many queries
   graphify extract <file>      print one file's extracted nodes/edges (debug)
   graphify export <fmt> [path] convert graph.json to graphml, dot, csv, or okf
   graphify save-result --question Q --answer A  file a Q&A result into graphify-out/memory/ so the next update graphs it [--type T --nodes N... --outcome useful|dead_end|corrected --correction TEXT]

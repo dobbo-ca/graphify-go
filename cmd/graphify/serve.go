@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -27,20 +28,69 @@ const mcpProtocolVersion = "2024-11-05"
 // per-agent process re-launches cheaply, so those are unnecessary for the first
 // cut. The 7 tools mirror upstream graphify's serve.py over the existing Go
 // query/analyze primitives.
-func cmdServe(graphPath string) error {
+func cmdServe(args []string) error {
+	positionals, graphPath := parseGraphFlag(args)
+	if len(positionals) > 1 {
+		return fmt.Errorf("usage: graphify serve [graph.json] [--graph path]")
+	}
+	if len(positionals) == 1 {
+		graphPath = positionals[0]
+	}
 	g, err := query.Load(graphPath)
 	if err != nil {
 		return err
 	}
-	s := &mcpServer{g: g, communities: communitiesOf(g), god: modelOf(g)}
-	return s.run(os.Stdin, os.Stdout)
+	return newMCPServer(g).run(os.Stdin, os.Stdout)
 }
 
-// mcpServer holds the loaded graph and derived state shared by every tool call.
-type mcpServer struct {
+// graphCtx is everything a tool call needs about one project's graph.
+type graphCtx struct {
 	g           *query.Graph
 	communities map[int][]string // community id -> node ids, from persisted node fields
 	god         *model.Graph     // in-memory adapter so analyze.GodNodes can filter file/concept nodes
+}
+
+// maxContexts caps how many other projects stay resident alongside the one
+// serve was launched in, bounding memory for a long-lived server.
+const maxContexts = 8
+
+// mcpServer holds the graph context in scope for the current tool call plus the
+// graphs loaded for other projects via the project_path argument.
+type mcpServer struct {
+	graphCtx
+	contexts map[string]*graphCtx // absolute project dir -> loaded graph
+}
+
+func newMCPServer(g *query.Graph) *mcpServer {
+	return &mcpServer{graphCtx: newGraphCtx(g), contexts: map[string]*graphCtx{}}
+}
+
+func newGraphCtx(g *query.Graph) graphCtx {
+	return graphCtx{g: g, communities: communitiesOf(g), god: modelOf(g)}
+}
+
+// contextFor loads (and caches) the graph of another project directory, so one
+// running server can answer about any repo carrying graphify-out/graph.json.
+// The fixed graphify-out/graph.json suffix is the guard: a project_path can
+// only ever reach a graph file, never arbitrary JSON on disk.
+func (s *mcpServer) contextFor(project string) (*graphCtx, error) {
+	key, err := filepath.Abs(project)
+	if err != nil {
+		return nil, err
+	}
+	if c, ok := s.contexts[key]; ok {
+		return c, nil
+	}
+	g, err := query.Load(filepath.Join(key, "graphify-out", "graph.json"))
+	if err != nil {
+		return nil, err
+	}
+	if len(s.contexts) >= maxContexts {
+		clear(s.contexts) // ponytail: flush-all instead of LRU eviction; port an LRU if anyone really serves >8 projects
+	}
+	c := newGraphCtx(g)
+	s.contexts[key] = &c
+	return &c, nil
 }
 
 // communitiesOf reconstructs the community -> node-id map from the community
@@ -182,6 +232,17 @@ func (s *mcpServer) callTool(req rpcRequest) rpcResponse {
 			return s.fail(req, -32602, "invalid arguments")
 		}
 	}
+	// project_path retargets this one call at another project's graph; it is
+	// never a tool argument, so pop it before handing args to the handler.
+	if project := argString(args, "project_path"); project != "" {
+		c, err := s.contextFor(project)
+		if err != nil {
+			return s.textResult(req, "Error: "+err.Error())
+		}
+		defer func(prev graphCtx) { s.graphCtx = prev }(s.graphCtx)
+		s.graphCtx = *c
+	}
+	delete(args, "project_path")
 	return s.textResult(req, h(s, args))
 }
 
@@ -407,6 +468,9 @@ func argInt(args map[string]any, key string, def int) int {
 // toolDefs returns the MCP tool definitions advertised by tools/list.
 func toolDefs() []map[string]any {
 	obj := func(props map[string]any, required ...string) map[string]any {
+		// Every tool accepts project_path, so one server can answer about any
+		// project on disk, not just the one it was launched in.
+		props["project_path"] = map[string]any{"type": "string", "description": "Optional: path to another project containing graphify-out/graph.json (default: the project serve was launched with)"}
 		schema := map[string]any{"type": "object", "properties": props}
 		if len(required) > 0 {
 			schema["required"] = required
