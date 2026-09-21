@@ -145,3 +145,31 @@ func TestAffectedRelation(t *testing.T) {
 		t.Errorf("relation=imports should yield no impact (no imports edges), got %v", imports)
 	}
 }
+
+// A seed naming the same file in bare, "./"-prefixed and absolute form must
+// return the identical result — agents hold whichever form they already have.
+func TestAffectedSeedPathForms(t *testing.T) {
+	g := loadJSON(t, affectedJSON)
+	t.Chdir(t.TempDir())
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, seed := range []string{"util.go", "./util.go", filepath.Join(cwd, "util.go")} {
+		res := Affected(g, []string{seed}, AffectedOptions{})
+		if len(res.Changed) != 1 || res.Changed[0].ID != "add" {
+			t.Fatalf("seed %q: changed got %+v, want [add]", seed, res.Changed)
+		}
+		got := impacted(res)
+		if !got["compute"] || !got["run"] {
+			t.Errorf("seed %q: impacted got %v, want compute+run", seed, got)
+		}
+	}
+
+	// An absolute path outside the working directory is left alone, not turned
+	// into a "../.." seed that could collide with a node.
+	if res := Affected(g, []string{"/elsewhere/util.go"}, AffectedOptions{}); len(res.Changed) != 0 {
+		t.Errorf("outside-cwd seed matched: %+v", res.Changed)
+	}
+}
