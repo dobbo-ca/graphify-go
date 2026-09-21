@@ -442,6 +442,13 @@ func cmdUpdate(args []string) error {
 	}
 	prev := cache.Load(filepath.Join(root, "graphify-out", cache.FileName))
 	prevStat := cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName))
+	// --force / GRAPHIFY_FORCE means a full re-scan, matching upstream: drop the
+	// caches so every file is re-read and re-parsed. Without this the flag only
+	// relaxed the anti-shrink guard, leaving a poisoned cache with no remedy
+	// short of deleting the sidecars by hand.
+	if force || envForce() {
+		prev, prevStat = nil, nil
+	}
 	results, newCache, newStat, stats := assemble(root, files, prev, prevStat)
 	if cargo {
 		results, err = withCargo(root, results)
@@ -899,7 +906,7 @@ func usage() {
 
 usage:
   graphify build [path] [--cargo] [--force] [--no-cluster]   build graph.json + report under <path>/graphify-out (--cargo adds Rust crate-dependency edges; --force overwrites even if the rebuild has fewer nodes, also GRAPHIFY_FORCE=1; --no-cluster skips community detection)
-  graphify update [path] [--cargo] [--force] [--no-cluster]  rebuild incrementally, re-parsing only changed files
+  graphify update [path] [--cargo] [--force] [--no-cluster]  rebuild incrementally, re-parsing only changed files (--force ignores the cache and re-parses everything, also GRAPHIFY_FORCE=1)
   graphify watch [path]        rebuild incrementally as files change (Ctrl-C to stop)
   graphify hook <install|uninstall|status> [path]  manage git hooks that update the graph after commits
   graphify query <pattern>     find nodes by name (regex, case-insensitive)
