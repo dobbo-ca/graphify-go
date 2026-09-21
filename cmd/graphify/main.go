@@ -197,7 +197,8 @@ func assemble(root string, files []string, prev cache.Cache, prevStat cache.Stat
 // <root>/graphify-out. When sem.enabled, an additive LLM enrichment pass runs
 // between resolve and graph-build so communities reflect concepts; it never
 // alters the deterministic core.
-func writeOutputs(root string, files []string, results []extract.Result, newCache cache.Cache, newStat cache.StatIndex, sem semanticOpts, force, noCluster bool) (*model.Graph, map[int][]string, error) {
+func writeOutputs(root string, walk detect.WalkReport, results []extract.Result, newCache cache.Cache, newStat cache.StatIndex, sem semanticOpts, force, noCluster bool) (*model.Graph, map[int][]string, error) {
+	files := walk.Files
 	ext := extract.Resolve(results, files)
 	if sem.enabled {
 		var err error
@@ -207,6 +208,7 @@ func writeOutputs(root string, files []string, results []extract.Result, newCach
 		}
 	}
 	g := graph.Build(ext)
+	g.Unclassified = walk.SkippedExts
 	// --no-cluster writes the raw extraction: skip Louvain community detection so
 	// every node lands with no community assignment (mirrors upstream update
 	// --no-cluster). An empty map flows through NodeCommunity as "no community".
@@ -331,7 +333,7 @@ func cmdBuild(args []string) error {
 			return err
 		}
 	}
-	g, communities, err := writeOutputs(root, files, results, newCache, newStat, opts.semanticOpts(), opts.force, opts.noCluster)
+	g, communities, err := writeOutputs(root, rep, results, newCache, newStat, opts.semanticOpts(), opts.force, opts.noCluster)
 	if err != nil {
 		return err
 	}
@@ -465,7 +467,7 @@ func cmdUpdate(args []string) error {
 			return err
 		}
 	}
-	g, communities, err := writeOutputs(root, files, results, newCache, newStat, semanticOpts{}, force, noCluster)
+	g, communities, err := writeOutputs(root, rep, results, newCache, newStat, semanticOpts{}, force, noCluster)
 	if err != nil {
 		return err
 	}
@@ -906,9 +908,14 @@ func cmdMergeDriver(args []string) error {
 // cmdValidate checks graph.json for structural problems and exits non-zero if
 // any are found, so it can gate CI.
 func cmdValidate() error {
-	issues, nodes, links, err := query.Validate(defaultGraphPath)
+	issues, nodes, links, unclassified, err := query.Validate(defaultGraphPath)
 	if err != nil {
 		return err
+	}
+	// Coverage is a confidence signal, not a structural fault: print it either
+	// way, but never let it turn a sound graph into a validation failure.
+	if unclassified != "" {
+		defer fmt.Println(unclassified)
 	}
 	if len(issues) == 0 {
 		fmt.Printf("graph OK: %d nodes · %d edges, no issues\n", nodes, links)

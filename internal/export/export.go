@@ -56,10 +56,18 @@ type jsonLink struct {
 	ConfidenceScore float64 `json:"confidence_score"`
 }
 
+// graphAttrs holds the graph-level attributes stored under graph.json's "graph"
+// key (networkx's G.graph dict). It records corpus coverage: how many files the
+// walk saw that no extractor handles, and which extensions they were.
+type graphAttrs struct {
+	UnclassifiedFiles int            `json:"unclassified_files"`
+	UnclassifiedExts  map[string]int `json:"unclassified_extensions,omitempty"`
+}
+
 type jsonGraph struct {
 	Directed      bool       `json:"directed"`
 	Multigraph    bool       `json:"multigraph"`
-	Graph         struct{}   `json:"graph"`
+	Graph         graphAttrs `json:"graph"`
 	Nodes         []jsonNode `json:"nodes"`
 	Links         []jsonLink `json:"links"`
 	Hyperedges    []any      `json:"hyperedges"`
@@ -86,6 +94,13 @@ func ToJSON(g *model.Graph, communities map[int][]string, path, builtAtCommit st
 	var out jsonGraph
 	out.Hyperedges = []any{}
 	out.BuiltAtCommit = builtAtCommit
+	for ext, n := range g.Unclassified {
+		if out.Graph.UnclassifiedExts == nil {
+			out.Graph.UnclassifiedExts = map[string]int{}
+		}
+		out.Graph.UnclassifiedExts[ext] = n
+		out.Graph.UnclassifiedFiles += n
+	}
 
 	for _, id := range g.NodeIDs() {
 		n := g.Nodes[id]
