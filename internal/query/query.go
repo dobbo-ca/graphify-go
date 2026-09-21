@@ -413,7 +413,8 @@ func (g *Graph) resolve(s string) (*Node, error) {
 		var hits []*Node
 		for j := range g.Nodes {
 			n := &g.Nodes[j]
-			if strings.ToLower(n.Label) == sym && strings.HasSuffix(strings.ToLower(n.SourceFile), path) {
+			sf := strings.ToLower(n.SourceFile)
+			if strings.ToLower(n.Label) == sym && (sf == path || strings.HasSuffix(sf, "/"+path)) {
 				hits = append(hits, n)
 			}
 		}

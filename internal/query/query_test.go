@@ -252,3 +252,29 @@ func TestPathEdgesAmbiguous(t *testing.T) {
 		t.Fatalf("err = %v, want *AmbiguousError", err)
 	}
 }
+
+const suffixGraph = `{
+  "directed": false, "multigraph": false, "graph": {},
+  "nodes": [
+    {"id":"h_new","label":"New()","file_type":"code","source_file":"pkg/x/req_handler.go","source_location":"L3","norm_label":"New()"}
+  ],
+  "links": []
+}`
+
+func TestExplainPathQualifierNeedsBoundary(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(p, []byte(suffixGraph), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// "handler.go" is not a path-boundary suffix of "pkg/x/req_handler.go".
+	if _, err := Explain(g, "handler.go::New()"); err == nil {
+		t.Fatal("err = nil, want no-match error")
+	}
+	if _, err := Explain(g, "x/req_handler.go::New()"); err != nil {
+		t.Fatalf("err = %v, want match", err)
+	}
+}
