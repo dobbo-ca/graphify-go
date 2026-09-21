@@ -190,6 +190,7 @@ func scoreNodes(g *Graph, terms []string) []scoredNode {
 		norm := normLabel(nd)
 		bare := strings.TrimRight(norm, "()")
 		source := strings.ToLower(nd.SourceFile)
+		attrs := attributesText(nd)
 		score := 0.0
 		if joined != "" {
 			nidLower := strings.ToLower(nd.ID)
@@ -211,6 +212,9 @@ func scoreNodes(g *Graph, terms []string) []scoredNode {
 				score += substringMatchBonus * w
 			}
 			if strings.Contains(source, t) {
+				score += sourceMatchBonus * w
+			}
+			if attrs != "" && strings.Contains(attrs, t) {
 				score += sourceMatchBonus * w
 			}
 		}
@@ -505,6 +509,20 @@ func subgraphToText(g *Graph, nodes map[string]bool, edges [][2]string, tokenBud
 
 // normLabel returns the lowercase norm_label of a node, falling back to a
 // lowercased label.
+// attributesText flattens a node's Terraform block attributes into one
+// lowercased "key value" string so a query like "t3.large" reaches the resource
+// that sets it. Empty for the (vast majority of) nodes with no attributes.
+func attributesText(n *Node) string {
+	if len(n.Attributes) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(n.Attributes)*2)
+	for k, v := range n.Attributes {
+		parts = append(parts, k, v)
+	}
+	return strings.ToLower(strings.Join(parts, " "))
+}
+
 func normLabel(n *Node) string {
 	if n.NormLabel != "" {
 		return strings.ToLower(n.NormLabel)

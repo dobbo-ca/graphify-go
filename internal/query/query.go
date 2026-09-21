@@ -70,14 +70,15 @@ func (g *Graph) UnclassifiedSummary() string {
 
 // Node mirrors a graph.json node.
 type Node struct {
-	ID             string `json:"id"`
-	Label          string `json:"label"`
-	FileType       string `json:"file_type"`
-	SourceFile     string `json:"source_file"`
-	SourceLocation string `json:"source_location"`
-	Community      *int   `json:"community"`
-	NormLabel      string `json:"norm_label"`
-	ComputedName   string `json:"computed_name"`
+	ID             string            `json:"id"`
+	Label          string            `json:"label"`
+	FileType       string            `json:"file_type"`
+	SourceFile     string            `json:"source_file"`
+	SourceLocation string            `json:"source_location"`
+	Community      *int              `json:"community"`
+	NormLabel      string            `json:"norm_label"`
+	ComputedName   string            `json:"computed_name"`
+	Attributes     map[string]string `json:"attributes"`
 }
 
 // Link mirrors a graph.json edge.

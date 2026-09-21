@@ -13,6 +13,10 @@ type Node struct {
 	SourceFile     string `json:"source_file"`
 	SourceLocation string `json:"source_location,omitempty"`
 	ComputedName   string `json:"computed_name,omitempty"`
+	// Attributes holds a block's literal key/value pairs (Terraform only today),
+	// so "which resources run t3.large" is a graph query. omitempty keeps
+	// graph.json byte-identical for corpora that set nothing.
+	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
 // Edge is a directed relationship between two nodes. The graph stores edges

@@ -204,3 +204,22 @@ func TestStampMismatchDiscards(t *testing.T) {
 		t.Errorf("unstamped Load should be empty, got %+v", got)
 	}
 }
+
+// TestSchemaBumpDiscardsPreFeatureCache reproduces the bug where a warm cache
+// from a pre-feature binary was reused verbatim: version is "dev" for every
+// locally built binary, so only the schema const distinguishes a stale entry.
+// A cache written under the old schema-1 stamp must be discarded even though
+// the version string ("dev") is unchanged.
+func TestSchemaBumpDiscardsPreFeatureCache(t *testing.T) {
+	dir := t.TempDir()
+	cachePath := filepath.Join(dir, FileName)
+
+	preFeatureStamp := "dev-s1"
+	if err := Save(cachePath, preFeatureStamp, Cache{"main.tf": {Hash: "abc"}}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	if got := Load(cachePath, Stamp("dev")); len(got) != 0 {
+		t.Errorf("pre-feature schema cache should be discarded under current stamp, got %+v", got)
+	}
+}
