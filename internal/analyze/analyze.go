@@ -31,31 +31,12 @@ func GodNodes(g *model.Graph, topN int) []GodNode {
 		if isFileNode(g, id) || isConceptNode(g, id) || isJSONKeyNode(g, id) {
 			continue
 		}
-		if builtinNoiseLabels[g.Nodes[id].Label] {
-			continue
-		}
 		out = append(out, GodNode{ID: id, Label: g.Nodes[id].Label, Degree: g.Degree(id)})
 		if len(out) >= topN {
 			break
 		}
 	}
 	return out
-}
-
-// builtinNoiseLabels are stdlib/typing identifiers that can appear as
-// annotation-derived nodes. They are excluded from the god-node ranking so they
-// don't displace real abstractions (mirrors upstream _BUILTIN_NOISE_LABELS).
-var builtinNoiseLabels = map[string]bool{
-	"str": true, "int": true, "float": true, "bool": true, "bytes": true,
-	"bytearray": true, "complex": true, "object": true, "True": true, "False": true,
-	"MagicMock": true, "Mock": true, "AsyncMock": true, "NonCallableMock": true,
-	"NonCallableMagicMock": true, "PropertyMock": true, "patch": true, "sentinel": true,
-	"Path": true, "Any": true, "Optional": true, "List": true, "Dict": true,
-	"Set": true, "Tuple": true, "Union": true, "Callable": true, "Type": true,
-	"ClassVar": true, "Final": true, "Literal": true, "Protocol": true,
-	"Counter": true, "defaultdict": true, "OrderedDict": true, "datetime": true,
-	"Enum": true, "os": true, "sys": true, "re": true, "json": true, "io": true,
-	"abc": true, "typing": true,
 }
 
 // jsonNoiseLabels are generic JSON keys (package.json, schemas) that accumulate

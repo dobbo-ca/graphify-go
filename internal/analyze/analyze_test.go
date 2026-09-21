@@ -186,15 +186,13 @@ func TestSurprisingIncludesSemanticEdgeFromFileHubNote(t *testing.T) {
 
 func TestGodNodesExcludeNoiseLabels(t *testing.T) {
 	g := sampleGraph()
-	// Two mechanical hubs, each out-degreeing every real entity.
+	// A mechanical hub out-degreeing every real entity.
 	g.AddNode(model.Node{ID: "dep", Label: "dependencies", SourceFile: "package.json"})
-	g.AddNode(model.Node{ID: "path", Label: "Path", SourceFile: "pkg/a.py"})
 	for _, id := range []string{"a1", "a2", "a3", "b1", "b2", "b3"} {
 		g.AddEdge(model.Edge{Source: "dep", Target: id, Relation: "calls", Confidence: "EXTRACTED"})
-		g.AddEdge(model.Edge{Source: "path", Target: id, Relation: "calls", Confidence: "EXTRACTED"})
 	}
 	for _, n := range GodNodes(g, 10) {
-		if n.Label == "dependencies" || n.Label == "Path" {
+		if n.Label == "dependencies" {
 			t.Errorf("god nodes should exclude noise label %q", n.Label)
 		}
 	}
