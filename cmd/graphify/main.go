@@ -722,7 +722,7 @@ func cmdGodNodes(args []string) error {
 	if err != nil {
 		return err
 	}
-	gods := analyze.GodNodes(modelOf(g), top)
+	gods := analyze.GodNodes(modelOf(g), top, 0)
 	if asJSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")

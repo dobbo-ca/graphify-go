@@ -23,11 +23,35 @@ type GodNode struct {
 // GodNodes returns the topN most-connected real entities. File-hub nodes,
 // external-dependency/concept nodes, and method stubs are excluded because they
 // accumulate edges mechanically without being meaningful abstractions.
-func GodNodes(g *model.Graph, topN int) []GodNode {
+//
+// excludeHubsPercentile (1-100) additionally suppresses nodes whose degree
+// exceeds that percentile of the degree distribution, using the same threshold
+// computation cluster() applies, so callers can look past the mega-hubs that
+// dominate every ranking. Zero keeps the historical ranking.
+func GodNodes(g *model.Graph, topN, excludeHubsPercentile int) []GodNode {
 	ids := append([]string(nil), g.NodeIDs()...)
+	hubThreshold, hasThreshold := 0, false
+	if excludeHubsPercentile > 0 && len(ids) > 0 {
+		degrees := make([]int, len(ids))
+		for i, id := range ids {
+			degrees[i] = g.Degree(id)
+		}
+		sort.Ints(degrees)
+		idx := len(degrees) * excludeHubsPercentile / 100
+		if idx > 0 {
+			idx--
+		}
+		if idx >= len(degrees) {
+			idx = len(degrees) - 1
+		}
+		hubThreshold, hasThreshold = degrees[idx], true
+	}
 	sort.SliceStable(ids, func(i, j int) bool { return g.Degree(ids[i]) > g.Degree(ids[j]) })
 	var out []GodNode
 	for _, id := range ids {
+		if hasThreshold && g.Degree(id) > hubThreshold {
+			continue
+		}
 		if isFileNode(g, id) || isConceptNode(g, id) || isJSONKeyNode(g, id) {
 			continue
 		}
