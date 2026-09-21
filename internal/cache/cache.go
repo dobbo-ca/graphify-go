@@ -10,6 +10,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/dobbo-ca/graphify-go/internal/extract"
 )
@@ -33,10 +35,56 @@ type Cache map[string]Entry
 
 // StatEntry records a file's size, modification time, and content hash so an
 // unchanged file (matching size+mtime) can reuse its hash without being read.
+// IndexedAtNs is the wall clock captured immediately BEFORE the content was
+// read; see statSigFresh for why it is needed. Entries written by an older
+// graphify-go carry 0 and are treated as untrusted (one re-read each).
 type StatEntry struct {
-	Size    int64  `json:"size"`
-	MtimeNs int64  `json:"mtime_ns"`
-	Hash    string `json:"hash"`
+	Size        int64  `json:"size"`
+	MtimeNs     int64  `json:"mtime_ns"`
+	Hash        string `json:"hash"`
+	IndexedAtNs int64  `json:"indexed_at_ns"`
+}
+
+// mtimeGranularityNs is the assumed filesystem mtime granularity. A stat
+// signature only proves a file is unchanged when the clock that stamped its
+// mtime is finer-grained than the interval between two writes — which is false
+// almost everywhere: NTFS advances mtime on the ~15.6ms system tick, FAT/exFAT
+// on 2s, and Linux stamps from the coarse (jiffies) clock even though ext4
+// stores nanoseconds. 2s is the conservative default that covers all of them,
+// and it costs nothing in practice: only files modified within the last 2s lose
+// the fastpath, and those are exactly the files that changed and must be read
+// anyway.
+const mtimeGranularityNs = 2_000_000_000
+
+// mtimeGranularity returns mtimeGranularityNs, overridable with
+// GRAPHIFY_MTIME_GRANULARITY_MS (0 disables the guard, restoring the old
+// behaviour). Read fresh on every call so tests and callers can flip it.
+func mtimeGranularity() int64 {
+	raw := os.Getenv("GRAPHIFY_MTIME_GRANULARITY_MS")
+	if raw == "" {
+		return mtimeGranularityNs
+	}
+	ms, err := strconv.ParseFloat(raw, 64)
+	if err != nil || ms < 0 {
+		return mtimeGranularityNs
+	}
+	return int64(ms * 1_000_000)
+}
+
+// statSigFresh reports whether prev provably describes the file's CURRENT
+// content. Beyond matching (size, mtime), the entry must be racily clean in
+// git's sense: the content must have been read strictly after the file's mtime
+// tick had already closed. Otherwise a write landing between our read and the
+// end of that tick would leave mtime (and, for a same-length edit, size)
+// untouched, and the stored digest would describe content no longer on disk.
+func statSigFresh(prev StatEntry, size, mtime int64) bool {
+	if prev.Size != size || prev.MtimeNs != mtime {
+		return false
+	}
+	if prev.IndexedAtNs == 0 {
+		return false
+	}
+	return mtime+mtimeGranularity() <= prev.IndexedAtNs
 }
 
 // StatIndex maps a slash-relative file path to its stat fastpath entry.
@@ -104,12 +152,13 @@ func HashBytes(b []byte) string {
 func HashFile(absPath string, prev StatEntry, prevOK bool) (hash string, entry StatEntry, src []byte, ok bool) {
 	if fi, err := os.Stat(absPath); err == nil {
 		mtime := fi.ModTime().UnixNano()
-		if prevOK && prev.Size == fi.Size() && prev.MtimeNs == mtime {
+		if prevOK && statSigFresh(prev, fi.Size(), mtime) {
 			return prev.Hash, prev, nil, true
 		}
+		now := time.Now().UnixNano()
 		if b, err := os.ReadFile(absPath); err == nil {
 			h := HashBytes(b)
-			return h, StatEntry{Size: fi.Size(), MtimeNs: mtime, Hash: h}, b, true
+			return h, StatEntry{Size: fi.Size(), MtimeNs: mtime, Hash: h, IndexedAtNs: now}, b, true
 		}
 		return "", StatEntry{}, nil, false
 	}
