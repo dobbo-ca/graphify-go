@@ -274,7 +274,7 @@ func (s *mcpServer) toolQueryGraph(args map[string]any) string {
 	if budget < 1 {
 		budget = 2000
 	}
-	return query.Ask(s.g, question, dfs, depth, budget)
+	return query.Ask(s.g, question, dfs, depth, budget, argStrings(args, "context_filter"))
 }
 
 func (s *mcpServer) toolGetNode(args map[string]any) string {
@@ -471,6 +471,21 @@ func argInt(args map[string]any, key string, def int) int {
 	return def
 }
 
+// argStrings extracts a string-array argument, skipping non-string elements.
+func argStrings(args map[string]any, key string) []string {
+	raw, ok := args[key].([]any)
+	if !ok {
+		return nil
+	}
+	var out []string
+	for _, v := range raw {
+		if s, ok := v.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // toolDefs returns the MCP tool definitions advertised by tools/list.
 func toolDefs() []map[string]any {
 	obj := func(props map[string]any, required ...string) map[string]any {
@@ -492,6 +507,8 @@ func toolDefs() []map[string]any {
 				"mode":         map[string]any{"type": "string", "enum": []string{"bfs", "dfs"}, "description": "bfs=broad context, dfs=trace a specific path"},
 				"depth":        map[string]any{"type": "integer", "description": "Traversal depth (1-6)"},
 				"token_budget": map[string]any{"type": "integer", "description": "Max output tokens"},
+				"context_filter": map[string]any{"type": "array", "items": str,
+					"description": "Optional: restrict traversal to these edge relations (e.g. [\"calls\"])"},
 			}, "question")},
 		{"name": "get_node",
 			"description": "Get full details for a specific node by label or ID.",
