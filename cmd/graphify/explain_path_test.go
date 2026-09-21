@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/dobbo-ca/graphify-go/internal/query"
 )
 
 // writeTestGraph writes a graph.json with the given JSON body at path.
@@ -138,5 +140,44 @@ func TestCmdPathAnnotatesHops(t *testing.T) {
 	want := "a() --calls [INFERRED]--> b() <--imports [EXTRACTED]-- c()\n"
 	if out != want {
 		t.Errorf("path output = %q, want %q", out, want)
+	}
+}
+
+// TestExplainLinesCapsAndGroups checks that explain shows at most
+// explainConnCap connections in full and folds the rest into per-file counts.
+func TestExplainLinesCapsAndGroups(t *testing.T) {
+	var nbrs []query.Neighbor
+	for i := 0; i < explainConnCap+5; i++ {
+		nbrs = append(nbrs, query.Neighbor{Label: "n", Relation: "calls", Direction: "<-", File: "a.go"})
+	}
+	for i := 0; i < 3; i++ {
+		nbrs = append(nbrs, query.Neighbor{Label: "n", Relation: "calls", Direction: "->", File: "b.go"})
+	}
+	lines := explainLines(nbrs)
+	// 20 full lines + summary + 2 grouped file lines.
+	if len(lines) != explainConnCap+3 {
+		t.Fatalf("lines = %d (%v), want %d", len(lines), lines, explainConnCap+3)
+	}
+	if want := "  ... 8 more connections. Grouped by file:"; lines[explainConnCap] != want {
+		t.Errorf("summary = %q, want %q", lines[explainConnCap], want)
+	}
+	// Highest count first: 5 cut neighbours in a.go, then 3 in b.go.
+	if !strings.Contains(lines[explainConnCap+1], "a.go") || !strings.HasSuffix(lines[explainConnCap+1], " 5") {
+		t.Errorf("first group = %q, want a.go with 5", lines[explainConnCap+1])
+	}
+	if !strings.Contains(lines[explainConnCap+2], "b.go") || !strings.HasSuffix(lines[explainConnCap+2], " 3") {
+		t.Errorf("second group = %q, want b.go with 3", lines[explainConnCap+2])
+	}
+}
+
+// TestExplainLinesShortListUngrouped checks that a node under the cap prints
+// every connection with no grouped tail.
+func TestExplainLinesShortListUngrouped(t *testing.T) {
+	lines := explainLines([]query.Neighbor{{Label: "n", Relation: "calls", Direction: "->", File: "a.go"}})
+	if len(lines) != 1 {
+		t.Fatalf("lines = %v, want 1 connection line", lines)
+	}
+	if got := explainLines(nil); len(got) != 1 || got[0] != "  (no connections)" {
+		t.Errorf("explainLines(nil) = %v, want (no connections)", got)
 	}
 }
