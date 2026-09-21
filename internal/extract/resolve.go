@@ -111,11 +111,11 @@ func Resolve(results []Result, files []string) model.Extraction {
 	for _, r := range results {
 		for _, t := range r.TypeRefs {
 			tgt := ""
-			if ids := local[t.File+"\x00"+t.Name]; len(ids) == 1 {
+			if ids := typeDefs(local[t.File+"\x00"+t.Name], t.Name, idFile); len(ids) == 1 {
 				tgt = ids[0]
 			}
 			if tgt == "" {
-				tgt = disambiguate(global[t.Name], t.File, idFile, importedFiles[t.File])
+				tgt = disambiguate(typeDefs(global[t.Name], t.Name, idFile), t.File, idFile, importedFiles[t.File])
 			}
 			if tgt == "" || tgt == t.FromID || langfamily.Cross(t.File, idFile[tgt]) {
 				continue
@@ -501,6 +501,22 @@ func defStem(file string) string {
 // path (resolvable within the corpus) rather than a registry/git/private source.
 func isLocalSource(s string) bool {
 	return s == "." || s == ".." || strings.HasPrefix(s, "./") || strings.HasPrefix(s, "../") || strings.HasPrefix(s, "/")
+}
+
+// typeDefs narrows a by-name candidate list to the top-level type definitions in
+// it. A supertype reference can only bind to a type, and a Java constructor is
+// registered under its class's name (`A.A()`), which would otherwise make every
+// `class B extends A` lookup ambiguous and silently drop the edge. A top-level
+// type's id is MakeID(fileStem(file), name) while a member's is nested under its
+// owner, so the id shape separates the two.
+func typeDefs(ids []string, name string, idFile map[string]string) []string {
+	var out []string
+	for _, id := range ids {
+		if idutil.MakeID(fileStem(idFile[id]), name) == id {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // disambiguate picks the call target among definitions sharing the called

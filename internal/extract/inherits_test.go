@@ -97,3 +97,19 @@ func TestUnresolvedBaseDrops(t *testing.T) {
 		}
 	}
 }
+
+// A base class with an explicit constructor registers a member named after the
+// class, which must not make `extends A` ambiguous — same file, same package,
+// and cross-file.
+func TestJavaBaseWithConstructor(t *testing.T) {
+	wantEdges(t, map[string]string{
+		"pkg/A.java":   "class A { A() {} }\n",
+		"pkg/B.java":   "class B extends A { B() {} }\n",
+		"other/C.java": "import pkg.A;\nclass C extends A { }\n",
+		"Same.java":    "class P { P() {} }\nclass Q extends P { }\n",
+	}, [][3]string{
+		{"B", "inherits", "A"},
+		{"C", "inherits", "A"},
+		{"Q", "inherits", "P"},
+	})
+}
