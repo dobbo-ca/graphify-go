@@ -151,7 +151,7 @@ var controlChars = regexp.MustCompile(`[\x00-\x1f\x7f]`)
 func SanitizeLabel(s string) string {
 	s = controlChars.ReplaceAllString(s, "")
 	if len(s) > maxLabelLen {
-		s = s[:maxLabelLen]
+		s = strings.ToValidUTF8(s[:maxLabelLen], "") // byte cap must not split a rune
 	}
 	return s
 }
