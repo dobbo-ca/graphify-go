@@ -195,6 +195,12 @@ var sensitiveKeyRe = regexp.MustCompile(`(?i)(password|passwd|secret|token|api[-
 
 const redactedValue = "[redacted]"
 
+// urlCredRe matches user:pass@ credentials embedded in a URL.
+var urlCredRe = regexp.MustCompile(`://[^/@\s]+:[^/@\s]+@`)
+
+// bareRefRe matches a plain reference (var.x, data.a.b.id), never a secret.
+var bareRefRe = regexp.MustCompile(`^[A-Za-z_][\w.\[\]*-]*$`)
+
 // scriptKeys are bootstrap-script attributes: multi-line shell / cloud-init
 // bodies with no query value that routinely carry a hardcoded credential.
 // They are dropped outright rather than truncated.
@@ -295,7 +301,11 @@ func attrValue(e *ts.Node, src []byte) string {
 	}
 	switch cur.Kind() {
 	case "string_lit":
-		return security.SanitizeLabel(stringLitText(cur, src))
+		t := stringLitText(cur, src)
+		if urlCredRe.MatchString(t) {
+			return redactedValue
+		}
+		return security.SanitizeLabel(t)
 	case "object":
 		return ""
 	case "tuple":
@@ -306,12 +316,19 @@ func attrValue(e *ts.Node, src []byte) string {
 				continue
 			}
 			if v := attrValue(el, src); v != "" {
+				if sensitiveKeyRe.MatchString(v) && !bareRefRe.MatchString(v) {
+					v = redactedValue
+				}
 				items = append(items, v)
 			}
 		}
 		return strings.Join(items, ", ")
 	}
-	return security.SanitizeLabel(strings.TrimSpace(cur.Utf8Text(src)))
+	raw := strings.TrimSpace(cur.Utf8Text(src))
+	if !bareRefRe.MatchString(raw) && (sensitiveKeyRe.MatchString(raw) || urlCredRe.MatchString(raw)) {
+		return redactedValue
+	}
+	return security.SanitizeLabel(raw)
 }
 
 // listSep joins/splits a list value carried inside a segVal (Args holds scalars
