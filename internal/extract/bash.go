@@ -142,7 +142,7 @@ func (b *builder) scriptInvocationTarget(n *ts.Node, cmdName string, src []byte)
 		}
 		raw = cmdName
 	case bashScriptRunners[cmdName]:
-		lit, ok := firstArgLiteral(n, src)
+		lit, ok := firstArgLiteral(n, src, cmdName)
 		if !ok {
 			return ""
 		}
@@ -182,7 +182,7 @@ func firstArg(n *ts.Node, src []byte) string {
 // argument is a static literal — a word or a quoted string with no shell
 // expansion. `bash "./$X.sh"` (an expansion) yields ok=false so dynamic targets
 // are not resolved (mirrors upstream literal()).
-func firstArgLiteral(n *ts.Node, src []byte) (string, bool) {
+func firstArgLiteral(n *ts.Node, src []byte, runner string) (string, bool) {
 	cur := n.Walk()
 	defer cur.Close()
 	args := n.ChildrenByFieldName("argument", cur)
@@ -192,8 +192,7 @@ func firstArgLiteral(n *ts.Node, src []byte) (string, bool) {
 			return "", false
 		}
 		txt := unquote(arg.Utf8Text(src))
-		// -m/-c/-e take a module or code string, not a file.
-		if txt == "-m" || txt == "-c" || txt == "-e" {
+		if bashCodeFlag(runner, txt) {
 			return "", false
 		}
 		if !strings.HasPrefix(txt, "-") {
@@ -201,6 +200,18 @@ func firstArgLiteral(n *ts.Node, src []byte) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// bashCodeFlag reports whether flag makes runner take a module or code string
+// instead of a file. `-e` is errexit for shells, so it only counts elsewhere.
+func bashCodeFlag(runner, flag string) bool {
+	switch runner {
+	case "bash", "sh", "zsh", "ksh", "dash":
+		return flag == "-c"
+	case "python", "python3":
+		return flag == "-m" || flag == "-c"
+	}
+	return flag == "-e"
 }
 
 // bashHasExpansion reports whether n contains any shell expansion / substitution

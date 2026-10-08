@@ -154,3 +154,17 @@ func TestBashRunnerModuleFlagNoEdge(t *testing.T) {
 		}
 	}
 }
+
+// `-e` is errexit for shells, so `bash -e x.sh` still runs x.sh.
+func TestBashShellErrexitKeepsEdge(t *testing.T) {
+	root := t.TempDir()
+	writeScript(t, root, "deploy.sh", "#!/bin/bash\n")
+	writeScript(t, root, "ci.sh", "#!/bin/bash\nsh -e ./deploy.sh\n")
+	writeScript(t, root, "ci2.sh", "#!/bin/bash\nbash -e deploy.sh\n")
+	ext := resolveFiles(t, root, "deploy.sh", "ci.sh", "ci2.sh")
+	for _, f := range []string{"ci.sh", "ci2.sh"} {
+		if !hasScriptCall(ext.Edges, idutil.MakeID(f), idutil.MakeID("deploy.sh")) {
+			t.Errorf("%s: lost edge to deploy.sh", f)
+		}
+	}
+}
