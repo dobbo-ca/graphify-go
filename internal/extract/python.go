@@ -39,8 +39,31 @@ func (b *builder) pyStatement(n *ts.Node, src []byte) {
 		b.pyFunc(n, src)
 	case "class_definition":
 		b.pyClass(n, src)
-	case "import_statement", "import_from_statement", "future_import_statement":
-		b.pyImports(n, src)
+	case "import_statement", "import_from_statement", "if_statement", "try_statement", "with_statement":
+		b.pyNestedImports(n, src, false)
+	}
+}
+
+// pyNestedImports records the imports under n, including ones guarded by an
+// if/try/with block. Imports in the body of `if TYPE_CHECKING:` (or
+// `<x>.TYPE_CHECKING`) never run, so they are type-only; else branches are not.
+func (b *builder) pyNestedImports(n *ts.Node, src []byte, typeOnly bool) {
+	guard := false
+	switch n.Kind() {
+	case "import_statement", "import_from_statement":
+		b.pyImports(n, src, typeOnly)
+		return
+	case "function_definition", "class_definition", "decorated_definition":
+		return
+	case "if_statement", "elif_clause":
+		cond := n.ChildByFieldName("condition")
+		if cond != nil && cond.Kind() == "attribute" {
+			cond = cond.ChildByFieldName("attribute")
+		}
+		guard = cond != nil && cond.Kind() == "identifier" && cond.Utf8Text(src) == "TYPE_CHECKING"
+	}
+	for i := uint(0); i < n.ChildCount(); i++ {
+		b.pyNestedImports(n.Child(i), src, typeOnly || guard && n.FieldNameForChild(uint32(i)) == "consequence")
 	}
 }
 
@@ -94,19 +117,19 @@ func (b *builder) pyClass(n *ts.Node, src []byte) {
 }
 
 // pyImports records each imported module. `import a.b` and `from a.b import c`
-// both record the module path a.b; the dotted name resolves to an external
-// dependency node (Python relative imports stay external for now).
-func (b *builder) pyImports(n *ts.Node, src []byte) {
+// both record the module path a.b; a from-import also keeps its imported names,
+// since `from . import b` names a module. Resolve binds them to corpus files.
+func (b *builder) pyImports(n *ts.Node, src []byte, typeOnly bool) {
 	switch n.Kind() {
-	case "import_statement", "future_import_statement":
+	case "import_statement":
 		for i := uint(0); i < n.ChildCount(); i++ {
 			c := n.Child(i)
 			switch c.Kind() {
 			case "dotted_name":
-				b.imp(c.Utf8Text(src), line(n))
+				b.impTyped(c.Utf8Text(src), line(n), typeOnly)
 			case "aliased_import":
 				if name := c.ChildByFieldName("name"); name != nil {
-					b.imp(name.Utf8Text(src), line(n))
+					b.impTyped(name.Utf8Text(src), line(n), typeOnly)
 				}
 			}
 		}
@@ -115,7 +138,20 @@ func (b *builder) pyImports(n *ts.Node, src []byte) {
 		if mod == nil {
 			return
 		}
-		b.imp(mod.Utf8Text(src), line(n))
+		b.impTyped(mod.Utf8Text(src), line(n), typeOnly)
+		imp := &b.res.Imps[len(b.res.Imps)-1]
+		for i := uint(0); i < n.ChildCount(); i++ {
+			if n.FieldNameForChild(uint32(i)) != "name" {
+				continue
+			}
+			c := n.Child(i)
+			if c.Kind() == "aliased_import" {
+				c = c.ChildByFieldName("name")
+			}
+			if c != nil {
+				imp.Names = append(imp.Names, c.Utf8Text(src))
+			}
+		}
 		b.pyImportAliases(n, mod, src)
 	}
 }

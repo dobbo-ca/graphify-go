@@ -57,6 +57,8 @@ type TypeRef struct {
 type Imp struct {
 	FileID, File, Spec, Loc string
 	TypeOnly                bool
+	// Names are the names a Python `from Spec import ...` binds; each may be a module.
+	Names []string
 }
 
 // ModRef is a Terraform module block's source before resolution: the module

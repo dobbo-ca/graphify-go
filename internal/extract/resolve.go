@@ -45,14 +45,12 @@ func Resolve(results []Result, files []string) model.Extraction {
 	importedFiles := map[string]map[string]bool{}
 	for _, r := range results {
 		for _, im := range r.Imps {
-			target := resolveRelImport(im.File, im.Spec, corpus)
-			if target == "" {
-				continue
+			for _, target := range importTargets(im, corpus) {
+				if importedFiles[im.File] == nil {
+					importedFiles[im.File] = map[string]bool{}
+				}
+				importedFiles[im.File][target] = true
 			}
-			if importedFiles[im.File] == nil {
-				importedFiles[im.File] = map[string]bool{}
-			}
-			importedFiles[im.File][target] = true
 		}
 	}
 
@@ -175,7 +173,8 @@ func Resolve(results []Result, files []string) model.Extraction {
 	impEdge := map[string]int{}
 	for _, r := range results {
 		for _, im := range r.Imps {
-			if target := resolveRelImport(im.File, im.Spec, corpus); target != "" {
+			targets := importTargets(im, corpus)
+			for _, target := range targets {
 				tgtID := idutil.MakeID(target)
 				if i, ok := impEdge[im.FileID+"\x00"+tgtID]; ok {
 					if !im.TypeOnly {
@@ -189,9 +188,12 @@ func Resolve(results []Result, files []string) model.Extraction {
 					Confidence: "EXTRACTED", SourceFile: im.File, SourceLocation: im.Loc,
 					TypeOnly: im.TypeOnly,
 				})
-				continue
 			}
 			depID := idutil.MakeID(im.Spec)
+			// A bare `from . import x` has no module name to mint a node from.
+			if len(targets) > 0 || depID == "" {
+				continue
+			}
 			if !extSeen[depID] {
 				extSeen[depID] = true
 				out.Nodes = append(out.Nodes, model.Node{ID: depID, Label: im.Spec, FileType: "concept"})
@@ -680,6 +682,68 @@ func unique(ids []string, pred func(string) bool) string {
 				return ""
 			}
 			found = id
+		}
+	}
+	return found
+}
+
+// importTargets returns the corpus files an import binds to: at most one for a
+// path specifier, and for Python the module plus any imported name that is
+// itself a module (`from . import b`, `from pkg import submodule`).
+func importTargets(im Imp, corpus map[string]bool) []string {
+	from := filepath.ToSlash(im.File)
+	if !strings.HasSuffix(from, ".py") {
+		if t := resolveRelImport(im.File, im.Spec, corpus); t != "" {
+			return []string{t}
+		}
+		return nil
+	}
+	var out []string
+	add := func(t string) {
+		if t != "" && t != from && !contains(out, t) {
+			out = append(out, t)
+		}
+	}
+	add(resolvePyModule(from, im.Spec, corpus))
+	for _, name := range im.Names {
+		add(resolvePyModule(from, strings.TrimSuffix(im.Spec, ".")+"."+name, corpus))
+	}
+	return out
+}
+
+// resolvePyModule maps a dotted Python module to a corpus file. Leading dots
+// walk up from the importer's directory. An absolute module is probed from the
+// corpus root and from each ancestor directory that is not itself a package,
+// and binds only when exactly one of them holds it.
+func resolvePyModule(from, mod string, corpus map[string]bool) string {
+	rel := strings.TrimLeft(mod, ".")
+	dots := len(mod) - len(rel)
+	rel = strings.ReplaceAll(rel, ".", "/")
+	probe := func(dir string) string {
+		base := path.Join(dir, rel)
+		if rel != "" && corpus[base+".py"] {
+			return base + ".py"
+		}
+		if init := path.Join(base, "__init__.py"); corpus[init] {
+			return init
+		}
+		return ""
+	}
+	dir := path.Dir(from)
+	if dots > 0 {
+		return probe(path.Join(dir, strings.Repeat("../", dots-1)))
+	}
+	found := probe(".")
+	for ; dir != "."; dir = path.Dir(dir) {
+		// A package's siblings are not importable by bare name.
+		if corpus[path.Join(dir, "__init__.py")] {
+			continue
+		}
+		if hit := probe(dir); hit != "" {
+			if found != "" {
+				return ""
+			}
+			found = hit
 		}
 	}
 	return found
