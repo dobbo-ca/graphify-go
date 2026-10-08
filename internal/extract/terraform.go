@@ -191,7 +191,7 @@ const (
 // .tf would land in the tree and in an agent's context. The key survives
 // redaction so `instance_type`/`ami` queries still work and a reader can still
 // see THAT a secret is set. Mirrors upstream _SENSITIVE_KEY_RE.
-var sensitiveKeyRe = regexp.MustCompile(`(?i)(password|passwd|secret|token|api[-_]?key|access[-_]?key|private[-_]?key|credential|client[-_]?secret|connection[-_]?string|sas[-_]?token|auth|passphrase)`)
+var sensitiveKeyRe = regexp.MustCompile(`(?i)(password|passwd|secret|token|api[-_]?key|access[-_]?key|private[-_]?key|credential|client[-_]?secret|connection[-_]?string|sas[-_]?token|auth|bearer|passphrase)`)
 
 const redactedValue = "[redacted]"
 
@@ -302,7 +302,7 @@ func attrValue(e *ts.Node, src []byte) string {
 	switch cur.Kind() {
 	case "string_lit":
 		t := stringLitText(cur, src)
-		if urlCredRe.MatchString(t) {
+		if urlCredRe.MatchString(t) || (sensitiveKeyRe.MatchString(t) && !bareRefRe.MatchString(t)) {
 			return redactedValue
 		}
 		return security.SanitizeLabel(t)

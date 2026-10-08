@@ -380,6 +380,13 @@ func TestTerraformFallbackValuesRedacted(t *testing.T) {
 output "conn" {
   value = "postgres://u:hunter2out@h/db"
 }
+resource "x_thing" "s" {
+  env_single = "DB_PASSWORD=hunter2single"
+  conn       = "Server=db;User=sa;Password=hunter2semi"
+  hdr        = "Authorization: Bearer hunter2hdr"
+  bare       = "Bearer hunter2bare"
+  plain      = "db-secret-name"
+}
 `)
 	res := FileFromBytes("main.tf", src)
 	for _, n := range res.Nodes {
@@ -387,6 +394,9 @@ output "conn" {
 			if strings.Contains(v, "hunter2") {
 				t.Errorf("%s.%s leaks secret: %q", n.Label, k, v)
 			}
+		}
+		if n.Label == "x_thing.s" && n.Attributes["plain"] != "db-secret-name" {
+			t.Errorf("plain = %q, want it kept", n.Attributes["plain"])
 		}
 		if n.Label == "aws_ecs_task_definition.t" {
 			if n.Attributes["instance_type"] != "t3.large" || n.Attributes["ami"] != "data.aws_ami.x.id" {
