@@ -241,6 +241,18 @@ func TestResolveReceiverCalls(t *testing.T) {
 		{name: "go type switch shadows typed local", srcs: map[string]string{
 			"a.go": "package a\ntype S struct{}\ntype T struct{}\nfunc (s *S) b() {}\nfunc (t *T) b() {}\nfunc tswitch(s *S, v interface{}) { switch s := v.(type) { case T: s.b() } }\n",
 		}, unwanted: [][3]string{c("tswitch()", "S.b()")}},
+		{name: "ruby bare self-send stays in its class", srcs: map[string]string{
+			"a.rb": "class A\n  def helper\n  end\nend\nclass B\n  def run\n    helper\n  end\nend\n",
+		}, unwanted: [][3]string{c("B.run()", "A.helper()")}},
+		{name: "ruby bare self-send picks its own class", srcs: map[string]string{
+			"a.rb": "class A\n  def dup_name\n  end\nend\nclass B\n  def dup_name\n  end\n  def run\n    dup_name\n  end\nend\n",
+		}, want: [][3]string{c("B.run()", "B.dup_name()")}, unwanted: [][3]string{c("B.run()", "A.dup_name()")}},
+		{name: "ruby bare self-send inherited", srcs: map[string]string{
+			"a.rb": "class A\n  def helper\n  end\nend\nclass B < A\n  def run\n    helper\n  end\nend\n",
+		}, want: [][3]string{c("B.run()", "A.helper()")}},
+		{name: "ruby bare call from a top-level method", srcs: map[string]string{
+			"a.rb": "def helper\nend\ndef run\n  helper\nend\n",
+		}, want: [][3]string{c("run()", "helper()")}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			wantEdges(t, tc.srcs, tc.want, tc.unwanted...)

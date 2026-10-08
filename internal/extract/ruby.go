@@ -71,6 +71,10 @@ func (b *builder) rubyType(n *ts.Node, src []byte) {
 	}
 	typeID := idutil.MakeID(b.stem, name)
 	b.def(typeID, name, name, line(n))
+	// The superclass lets an inherited self-send walk the chain.
+	if sup := n.ChildByFieldName("superclass"); sup != nil {
+		b.typeRef(typeID, rubyConstName(firstNamed(sup), src), "inherits", line(n))
+	}
 
 	body := n.ChildByFieldName("body")
 	if body == nil {
@@ -205,7 +209,12 @@ func (b *builder) rubyCalls(body *ts.Node, callerID string, src []byte) {
 			// Paren-less self-send parses as a bare identifier statement.
 			if p := c.Parent(); p != nil && p.Kind() == "body_statement" {
 				if name := c.Utf8Text(src); b.rubyMethods[name] && !locals[name] {
-					b.call(callerID, name, line(c))
+					// Inside a class it binds to that class, not by bare name.
+					if m := body.Parent(); m != nil && m.Parent() != nil && m.Parent().Kind() != "program" {
+						b.callRecv(callerID, name, "self", line(c))
+					} else {
+						b.call(callerID, name, line(c))
+					}
 				}
 			}
 		}
