@@ -134,3 +134,61 @@ func TestResolveSameNameMethodsInOneFile(t *testing.T) {
 		t.Error("expected x_a_build --calls--> x_b_only (unambiguous same-file name)")
 	}
 }
+
+// TestResolveReceiverCalls checks that a member or qualified call binds on its
+// receiver, not on the bare method name.
+func TestResolveReceiverCalls(t *testing.T) {
+	c := func(src, tgt string) [3]string { return [3]string{src, "calls", tgt} }
+	for _, tc := range []struct {
+		name           string
+		srcs           map[string]string
+		want, unwanted [][3]string
+	}{
+		{name: "go stdlib package", srcs: map[string]string{
+			"a.go": "package a\nimport \"errors\"\nfunc New() int { return 1 }\nfunc f() error { return errors.New(\"x\") }\n",
+		}, unwanted: [][3]string{c("f()", "New()")}},
+		{name: "rust foreign type", srcs: map[string]string{
+			"a.rs": "struct Config;\nimpl Config { fn new() -> Config { Config } }\nfn a() { let _m = HashMap::new(); }\nfn b() { let _c = Config::new(); }\n",
+		}, want: [][3]string{c("b()", "Config.new()")}, unwanted: [][3]string{c("a()", "Config.new()")}},
+		{name: "ts local variable", srcs: map[string]string{
+			"a.ts": "function push(x: number) {}\nfunction f(arr: number[]) { arr.push(1) }\n",
+		}, unwanted: [][3]string{c("f()", "push()")}},
+		{name: "js other file", srcs: map[string]string{
+			"lib.js": "export function format() {}\nexport function get() {}\n",
+			"app.js": "function h(res) { res.format({}); axios.get() }\n",
+		}, unwanted: [][3]string{c("h()", "format()"), c("h()", "get()")}},
+		{name: "python attribute chain", srcs: map[string]string{
+			"pkg/b.py": "def get():\n    pass\n",
+			"a.py":     "class C:\n    def run(self):\n        self.session.get()\n",
+		}, unwanted: [][3]string{c("C.run()", "get()")}},
+		{name: "js this in unrelated class", srcs: map[string]string{
+			"a.js": "class A { run() { this.m() } }\nclass B { m() {} }\n",
+		}, unwanted: [][3]string{c("A.run()", "B.m()")}},
+		{name: "python self in unrelated class", srcs: map[string]string{
+			"a.py": "class A:\n    def run(self):\n        self.save()\nclass B:\n    def save(self):\n        pass\n",
+		}, unwanted: [][3]string{c("A.run()", "B.save()")}},
+		{name: "go corpus package", srcs: map[string]string{
+			"util/join.go": "package util\nfunc Join() {}\n",
+			"main.go":      "package main\nfunc main() { util.Join() }\n",
+		}, want: [][3]string{c("main()", "Join()")}},
+		{name: "go receiver", srcs: map[string]string{
+			"a.go": "package a\ntype S struct{}\ntype T struct{}\nfunc (s *S) a() { s.b() }\nfunc (s *S) b() {}\nfunc (t *T) b() {}\n",
+		}, want: [][3]string{c("S.a()", "S.b()")}, unwanted: [][3]string{c("S.a()", "T.b()")}},
+		{name: "java super", srcs: map[string]string{
+			"A.java": "class Base { void log() {} }\nclass A extends Base { void go() { super.log(); } }\n",
+		}, want: [][3]string{c("A.go()", "Base.log()")}},
+		{name: "python inherited self", srcs: map[string]string{
+			"a.py": "class B:\n    def save(self):\n        pass\nclass A(B):\n    def run(self):\n        self.save()\n",
+		}, want: [][3]string{c("A.run()", "B.save()")}},
+		{name: "python unknown ancestor", srcs: map[string]string{
+			"a.py": "class B:\n    def save(self):\n        pass\nclass A(Ext, B):\n    def run(self):\n        self.save()\n",
+		}, unwanted: [][3]string{c("A.run()", "B.save()")}},
+		{name: "lua self", srcs: map[string]string{
+			"a.lua": "local A = {}\nlocal B = {}\nfunction A:step() end\nfunction B:step() end\nfunction A:run() self:step() end\n",
+		}, want: [][3]string{c("A.run()", "A.step()")}, unwanted: [][3]string{c("A.run()", "B.step()")}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			wantEdges(t, tc.srcs, tc.want, tc.unwanted...)
+		})
+	}
+}

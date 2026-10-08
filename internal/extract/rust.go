@@ -157,11 +157,11 @@ func (b *builder) rustCalls(body *ts.Node, callerID string, src []byte) {
 				b.call(callerID, fn.Utf8Text(src), line(c))
 			case "scoped_identifier":
 				if name := fn.ChildByFieldName("name"); name != nil {
-					b.call(callerID, name.Utf8Text(src), line(c))
+					b.callRecv(callerID, name.Utf8Text(src), recvText(fn, name, src), line(c))
 				}
 			case "field_expression":
 				if f := fn.ChildByFieldName("field"); f != nil {
-					b.call(callerID, f.Utf8Text(src), line(c))
+					b.callRecv(callerID, f.Utf8Text(src), recvText(fn, f, src), line(c))
 				}
 			}
 		case "macro_invocation":

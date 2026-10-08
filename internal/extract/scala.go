@@ -144,7 +144,7 @@ func (b *builder) scalaCalls(body *ts.Node, callerID string, src []byte) {
 			b.call(callerID, fn.Utf8Text(src), line(c))
 		case "field_expression":
 			if f := fn.ChildByFieldName("field"); f != nil {
-				b.call(callerID, f.Utf8Text(src), line(c))
+				b.callRecv(callerID, f.Utf8Text(src), recvText(fn, f, src), line(c))
 			}
 		}
 		return true

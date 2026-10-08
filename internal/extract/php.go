@@ -119,7 +119,7 @@ func (b *builder) phpCalls(body *ts.Node, callerID string, src []byte) {
 			}
 		case "member_call_expression", "nullsafe_member_call_expression", "scoped_call_expression":
 			if nm := c.ChildByFieldName("name"); nm != nil && nm.Kind() == "name" {
-				b.call(callerID, nm.Utf8Text(src), line(c))
+				b.callRecv(callerID, nm.Utf8Text(src), recvText(c, nm, src), line(c))
 			}
 		}
 		return true

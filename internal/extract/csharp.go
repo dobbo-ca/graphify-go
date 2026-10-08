@@ -133,7 +133,7 @@ func (b *builder) csCalls(body *ts.Node, callerID string, src []byte) {
 			b.call(callerID, fn.Utf8Text(src), line(c))
 		case "member_access_expression", "qualified_name":
 			if name := fn.ChildByFieldName("name"); name != nil {
-				b.call(callerID, name.Utf8Text(src), line(c))
+				b.callRecv(callerID, name.Utf8Text(src), recvText(fn, name, src), line(c))
 			}
 		}
 		return true

@@ -156,7 +156,7 @@ func (b *builder) jsCalls(body *ts.Node, callerID string, src []byte) {
 			b.call(callerID, fn.Utf8Text(src), line(c))
 		case "member_expression":
 			if p := fn.ChildByFieldName("property"); p != nil {
-				b.call(callerID, p.Utf8Text(src), line(c))
+				b.callRecv(callerID, p.Utf8Text(src), recvText(fn, p, src), line(c))
 			}
 		}
 		return true

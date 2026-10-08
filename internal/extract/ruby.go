@@ -175,6 +175,6 @@ func (b *builder) rubyRecordCall(c *ts.Node, callerID string, src []byte) {
 	}
 	switch method.Kind() {
 	case "identifier", "constant":
-		b.call(callerID, method.Utf8Text(src), line(c))
+		b.callRecv(callerID, method.Utf8Text(src), recvText(c, method, src), line(c))
 	}
 }

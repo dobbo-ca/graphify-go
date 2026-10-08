@@ -169,7 +169,9 @@ func (b *builder) ktCalls(body *ts.Node, callerID string, src []byte) {
 		case "identifier":
 			b.call(callerID, callee.Utf8Text(src), line(c))
 		case "navigation_expression":
-			b.call(callerID, ktNavName(callee, src), line(c))
+			if nm := ktNavName(callee); nm != nil {
+				b.callRecv(callerID, nm.Utf8Text(src), recvText(callee, nm, src), line(c))
+			}
 		}
 		return true
 	})
@@ -177,11 +179,11 @@ func (b *builder) ktCalls(body *ts.Node, callerID string, src []byte) {
 
 // ktNavName returns the trailing member name of a navigation_expression
 // (`a.b.c` -> "c"): the last identifier child.
-func ktNavName(n *ts.Node, src []byte) string {
-	var name string
+func ktNavName(n *ts.Node) *ts.Node {
+	var name *ts.Node
 	for i := uint(0); i < n.ChildCount(); i++ {
 		if c := n.Child(i); c.Kind() == "identifier" {
-			name = c.Utf8Text(src)
+			name = c
 		}
 	}
 	return name

@@ -21,16 +21,20 @@ import (
 )
 
 // Def records a named definition so cross-file calls can resolve to it by name.
+// Owner names the receiver type of a Go method, which has no contains edge from
+// its type.
 type Def struct {
 	ID, Name, File string
+	Owner          string
 }
 
 // Call is an unresolved call site: CallerID invoked a symbol named Callee.
-// IsMember marks an attribute/method call (`x.f()`), which the Python
-// import-guided resolver must skip — the alias evidence only covers bare names.
+// Recv is the receiver or qualifier text of a member call (`x` in `x.f()`,
+// `T` in `T::f()`), empty for a bare call. Resolve binds a member call on its
+// receiver, never on the bare name alone.
 type Call struct {
 	CallerID, Callee, File, Loc string
-	IsMember                    bool
+	Recv                        string
 }
 
 // ImportAlias is per-file evidence from a top-level `from M import N [as L]`:
@@ -261,13 +265,28 @@ func (b *builder) call(callerID, callee, loc string) {
 	b.res.Calls = append(b.res.Calls, Call{CallerID: callerID, Callee: callee, File: b.file, Loc: loc})
 }
 
-// callMember records an attribute/method call (`x.f()`). It is identical to call
-// but flags the site as a member call so the Python import-guided resolver skips it.
-func (b *builder) callMember(callerID, callee, loc string) {
+// callRecv records a member or qualified call (`x.f()`, `T::f()`) with its
+// receiver text.
+func (b *builder) callRecv(callerID, callee, recv, loc string) {
 	if callee == "" || callerID == "" {
 		return
 	}
-	b.res.Calls = append(b.res.Calls, Call{CallerID: callerID, Callee: callee, File: b.file, Loc: loc, IsMember: true})
+	b.res.Calls = append(b.res.Calls, Call{CallerID: callerID, Callee: callee, File: b.file, Loc: loc, Recv: recv})
+}
+
+// recvSeps are the member-access operators that end a receiver, longest first.
+var recvSeps = []string{"?->", "?.", "->", "::", ".", ":"}
+
+// recvText returns the receiver of a member call: the source between the start
+// of expr and its trailing name, minus the access operator.
+func recvText(expr, name *ts.Node, src []byte) string {
+	s := strings.TrimSpace(string(src[expr.StartByte():name.StartByte()]))
+	for _, sep := range recvSeps {
+		if strings.HasSuffix(s, sep) {
+			return strings.TrimSpace(strings.TrimSuffix(s, sep))
+		}
+	}
+	return s
 }
 
 // typeRef records a supertype reference for Resolve to bind by name.

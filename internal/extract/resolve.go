@@ -68,23 +68,83 @@ func Resolve(results []Result, files []string) model.Extraction {
 	// resolved call site so the weaker name pass leaves it alone.
 	resolved := resolveImportGuided(results, idFile, &out)
 
+	// Inheritance: a declared supertype name binds the same way a call does —
+	// same file first, then disambiguated among the definitions sharing the name.
+	// An unresolvable base (a library type outside the corpus) drops rather than
+	// creating a stub node. Resolved ahead of the calls so a self/super call can
+	// walk the chain; the edges are appended after them.
+	var inherit []model.Edge
+	supers := map[string][]string{} // type id -> resolved base type ids
+	openSuper := map[string]bool{}  // type id with a base outside the corpus
+	for _, r := range results {
+		for _, t := range r.TypeRefs {
+			tgt := ""
+			if ids := typeDefs(local[t.File+"\x00"+t.Name], t.Name, idFile); len(ids) == 1 {
+				tgt = ids[0]
+			}
+			if tgt == "" {
+				tgt = disambiguate(typeDefs(global[t.Name], t.Name, idFile), t.File, idFile, importedFiles[t.File])
+			}
+			if tgt == "" || tgt == t.FromID || langfamily.Cross(t.File, idFile[tgt]) {
+				if t.Relation == "inherits" {
+					openSuper[t.FromID] = true
+				}
+				continue
+			}
+			if t.Relation == "inherits" {
+				supers[t.FromID] = append(supers[t.FromID], tgt)
+			}
+			inherit = append(inherit, model.Edge{
+				Source: t.FromID, Target: tgt, Relation: t.Relation,
+				Confidence: "INFERRED", SourceFile: t.File, SourceLocation: t.Loc,
+			})
+		}
+	}
+
+	quals := defQualifiers(results)
+	owner := defOwners(results)
+	methods := map[string][]string{} // owner\x00name -> method ids
+	for _, r := range results {
+		for _, d := range r.Defs {
+			if o := owner[d.ID]; o != "" && !contains(methods[o+"\x00"+d.Name], d.ID) {
+				methods[o+"\x00"+d.Name] = append(methods[o+"\x00"+d.Name], d.ID)
+			}
+		}
+	}
+
 	// Calls: prefer a definition in the same file, else disambiguate among the
 	// definitions sharing the called name (unique global, imported file, or same
-	// package) rather than guessing.
+	// package) rather than guessing. A member call binds on its receiver: self/this
+	// to a method of the caller's own type or its nearest ancestor, anything
+	// else only to a definition the receiver's last segment qualifies.
 	for _, r := range results {
 		for _, c := range r.Calls {
 			if resolved[c.CallerID+"\x00"+c.Callee+"\x00"+c.Loc] {
 				continue
 			}
 			tgt := ""
-			// Two types in one file can each own a method of the same name; a
-			// bare call then has no unambiguous local target, so fall through
-			// to disambiguate rather than guess.
-			if ids := local[c.File+"\x00"+c.Callee]; len(ids) == 1 {
-				tgt = ids[0]
+			super, isSelf := selfRecv[c.Recv]
+			if ext := langRecv[c.Recv]; ext != "" && path.Ext(c.File) != ext {
+				isSelf = false
 			}
-			if tgt == "" {
-				tgt = disambiguate(global[c.Callee], c.File, idFile, importedFiles[c.File])
+			if isSelf {
+				tgt = selfTarget(owner[c.CallerID], c.Callee, super, methods, supers, openSuper)
+			} else {
+				here, all := local[c.File+"\x00"+c.Callee], global[c.Callee]
+				if c.Recv != "" {
+					q := recvTail.FindString(c.Recv)
+					ok := func(id string) bool { return q != "" && quals[id][q] }
+					here, all = keep(here, ok), keep(all, ok)
+				}
+				// Two types in one file can each own a method of the same name; a
+				// bare call then has no unambiguous local target, so fall through
+				// to disambiguate rather than guess.
+				if len(here) == 1 {
+					tgt = here[0]
+				}
+				if tgt == "" {
+					tgt = disambiguate(all, c.File, idFile, importedFiles[c.File])
+				}
 			}
 			if tgt == "" || tgt == c.CallerID {
 				continue
@@ -104,28 +164,7 @@ func Resolve(results []Result, files []string) model.Extraction {
 		}
 	}
 
-	// Inheritance: a declared supertype name binds the same way a call does —
-	// same file first, then disambiguated among the definitions sharing the name.
-	// An unresolvable base (a library type outside the corpus) drops rather than
-	// creating a stub node.
-	for _, r := range results {
-		for _, t := range r.TypeRefs {
-			tgt := ""
-			if ids := typeDefs(local[t.File+"\x00"+t.Name], t.Name, idFile); len(ids) == 1 {
-				tgt = ids[0]
-			}
-			if tgt == "" {
-				tgt = disambiguate(typeDefs(global[t.Name], t.Name, idFile), t.File, idFile, importedFiles[t.File])
-			}
-			if tgt == "" || tgt == t.FromID || langfamily.Cross(t.File, idFile[tgt]) {
-				continue
-			}
-			out.Edges = append(out.Edges, model.Edge{
-				Source: t.FromID, Target: tgt, Relation: t.Relation,
-				Confidence: "INFERRED", SourceFile: t.File, SourceLocation: t.Loc,
-			})
-		}
-	}
+	out.Edges = append(out.Edges, inherit...)
 
 	// Imports: relative specifiers resolve to a corpus file (imports_from, used
 	// for cycle detection); bare specifiers become external dependency nodes.
@@ -352,6 +391,90 @@ func defQualifiers(results []Result) map[string]map[string]bool {
 	return out
 }
 
+// selfRecv lists the receivers that name the caller's own instance or type;
+// the value marks one that starts the lookup at the parent type.
+var selfRecv = map[string]bool{
+	"self": false, "this": false, "cls": false, "$this": false, "@self": false, "Self": false, "static": false,
+	"super": true, "super()": true, "parent": true, "base": true,
+}
+
+// langRecv limits a receiver that is a plain identifier in most languages to
+// the one where it is a keyword.
+var langRecv = map[string]string{"static": ".php", "parent": ".php", "base": ".cs"}
+
+// recvTail matches the last identifier of a receiver (`a.b` -> `b`); a receiver
+// ending in anything else (`f()`, `a[0]`) has none.
+var recvTail = regexp.MustCompile(`[\p{L}\p{N}_]+$`)
+
+// defOwners maps each method to the type that owns it: the node containing it,
+// or for a Go method its receiver type within the package directory. A
+// definition contained only by its file has no owner.
+func defOwners(results []Result) map[string]string {
+	owner := map[string]string{}
+	for _, r := range results {
+		for _, e := range r.Edges {
+			if e.Relation == "contains" {
+				owner[e.Target] = e.Source
+			}
+		}
+		for _, d := range r.Defs {
+			if d.Owner != "" {
+				owner[d.ID] = path.Dir(filepath.ToSlash(d.File)) + "\x00" + d.Owner
+			} else if owner[d.ID] == idutil.MakeID(d.File) {
+				delete(owner, d.ID)
+			}
+		}
+	}
+	return owner
+}
+
+// selfTarget binds a self/this call made from a method of type cls: the method
+// of that name on cls, else on the nearest ancestor reached over resolved
+// inherits edges. A super call starts at the parents. It returns "" on a tie or
+// when the chain passes a base outside the corpus, rather than guess.
+func selfTarget(cls, name string, super bool, methods, supers map[string][]string, openSuper map[string]bool) string {
+	level := []string{cls}
+	// Bounded so a cyclic inherits chain can't hang.
+	for depth := 0; cls != "" && len(level) > 0 && depth < 16; depth++ {
+		var hits, next []string
+		for _, c := range level {
+			for _, id := range methods[c+"\x00"+name] {
+				if !contains(hits, id) {
+					hits = append(hits, id)
+				}
+			}
+		}
+		if super && depth == 0 {
+			hits = nil
+		}
+		if len(hits) == 1 {
+			return hits[0]
+		}
+		if len(hits) > 1 {
+			return ""
+		}
+		for _, c := range level {
+			if openSuper[c] {
+				return ""
+			}
+			next = append(next, supers[c]...)
+		}
+		level = next
+	}
+	return ""
+}
+
+// keep returns the ids matching pred.
+func keep(ids []string, pred func(string) bool) []string {
+	var out []string
+	for _, id := range ids {
+		if pred(id) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // uniqueCodeDef resolves a backtick code-span symbol to the single code
 // definition it names, or "" when the span is not an identifier or when
 // zero/several definitions survive (drop-on-ambiguity). For a qualified span
@@ -463,7 +586,7 @@ func resolveImportGuided(results []Result, idFile map[string]string, out *model.
 			aliases[a.Local] = a // last write wins, mirroring upstream alias dict
 		}
 		for _, c := range r.Calls {
-			if c.IsMember {
+			if c.Recv != "" {
 				continue
 			}
 			a, ok := aliases[c.Callee]

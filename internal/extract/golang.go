@@ -39,7 +39,7 @@ func (b *builder) goFunc(n *ts.Node, src []byte) {
 	}
 	id := idutil.MakeID(b.stem, name)
 	b.def(id, name, name+"()", line(n))
-	b.goCalls(n.ChildByFieldName("body"), id, src)
+	b.goCalls(n.ChildByFieldName("body"), id, "", src)
 }
 
 func (b *builder) goMethod(n *ts.Node, src []byte) {
@@ -55,7 +55,12 @@ func (b *builder) goMethod(n *ts.Node, src []byte) {
 	}
 	// Register under the bare method name so `x.Method()` call sites resolve.
 	b.def(id, name, label, line(n))
-	b.goCalls(n.ChildByFieldName("body"), id, src)
+	b.res.Defs[len(b.res.Defs)-1].Owner = recv
+	self := ""
+	if p := firstNamed(n.ChildByFieldName("receiver")); p != nil {
+		self = fieldText(p, "name", src)
+	}
+	b.goCalls(n.ChildByFieldName("body"), id, self, src)
 }
 
 // goReceiverType returns the bare type name of a method receiver, e.g. "Server"
@@ -106,8 +111,9 @@ func (b *builder) goImports(n *ts.Node, src []byte) {
 
 // goCalls walks a function body and records each call site, attributing it to
 // callerID. Both direct calls (`f()`) and method/selector calls (`x.f()`) are
-// recorded by the called name.
-func (b *builder) goCalls(body *ts.Node, callerID string, src []byte) {
+// recorded by the called name. self is the enclosing method's receiver name; a
+// call on it is recorded with the receiver "self".
+func (b *builder) goCalls(body *ts.Node, callerID, self string, src []byte) {
 	if body == nil {
 		return
 	}
@@ -124,7 +130,11 @@ func (b *builder) goCalls(body *ts.Node, callerID string, src []byte) {
 			b.call(callerID, fn.Utf8Text(src), line(c))
 		case "selector_expression":
 			if f := fn.ChildByFieldName("field"); f != nil {
-				b.call(callerID, f.Utf8Text(src), line(c))
+				recv := recvText(fn, f, src)
+				if recv == self {
+					recv = "self"
+				}
+				b.callRecv(callerID, f.Utf8Text(src), recv, line(c))
 			}
 		}
 		return true

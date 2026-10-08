@@ -192,10 +192,16 @@ func (b *builder) cppCalls(body *ts.Node, callerID string, src []byte) {
 			b.call(callerID, fn.Utf8Text(src), line(c))
 		case "field_expression":
 			if f := fn.ChildByFieldName("field"); f != nil {
-				b.call(callerID, cppNameText(f, src), line(c))
+				b.callRecv(callerID, cppNameText(f, src), recvText(fn, f, src), line(c))
 			}
 		case "qualified_identifier":
-			b.call(callerID, cppNameText(fn.ChildByFieldName("name"), src), line(c))
+			nm := fn.ChildByFieldName("name")
+			for nm != nil && nm.Kind() == "qualified_identifier" {
+				nm = nm.ChildByFieldName("name")
+			}
+			if nm != nil {
+				b.callRecv(callerID, cppNameText(nm, src), recvText(fn, nm, src), line(c))
+			}
 		case "template_function":
 			b.call(callerID, cppNameText(fn.ChildByFieldName("name"), src), line(c))
 		}

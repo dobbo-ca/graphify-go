@@ -187,7 +187,7 @@ func (b *builder) pyCalls(body *ts.Node, callerID string, src []byte) {
 			b.call(callerID, fn.Utf8Text(src), line(c))
 		case "attribute":
 			if a := fn.ChildByFieldName("attribute"); a != nil {
-				b.callMember(callerID, a.Utf8Text(src), line(c))
+				b.callRecv(callerID, a.Utf8Text(src), recvText(fn, a, src), line(c))
 			}
 		}
 		return true
