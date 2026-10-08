@@ -1,6 +1,9 @@
 package extract
 
 import (
+	"regexp"
+	"strings"
+
 	ts "github.com/tree-sitter/go-tree-sitter"
 	tscpp "github.com/tree-sitter/tree-sitter-cpp/bindings/go"
 
@@ -14,12 +17,50 @@ import (
 // surfaces its definitions. Methods are scoped under their enclosing type,
 // whether defined inline in the class body or out-of-line as `Type::method`.
 func extractCpp(rel string, src []byte) Result {
+	src = blankCppExportMacros(src)
 	root, done := parseRoot(src, tscpp.Language())
 	defer done()
 	b := newBuilder(rel)
 
 	b.cppItems(root, src)
 	return b.res
+}
+
+var cppExportMacroRe = regexp.MustCompile(`\b(?:class|struct)\s+((?:[A-Z][A-Z0-9_]*\s+)+)([A-Za-z_]\w*(?:\s+final)?\s*)([:{])`)
+
+// blankCppExportMacros overwrites the ALL-CAPS macros between `class`/`struct`
+// and the type name (`class Q_CORE_EXPORT Widget`) with spaces: the grammar
+// otherwise reads the macro as the type and the class as a function. Newlines
+// are kept so offsets and line numbers hold.
+func blankCppExportMacros(src []byte) []byte {
+	var out []byte
+	for _, m := range cppExportMacroRe.FindAllSubmatchIndex(src, -1) {
+		// `for (class API v : items)` is a variable, not a type.
+		if strings.HasSuffix(strings.TrimSpace(string(src[:m[0]])), "(") {
+			continue
+		}
+		// `class API v{1};` is a brace initialiser.
+		if rest := strings.TrimSpace(string(src[m[7]:])); src[m[6]] == '{' && rest != "" && strings.ContainsRune("0123456789\"'-", rune(rest[0])) {
+			continue
+		}
+		end := m[3]
+		// `class API WIDGET final :` has no lookahead: WIDGET is the name.
+		if strings.TrimSpace(string(src[m[4]:m[5]])) == "final" {
+			end = m[2] + strings.LastIndexAny(strings.TrimSpace(string(src[m[2]:m[3]])), " \t\r\n") + 1
+		}
+		if out == nil {
+			out = append([]byte(nil), src...)
+		}
+		for i := m[2]; i < end; i++ {
+			if out[i] != '\r' && out[i] != '\n' {
+				out[i] = ' '
+			}
+		}
+	}
+	if out == nil {
+		return src
+	}
+	return out
 }
 
 // cppItems handles each item directly under n (a translation_unit or a
@@ -81,6 +122,16 @@ func (b *builder) cppType(n *ts.Node, src []byte) {
 	}
 	typeID := idutil.MakeID(b.stem, name)
 	b.def(typeID, name, name, line(n))
+
+	for i := uint(0); i < n.NamedChildCount(); i++ {
+		if c := n.NamedChild(i); c.Kind() == "base_class_clause" {
+			for j := uint(0); j < c.NamedChildCount(); j++ {
+				if base := c.NamedChild(j); base.Kind() != "access_specifier" {
+					b.typeRef(typeID, cppNameText(base, src), "inherits", line(n))
+				}
+			}
+		}
+	}
 
 	body := n.ChildByFieldName("body")
 	if body == nil {

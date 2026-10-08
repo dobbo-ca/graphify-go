@@ -3,6 +3,7 @@ package extract
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -89,5 +90,43 @@ func TestCppHeaderRoutesToCppExtractor(t *testing.T) {
 	}
 	if got := labels(plain); len(got) != len(want) || isCppHeader([]byte(plain)) {
 		t.Errorf("plain C header: got %v, want %v", got, want)
+	}
+}
+
+// An export macro between `class`/`struct` and the name must not hide the type.
+func TestCppExportMacroClass(t *testing.T) {
+	src := "class Base {};\n" +
+		"class Q_CORE_EXPORT\nWidget : public Base { public: void show() {} };\n" +
+		"struct API Thing { int x; };\n" +
+		"class MY_WIDGET final : public Base {};\n" +
+		"class MACRO OTHER final : public Base {};\n" +
+		"void F() {\n  for (class API v : items) {}\n  class API w{1};\n}\n"
+	if out := blankCppExportMacros([]byte(src)); len(out) != len(src) ||
+		!strings.Contains(string(out), "class              \nWidget") ||
+		!strings.Contains(string(out), "(class API v :") || !strings.Contains(string(out), "class API w{1}") {
+		t.Errorf("blanking changed offsets or touched a variable:\n%s", out)
+	}
+
+	res := FileFromBytes("w.h", []byte(src))
+	labels := map[string]string{}
+	for _, n := range res.Nodes {
+		labels[n.Label] = n.SourceLocation
+	}
+	for _, want := range []string{"Widget", "Widget.show()", "Thing", "MY_WIDGET", "OTHER"} {
+		if _, ok := labels[want]; !ok {
+			t.Errorf("missing node %q in %v", want, labels)
+		}
+	}
+	if labels["Thing"] != "L4" {
+		t.Errorf("Thing at %s, want L4", labels["Thing"])
+	}
+	inherits := false
+	for _, r := range res.TypeRefs {
+		if r.FromID == "w_widget" && r.Name == "Base" && r.Relation == "inherits" {
+			inherits = true
+		}
+	}
+	if !inherits {
+		t.Errorf("no Widget inherits Base ref in %v", res.TypeRefs)
 	}
 }
