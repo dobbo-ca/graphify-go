@@ -28,7 +28,6 @@ require (
 	github.com/tree-sitter/tree-sitter-verilog v1.0.3
 	golang.org/x/exp v0.0.0-20260603202125-055de637280b
 	golang.org/x/text v0.27.0
-	gonum.org/v1/gonum v0.15.1
 )
 
 require (
