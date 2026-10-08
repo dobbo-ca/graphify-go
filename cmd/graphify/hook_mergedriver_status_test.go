@@ -141,3 +141,32 @@ func TestHookInstallLinkedWorktree(t *testing.T) {
 		t.Errorf("hook bakes in an install path: %s", b)
 	}
 }
+
+// A hand-edited or relocated hook must show as out of date in status.
+func TestHookStatusOutOfDate(t *testing.T) {
+	repo := t.TempDir()
+	if out, err := exec.Command("git", "-C", repo, "init").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	if err := hookInstall(repo); err != nil {
+		t.Fatal(err)
+	}
+	status := func() string {
+		return captureStdout(t, func() {
+			if err := hookStatus(repo); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	if got := status(); !strings.Contains(got, "post-commit: installed") || strings.Contains(got, "out of date") {
+		t.Errorf("fresh install: %q", got)
+	}
+	p := filepath.Join(repo, ".git", "hooks", "post-commit")
+	stale := "#!/bin/sh\n" + hookMarker + "\nexec \"/nonexistent/graphify\" update . || true\n"
+	if err := os.WriteFile(p, []byte(stale), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := status(); !strings.Contains(got, "post-commit: installed (out of date: run graphify hook install)") {
+		t.Errorf("stale hook: %q", got)
+	}
+}

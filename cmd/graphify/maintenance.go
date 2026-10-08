@@ -106,6 +106,18 @@ func resolveHooksDir(root string) (dir, effective string, err error) {
 	return dir, effective, nil
 }
 
+// hookScript is the exact text hookInstall writes for hook h.
+func hookScript(h, self string) string {
+	// Root resolved at hook time: shared hooks serve every worktree.
+	body := fmt.Sprintf("exec %q update \"$(git rev-parse --show-toplevel)\" >/dev/null 2>&1 || true\n", self)
+	if h == "post-checkout" {
+		// git passes $1=old HEAD, $2=new HEAD, $3=1 for a branch checkout.
+		// Nothing moved, or only files were checked out ⇒ nothing to rebuild.
+		return fmt.Sprintf("#!/bin/sh\n%s\n%s%s", hookMarker, postCheckoutGuards, body)
+	}
+	return fmt.Sprintf("#!/bin/sh\n%s\n%s", hookMarker, body)
+}
+
 // hookInstall writes graphify's update hooks, skipping any hook a user wrote.
 func hookInstall(root string) error {
 	hooksDir, _, err := resolveHooksDir(root)
@@ -123,17 +135,9 @@ func hookInstall(root string) error {
 	if err != nil {
 		return err
 	}
-	// Root resolved at hook time: shared hooks serve every worktree.
-	body := fmt.Sprintf("exec %q update \"$(git rev-parse --show-toplevel)\" >/dev/null 2>&1 || true\n", self)
-
 	var installed []string
 	for _, h := range managedGitHooks {
-		script := fmt.Sprintf("#!/bin/sh\n%s\n%s", hookMarker, body)
-		if h == "post-checkout" {
-			// git passes $1=old HEAD, $2=new HEAD, $3=1 for a branch checkout.
-			// Nothing moved, or only files were checked out ⇒ nothing to rebuild.
-			script = fmt.Sprintf("#!/bin/sh\n%s\n%s%s", hookMarker, postCheckoutGuards, body)
-		}
+		script := hookScript(h, self)
 		path := filepath.Join(hooksDir, h)
 		if existing, err := os.ReadFile(path); err == nil && !strings.Contains(string(existing), hookMarker) {
 			fmt.Fprintf(os.Stderr, "  warning: %s already exists and was not written by graphify — skipping\n", h)
@@ -271,10 +275,14 @@ func hookStatus(root string) error {
 	if err != nil {
 		return err
 	}
+	self, _ := os.Executable()
 	for _, h := range managedGitHooks {
 		state := "not installed"
 		if existing, err := os.ReadFile(filepath.Join(hooksDir, h)); err == nil && strings.Contains(string(existing), hookMarker) {
 			state = "installed"
+			if string(existing) != hookScript(h, self) {
+				state += " (out of date: run graphify hook install)"
+			}
 			if effective != hooksDir {
 				state += " (inactive: core.hooksPath=" + effective + ")"
 			}
