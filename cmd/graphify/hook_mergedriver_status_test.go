@@ -78,3 +78,66 @@ func TestUninstallRemovesEmptyGitattributes(t *testing.T) {
 		t.Errorf(".gitattributes should be deleted when the merge line was its only entry, stat err = %v", err)
 	}
 }
+
+func gitRun(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, out)
+	}
+}
+
+func hookInstalled(dir string) bool {
+	b, err := os.ReadFile(filepath.Join(dir, "post-commit"))
+	return err == nil && strings.Contains(string(b), hookMarker)
+}
+
+// In-repo core.hooksPath is honoured; out-of-repo is refused and flagged inactive.
+func TestHookInstallHonoursHooksPath(t *testing.T) {
+	repo := t.TempDir()
+	gitRun(t, repo, "init")
+	gitRun(t, repo, "config", "core.hooksPath", ".husky")
+	if err := hookInstall(repo); err != nil {
+		t.Fatal(err)
+	}
+	if !hookInstalled(filepath.Join(repo, ".husky")) || hookInstalled(filepath.Join(repo, ".git", "hooks")) {
+		t.Error("in-repo hooksPath not honoured")
+	}
+
+	out := t.TempDir()
+	repo2 := t.TempDir()
+	gitRun(t, repo2, "init")
+	gitRun(t, repo2, "config", "core.hooksPath", out)
+	if err := hookInstall(repo2); err != nil {
+		t.Fatal(err)
+	}
+	if hookInstalled(out) || !hookInstalled(filepath.Join(repo2, ".git", "hooks")) {
+		t.Error("out-of-repo hooksPath not refused")
+	}
+	_, eff, _ := resolveHooksDir(repo2)
+	if eff != filepath.Clean(out) {
+		t.Errorf("effective = %q, want %q", eff, out)
+	}
+}
+
+// A linked worktree has a .git file; install must use the common-dir hooks.
+func TestHookInstallLinkedWorktree(t *testing.T) {
+	repo := t.TempDir()
+	gitRun(t, repo, "init")
+	gitRun(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "x")
+	wt := filepath.Join(t.TempDir(), "wt")
+	gitRun(t, repo, "worktree", "add", wt)
+	if err := hookInstall(repo); err != nil {
+		t.Fatal(err)
+	}
+	if err := hookInstall(wt); err != nil {
+		t.Fatal(err)
+	}
+	hooks := filepath.Join(repo, ".git", "hooks")
+	if !hookInstalled(hooks) {
+		t.Error("worktree install did not write common-dir hooks")
+	}
+	b, _ := os.ReadFile(filepath.Join(hooks, "post-commit"))
+	if strings.Contains(string(b), wt) || strings.Contains(string(b), repo) {
+		t.Errorf("hook bakes in an install path: %s", b)
+	}
+}

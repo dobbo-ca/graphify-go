@@ -32,9 +32,7 @@ func captureStdout(t *testing.T, fn func()) string {
 func TestHookInstall(t *testing.T) {
 	root := t.TempDir()
 	hooks := filepath.Join(root, ".git", "hooks")
-	if err := os.MkdirAll(hooks, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	gitRun(t, root, "init")
 	// A pre-existing, non-graphify hook must not be clobbered.
 	foreign := filepath.Join(hooks, "post-merge")
 	if err := os.WriteFile(foreign, []byte("#!/bin/sh\necho mine\n"), 0o755); err != nil {
@@ -70,9 +68,7 @@ func TestHookInstallRejectsNonRepo(t *testing.T) {
 func TestHookUninstall(t *testing.T) {
 	root := t.TempDir()
 	hooks := filepath.Join(root, ".git", "hooks")
-	if err := os.MkdirAll(hooks, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	gitRun(t, root, "init")
 	if err := cmdHook([]string{"install", root}); err != nil {
 		t.Fatalf("hook install: %v", err)
 	}
@@ -100,10 +96,7 @@ func TestHookUninstall(t *testing.T) {
 
 func TestHookStatus(t *testing.T) {
 	root := t.TempDir()
-	hooks := filepath.Join(root, ".git", "hooks")
-	if err := os.MkdirAll(hooks, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	gitRun(t, root, "init")
 
 	out := captureStdout(t, func() {
 		if err := cmdHook([]string{"status", root}); err != nil {
