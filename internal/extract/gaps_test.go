@@ -138,8 +138,10 @@ func TestGapRubyLocalsNotSelfSends(t *testing.T) {
 
 func TestGapAbstractDoesNotBlockSingleImpl(t *testing.T) {
 	for name, tc := range map[string]struct{ file, src, want string }{
-		"ts":    {"a.ts", "abstract class Sh { abstract size(): number }\nclass Ci extends Sh { size() { return 1 } }\nfunction useIt(c: Ci) { return c.size() }\n", "useIt() calls Ci.size()"},
-		"scala": {"a.scala", "trait Sh { def size: Int }\nclass Ci extends Sh { def size: Int = 1 }\nobject O { def useIt(c: Ci) = c.size() }\n", "O.useIt() calls Ci.size()"},
+		// An untyped receiver binds nothing, so the calls go through a
+		// qualifier (the file stem) and a bare name.
+		"ts":    {"a.ts", "abstract class Sh { abstract size(): number }\nclass Ci extends Sh { size() { return 1 } }\nfunction useIt() { return a.size() }\n", "useIt() calls Ci.size()"},
+		"scala": {"a.scala", "trait Sh { def size: Int }\nclass Ci extends Sh { def size: Int = 1 }\nobject O { def useIt() = size() }\n", "O.useIt() calls Ci.size()"},
 	} {
 		edges, _ := gapEdges(t, tc.file, tc.src)
 		if !edges[tc.want] {
@@ -152,7 +154,8 @@ func TestGapAbstractCrossFileSingleImpl(t *testing.T) {
 	root := t.TempDir()
 	srcs := map[string]string{
 		"shape.ts": "export abstract class Sh { abstract size(): number }\nexport class Ci extends Sh { size() { return 1 } }\n",
-		"use.ts":   "import { Ci } from './shape'\nexport function useIt(c: Ci) { return c.size() }\n",
+		// The namespace receiver qualifies both defs; an untyped one binds nothing.
+		"use.ts": "import * as shape from './shape'\nexport function useIt() { return shape.size() }\n",
 	}
 	var rs []Result
 	var files []string
