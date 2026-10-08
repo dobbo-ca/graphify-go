@@ -66,3 +66,36 @@ func TestExtractPHP(t *testing.T) {
 		t.Error("no external import edges (expected Psr\\Log\\LoggerInterface)")
 	}
 }
+
+func TestPHPLanguageConstructsNotCalls(t *testing.T) {
+	src := []byte(`<?php
+class A {
+    function isset($k) { return true; }
+    function list() { return []; }
+    function run($x) {
+        if (isset($x)) { return $this->list(); }
+        return empty($x) ? array() : EXIT();
+    }
+}
+`)
+	ext := Resolve([]Result{extractPHP("A.php", src)}, []string{"A.php"})
+	id2label := map[string]string{}
+	for _, n := range ext.Nodes {
+		id2label[n.ID] = n.Label
+	}
+	var gotList bool
+	for _, e := range ext.Edges {
+		if e.Relation != "calls" {
+			continue
+		}
+		switch id2label[e.Target] {
+		case "A.isset()":
+			t.Error("isset(...) construct recorded as a call")
+		case "A.list()":
+			gotList = true
+		}
+	}
+	if !gotList {
+		t.Error("$this->list() call lost")
+	}
+}
