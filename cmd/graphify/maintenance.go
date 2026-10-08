@@ -323,6 +323,7 @@ func cmdWatch(root string) error {
 	if root == "" {
 		root = scanRoot()
 	} else {
+		root = updateRoot(root, true)
 		args = []string{root}
 	}
 	if err := cmdUpdate(args); err != nil {

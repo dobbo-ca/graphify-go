@@ -280,3 +280,34 @@ func TestScanRootStaysInsideGitWorkTree(t *testing.T) {
 		}
 	}
 }
+
+// TestWatchTickIdleAfterRedirect verifies watch polls the redirected root, so
+// an unchanged tree reads as idle.
+func TestWatchTickIdleAfterRedirect(t *testing.T) {
+	dir, _ := filepath.EvalSymlinks(t.TempDir())
+	sub := filepath.Join(dir, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for p, src := range map[string]string{
+		filepath.Join(sub, "a.go"): "package a\n\nfunc Alpha() {}\n",
+		filepath.Join(dir, "b.go"): "package b\n\nfunc Beta() {}\n",
+	} {
+		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("GRAPHIFY_OUT", "")
+	t.Chdir(dir)
+	if err := cmdBuild([]string{"."}); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(sub)
+	root := updateRoot(".", true)
+	if err := cmdUpdate([]string{root}); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := watchTick(root); err != nil || changed {
+		t.Errorf("idle tree: changed=%v err=%v, want false/nil", changed, err)
+	}
+}

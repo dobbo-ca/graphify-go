@@ -563,18 +563,15 @@ func withManifests(root string, results []extract.Result) ([]extract.Result, err
 	return append(results, res), nil
 }
 
-// cmdUpdate rebuilds the graph incrementally: it re-parses only files whose
-// content changed since the last build/update, reusing cached results for the
-// rest, then resolves and writes the same outputs as build. With no existing
-// cache it transparently degrades to a full build.
-func cmdUpdate(args []string) error {
-	opts, _ := parseBuildOpts(args)
-	root, cargo, noManifests, force, noCluster := opts.root, opts.cargo, opts.noManifests, opts.force, opts.noCluster
-	if !opts.rootSet {
+// updateRoot maps cmdUpdate's target to the tree it really scans, so watch can
+// poll the same root.
+func updateRoot(root string, rootSet bool) string {
+	if !rootSet {
 		// No explicit target: update the graph the read commands would load,
 		// not a new one rooted at the cwd.
-		root = scanRoot()
-	} else if _, err := os.Stat(filepath.Join(root, "graphify-out", "graph.json")); err != nil {
+		return scanRoot()
+	}
+	if _, err := os.Stat(filepath.Join(root, "graphify-out", "graph.json")); err != nil {
 		// An explicit path inside the recorded scan root must not fork a
 		// partial graph or shrink the repo one.
 		sr, marked := scanRootMarked()
@@ -584,10 +581,21 @@ func cmdUpdate(args []string) error {
 		}
 		if abs, err := filepath.Abs(root); err == nil {
 			if rel, err := filepath.Rel(sr, abs); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-				root = sr
+				return sr
 			}
 		}
 	}
+	return root
+}
+
+// cmdUpdate rebuilds the graph incrementally: it re-parses only files whose
+// content changed since the last build/update, reusing cached results for the
+// rest, then resolves and writes the same outputs as build. With no existing
+// cache it transparently degrades to a full build.
+func cmdUpdate(args []string) error {
+	opts, _ := parseBuildOpts(args)
+	root, cargo, noManifests, force, noCluster := opts.root, opts.cargo, opts.noManifests, opts.force, opts.noCluster
+	root = updateRoot(root, opts.rootSet)
 	rep, err := detect.CollectFilesReport(root)
 	if err != nil {
 		return err
