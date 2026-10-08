@@ -233,3 +233,50 @@ func TestUpdateDotWithSiblingOutKeepsRoot(t *testing.T) {
 		}
 	}
 }
+
+// TestScanRootStaysInsideGitWorkTree verifies a committed .graphify_root naming
+// an ancestor of the repository cannot widen an update above the work tree.
+func TestScanRootStaysInsideGitWorkTree(t *testing.T) {
+	for _, explicit := range []bool{false, true} {
+		base, _ := filepath.EvalSymlinks(t.TempDir())
+		repo := filepath.Join(base, "repo")
+		sub := filepath.Join(repo, "sub")
+		for p, src := range map[string]string{
+			filepath.Join(repo, "a.go"):            "package a\n\nfunc Alpha() {}\n",
+			filepath.Join(sub, "b.go"):             "package b\n\nfunc Beta() {}\n",
+			filepath.Join(base, "private", "u.go"): "package u\n\nfunc Foreign() {}\n",
+		} {
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		gitRun(t, repo, "init")
+		t.Setenv("GRAPHIFY_OUT", "")
+		t.Chdir(repo)
+		if err := cmdBuild([]string{"."}); err != nil {
+			t.Fatal(err)
+		}
+		out := filepath.Join(repo, "graphify-out")
+		if err := os.WriteFile(filepath.Join(out, rootFileName), []byte(".."), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		var args []string
+		if explicit {
+			t.Chdir(sub)
+			args = []string{"."}
+		}
+		if err := cmdUpdate(args); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(filepath.Join(base, "graphify-out")); err == nil {
+			t.Errorf("explicit=%v: update wrote a graph above the work tree", explicit)
+		}
+		g, err := os.ReadFile(filepath.Join(out, "graph.json"))
+		if err != nil || strings.Contains(string(g), "Foreign") || !strings.Contains(string(g), "Beta") {
+			t.Errorf("explicit=%v: update scanned above the work tree (err=%v)", explicit, err)
+		}
+	}
+}

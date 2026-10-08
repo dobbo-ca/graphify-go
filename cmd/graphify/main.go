@@ -103,7 +103,7 @@ func scanRootMarked() (string, bool) {
 		rec = filepath.Join(base, rec)
 	}
 	if !rootUsable(rec, base) {
-		fmt.Fprintf(os.Stderr, "warning: ignoring %s recording %q (not a directory containing the current directory)\n", rootFileName, rec)
+		fmt.Fprintf(os.Stderr, "warning: ignoring %s recording %q (not a directory containing the current directory, or outside the git work tree)\n", rootFileName, rec)
 		return base, false
 	}
 	return rec, abs
@@ -135,6 +135,13 @@ func rootUsable(rec, base string) bool {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return false
+	}
+	// A marker shipped in a clone must not widen the scan above it.
+	if top, err := gitPath(cwd, "--show-toplevel"); err == nil {
+		real, _ := filepath.EvalSymlinks(rec)
+		if r, err := filepath.Rel(top, real); err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+			return false
+		}
 	}
 	rel, err := filepath.Rel(rec, cwd)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
