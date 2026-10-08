@@ -120,7 +120,7 @@ func (b *builder) goImports(n *ts.Node, src []byte) {
 // goLocalTypes maps the locals of function fn to their type, from a parameter
 // or `var` (`x Foo`, `x *Foo`, `x pkg.Foo`), a composite literal (`x := Foo{}`,
 // `x := &Foo{}`) or a call to a function in rets (`x := newFoo()`). A local also
-// declared with anything else maps to "".
+// declared with anything else, range and type switch included, maps to "".
 // ponytail: one flat scope per function, and rets only knows this file, so
 // `x := pkg.New()` is untyped; that needs return types across files.
 func goLocalTypes(fn *ts.Node, src []byte, rets map[string]string) map[string]string {
@@ -132,6 +132,17 @@ func goLocalTypes(fn *ts.Node, src []byte, rets map[string]string) map[string]st
 			for i := uint(0); i < c.NamedChildCount(); i++ {
 				if p := c.NamedChild(i); p.Kind() == "identifier" {
 					bindType(types, p.Utf8Text(src), typ)
+				}
+			}
+		case "range_clause", "type_switch_statement":
+			// A range or type-switch variable shadows a typed local.
+			l := c.ChildByFieldName("left")
+			if c.Kind() == "type_switch_statement" {
+				l = c.ChildByFieldName("alias")
+			}
+			for i := uint(0); l != nil && i < l.NamedChildCount(); i++ {
+				if v := l.NamedChild(i); v.Kind() == "identifier" {
+					bindType(types, v.Utf8Text(src), "")
 				}
 			}
 		case "short_var_declaration":

@@ -232,6 +232,15 @@ func TestResolveReceiverCalls(t *testing.T) {
 		{name: "python attribute assignment keeps typed local", srcs: map[string]string{
 			"a.py": "class Client:\n    def fetch(self):\n        pass\nclass Other:\n    def fetch(self):\n        pass\ndef use(c: Client):\n    c.x, c.y = 1, 2\n    c.fetch()\n",
 		}, want: [][3]string{c("use()", "Client.fetch()")}},
+		{name: "go range shadows typed local", srcs: map[string]string{
+			"a.go": "package a\ntype S struct{}\ntype T struct{}\nfunc (s *S) b() {}\nfunc (t *T) b() {}\nfunc ranged(s S, ts []T) { for _, s := range ts { s.b() } }\n",
+		}, unwanted: [][3]string{c("ranged()", "S.b()")}},
+		{name: "go var shadows typed local", srcs: map[string]string{
+			"a.go": "package a\ntype S struct{}\ntype T struct{}\nfunc (s *S) b() {}\nfunc (t *T) b() {}\nfunc shadowVar(s S) { { var s T; s.b() } }\n",
+		}, unwanted: [][3]string{c("shadowVar()", "S.b()")}},
+		{name: "go type switch shadows typed local", srcs: map[string]string{
+			"a.go": "package a\ntype S struct{}\ntype T struct{}\nfunc (s *S) b() {}\nfunc (t *T) b() {}\nfunc tswitch(s *S, v interface{}) { switch s := v.(type) { case T: s.b() } }\n",
+		}, unwanted: [][3]string{c("tswitch()", "S.b()")}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			wantEdges(t, tc.srcs, tc.want, tc.unwanted...)
