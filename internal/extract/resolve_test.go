@@ -198,6 +198,16 @@ func TestResolveReceiverCalls(t *testing.T) {
 		{name: "go typed parameter", srcs: map[string]string{
 			"a.go": "package a\ntype S struct{}\ntype T struct{}\nfunc (s *S) b() {}\nfunc (t *T) b() {}\nfunc use(x *S) { x.b() }\n",
 		}, want: [][3]string{c("use()", "S.b()")}, unwanted: [][3]string{c("use()", "T.b()")}},
+		{name: "go package-qualified parameter", srcs: map[string]string{
+			"m/m.go": "package m\ntype G struct{}\ntype H struct{}\nfunc (g *G) Deg() {}\nfunc (h *H) Deg() {}\n",
+			"a/a.go": "package a\nfunc use(g *m.G) { g.Deg() }\n",
+		}, want: [][3]string{c("use()", "G.Deg()")}, unwanted: [][3]string{c("use()", "H.Deg()")}},
+		{name: "go var declaration", srcs: map[string]string{
+			"a.go": "package a\ntype S struct{}\ntype T struct{}\nfunc (s *S) b() {}\nfunc (t *T) b() {}\nfunc use() { var x S; x.b() }\n",
+		}, want: [][3]string{c("use()", "S.b()")}, unwanted: [][3]string{c("use()", "T.b()")}},
+		{name: "go same-file constructor", srcs: map[string]string{
+			"a.go": "package a\ntype S struct{}\ntype T struct{}\nfunc (s *S) b() {}\nfunc (t *T) b() {}\nfunc newS() *S { return &S{} }\nfunc use() { x := newS(); x.b() }\n",
+		}, want: [][3]string{c("use()", "S.b()")}, unwanted: [][3]string{c("use()", "T.b()")}},
 		{name: "go composite literal", srcs: map[string]string{
 			"a.go": "package a\ntype S struct{}\ntype T struct{}\nfunc (s *S) b() {}\nfunc (t T) b() {}\nfunc use() { x := &S{}; y := T{}; x.b(); y.b() }\n",
 		}, want: [][3]string{c("use()", "S.b()"), c("use()", "T.b()")}},
