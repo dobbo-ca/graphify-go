@@ -56,3 +56,23 @@ func TestExtractAndResolve(t *testing.T) {
 		t.Error("expected Calc.Sum --calls--> Add")
 	}
 }
+
+func TestFileFromBytesNonUTF8(t *testing.T) {
+	utf16 := []byte{0xFF, 0xFE}
+	for _, r := range "def hello():\n    pass\n" {
+		utf16 = append(utf16, byte(r), 0)
+	}
+	cases := map[string][]byte{
+		"hello()": utf16,
+		"café()":  []byte("def caf\xe9():\n    pass\n"),
+	}
+	for want, src := range cases {
+		found := false
+		for _, n := range FileFromBytes("a.py", src).Nodes {
+			found = found || n.Label == want
+		}
+		if !found {
+			t.Errorf("missing label %q", want)
+		}
+	}
+}

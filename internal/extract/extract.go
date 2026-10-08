@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf16"
+	"unicode/utf8"
 	"unsafe"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
@@ -126,6 +128,7 @@ func File(root, rel string) (Result, error) {
 // that have hashed the file (e.g. the incremental cache) avoid a second read.
 // Unsupported extensions return an empty result.
 func FileFromBytes(rel string, src []byte) Result {
+	src = toUTF8(src)
 	rel = filepath.ToSlash(rel)
 	if IsMCPConfigPath(rel) {
 		return extractMCPConfig(rel, src)
@@ -415,4 +418,29 @@ func walk(n *ts.Node, fn func(*ts.Node) bool) {
 	for i := uint(0); i < n.ChildCount(); i++ {
 		walk(n.Child(i), fn)
 	}
+}
+
+// toUTF8 leaves valid UTF-8 alone, decodes BOM-marked UTF-16, and treats
+// anything else as latin-1 (tree-sitter only reads UTF-8).
+func toUTF8(src []byte) []byte {
+	if utf8.Valid(src) {
+		return src
+	}
+	if len(src) >= 2 && (src[0] == 0xFF && src[1] == 0xFE || src[0] == 0xFE && src[1] == 0xFF) {
+		le := src[0] == 0xFF
+		u := make([]uint16, 0, len(src)/2)
+		for i := 2; i+1 < len(src); i += 2 {
+			if le {
+				u = append(u, uint16(src[i])|uint16(src[i+1])<<8)
+			} else {
+				u = append(u, uint16(src[i])<<8|uint16(src[i+1]))
+			}
+		}
+		return []byte(string(utf16.Decode(u)))
+	}
+	rs := make([]rune, len(src))
+	for i, b := range src {
+		rs[i] = rune(b)
+	}
+	return []byte(string(rs))
 }
