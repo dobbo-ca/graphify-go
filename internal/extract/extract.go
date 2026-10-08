@@ -282,6 +282,15 @@ func (b *builder) callRecv(callerID, callee, recv, loc string) {
 	b.res.Calls = append(b.res.Calls, Call{CallerID: callerID, Callee: callee, File: b.file, Loc: loc, Recv: recv})
 }
 
+// bindType records that local name holds a typ value; a second, different
+// binding clears it so the receiver stays untyped rather than guessed.
+func bindType(types map[string]string, name, typ string) {
+	if old, ok := types[name]; ok && old != typ {
+		typ = ""
+	}
+	types[name] = typ
+}
+
 // recvSeps are the member-access operators that end a receiver, longest first.
 var recvSeps = []string{"?->", "?.", "->", "::", ".", ":"}
 

@@ -74,7 +74,7 @@ func (b *builder) pyFunc(n *ts.Node, src []byte) {
 	}
 	id := idutil.MakeID(b.stem, name)
 	b.def(id, name, name+"()", line(n))
-	b.pyCalls(n.ChildByFieldName("body"), id, src)
+	b.pyCalls(n.ChildByFieldName("body"), id, pyLocalTypes(n, src), src)
 }
 
 func (b *builder) pyClass(n *ts.Node, src []byte) {
@@ -112,7 +112,7 @@ func (b *builder) pyClass(n *ts.Node, src []byte) {
 			Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
 		})
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
-		b.pyCalls(m.ChildByFieldName("body"), mid, src)
+		b.pyCalls(m.ChildByFieldName("body"), mid, pyLocalTypes(m, src), src)
 	}
 }
 
@@ -203,10 +203,52 @@ func pyModuleStem(mod *ts.Node, src []byte) string {
 	return text
 }
 
+// pyClassName matches a bare capitalized name, the only annotation or callee
+// taken as a class.
+var pyClassName = regexp.MustCompile(`^[A-Z]\w*$`)
+
+// pyLocalTypes maps the locals of function fn to their class, from a parameter
+// annotation (`c: Client`) or a constructor binding (`c = Client()`). A local
+// also assigned anything else maps to "".
+// ponytail: one flat scope per function, nested defs and for/with targets are
+// not tracked; add scopes if a repo shows wrong edges.
+func pyLocalTypes(fn *ts.Node, src []byte) map[string]string {
+	types := map[string]string{}
+	walk(fn, func(c *ts.Node) bool {
+		var name *ts.Node
+		switch c.Kind() {
+		case "typed_parameter":
+			name = c.NamedChild(0)
+		case "typed_default_parameter":
+			name = c.ChildByFieldName("name")
+		case "assignment":
+			name = c.ChildByFieldName("left")
+		}
+		if name == nil || name.Kind() != "identifier" {
+			return true
+		}
+		typ := fieldText(c, "type", src)
+		if r := c.ChildByFieldName("right"); typ == "" && r != nil {
+			if r.Kind() == "none" {
+				return true
+			}
+			if r.Kind() == "call" {
+				typ = fieldText(r, "function", src)
+			}
+		}
+		if !pyClassName.MatchString(typ) {
+			typ = ""
+		}
+		bindType(types, name.Utf8Text(src), typ)
+		return true
+	})
+	return types
+}
+
 // pyCalls walks a function body and records each call site. Direct calls
 // (`f()`) record the identifier; attribute calls (`x.f()`) record the
-// attribute name.
-func (b *builder) pyCalls(body *ts.Node, callerID string, src []byte) {
+// attribute name, with the receiver's class in place of a typed local.
+func (b *builder) pyCalls(body *ts.Node, callerID string, types map[string]string, src []byte) {
 	if body == nil {
 		return
 	}
@@ -223,7 +265,11 @@ func (b *builder) pyCalls(body *ts.Node, callerID string, src []byte) {
 			b.call(callerID, fn.Utf8Text(src), line(c))
 		case "attribute":
 			if a := fn.ChildByFieldName("attribute"); a != nil {
-				b.callRecv(callerID, a.Utf8Text(src), recvText(fn, a, src), line(c))
+				recv := recvText(fn, a, src)
+				if t := types[recv]; t != "" {
+					recv = t
+				}
+				b.callRecv(callerID, a.Utf8Text(src), recv, line(c))
 			}
 		}
 		return true

@@ -414,6 +414,9 @@ func defQualifiers(results []Result) map[string]map[string]bool {
 					toks[l] = true
 				}
 			}
+			if d.Owner != "" {
+				toks[d.Owner] = true
+			}
 			out[d.ID] = toks
 		}
 	}

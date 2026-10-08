@@ -186,6 +186,21 @@ func TestResolveReceiverCalls(t *testing.T) {
 		{name: "lua self", srcs: map[string]string{
 			"a.lua": "local A = {}\nlocal B = {}\nfunction A:step() end\nfunction B:step() end\nfunction A:run() self:step() end\n",
 		}, want: [][3]string{c("A.run()", "A.step()")}, unwanted: [][3]string{c("A.run()", "B.step()")}},
+		{name: "python typed parameter", srcs: map[string]string{
+			"a.py": "class Client:\n    def fetch(self):\n        pass\nclass Other:\n    def fetch(self):\n        pass\ndef use(c: Client):\n    return c.fetch()\n",
+		}, want: [][3]string{c("use()", "Client.fetch()")}, unwanted: [][3]string{c("use()", "Other.fetch()")}},
+		{name: "python constructor binding", srcs: map[string]string{
+			"a.py": "class Client:\n    def fetch(self):\n        pass\nclass Other:\n    def fetch(self):\n        pass\ndef use():\n    c = Client()\n    c.fetch()\n",
+		}, want: [][3]string{c("use()", "Client.fetch()")}, unwanted: [][3]string{c("use()", "Other.fetch()")}},
+		{name: "python rebound local", srcs: map[string]string{
+			"a.py": "class Client:\n    def fetch(self):\n        pass\nclass Other:\n    def fetch(self):\n        pass\ndef use(x):\n    c = Client()\n    c = x\n    c.fetch()\n",
+		}, unwanted: [][3]string{c("use()", "Client.fetch()"), c("use()", "Other.fetch()")}},
+		{name: "go typed parameter", srcs: map[string]string{
+			"a.go": "package a\ntype S struct{}\ntype T struct{}\nfunc (s *S) b() {}\nfunc (t *T) b() {}\nfunc use(x *S) { x.b() }\n",
+		}, want: [][3]string{c("use()", "S.b()")}, unwanted: [][3]string{c("use()", "T.b()")}},
+		{name: "go composite literal", srcs: map[string]string{
+			"a.go": "package a\ntype S struct{}\ntype T struct{}\nfunc (s *S) b() {}\nfunc (t T) b() {}\nfunc use() { x := &S{}; y := T{}; x.b(); y.b() }\n",
+		}, want: [][3]string{c("use()", "S.b()"), c("use()", "T.b()")}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			wantEdges(t, tc.srcs, tc.want, tc.unwanted...)
