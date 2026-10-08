@@ -26,6 +26,13 @@ func extractRuby(rel string, src []byte) Result {
 	root, done := parseRoot(src, tsruby.Language())
 	defer done()
 	b := newBuilder(rel)
+	b.rubyMethods = map[string]bool{}
+	walk(root, func(n *ts.Node) bool {
+		if n.Kind() == "method" {
+			b.rubyMethods[fieldText(n, "name", src)] = true
+		}
+		return true
+	})
 
 	for i := uint(0); i < root.ChildCount(); i++ {
 		b.rubyStatement(root.Child(i), src)
@@ -159,9 +166,48 @@ func (b *builder) rubyCalls(body *ts.Node, callerID string, src []byte) {
 	if body == nil {
 		return
 	}
+	// Parameters and assigned locals shadow same-named methods.
+	locals := map[string]bool{}
+	if m := body.Parent(); m != nil {
+		walk(m.ChildByFieldName("parameters"), func(c *ts.Node) bool {
+			if c.Kind() == "identifier" {
+				locals[c.Utf8Text(src)] = true
+			}
+			return true
+		})
+	}
+	addIdents := func(n *ts.Node) {
+		walk(n, func(c *ts.Node) bool {
+			if c.Kind() == "identifier" {
+				locals[c.Utf8Text(src)] = true
+			}
+			return true
+		})
+	}
 	walk(body, func(c *ts.Node) bool {
-		if c.Kind() == "call" {
+		switch c.Kind() {
+		case "assignment", "operator_assignment":
+			if l := c.ChildByFieldName("left"); l != nil && l.Kind() == "identifier" {
+				locals[l.Utf8Text(src)] = true
+			}
+		case "left_assignment_list", "block_parameters", "lambda_parameters", "exception_variable":
+			addIdents(c)
+		case "for":
+			addIdents(c.ChildByFieldName("pattern"))
+		}
+		return true
+	})
+	walk(body, func(c *ts.Node) bool {
+		switch c.Kind() {
+		case "call":
 			b.rubyRecordCall(c, callerID, src)
+		case "identifier":
+			// Paren-less self-send parses as a bare identifier statement.
+			if p := c.Parent(); p != nil && p.Kind() == "body_statement" {
+				if name := c.Utf8Text(src); b.rubyMethods[name] && !locals[name] {
+					b.call(callerID, name, line(c))
+				}
+			}
 		}
 		return true
 	})

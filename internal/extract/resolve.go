@@ -29,6 +29,10 @@ func Resolve(results []Result, files []string) model.Extraction {
 	global := map[string][]string{}
 	local := map[string][]string{} // file\x00name -> ids
 	idFile := map[string]string{}  // def id -> defining file
+	// Concrete-only indexes: a bodiless declaration must not make a call to
+	// its single implementation ambiguous.
+	localC := map[string][]string{}
+	globalC := map[string][]string{}
 	for _, r := range results {
 		for _, d := range r.Defs {
 			global[d.Name] = append(global[d.Name], d.ID)
@@ -37,6 +41,12 @@ func Resolve(results []Result, files []string) model.Extraction {
 				local[key] = append(local[key], d.ID)
 			}
 			idFile[d.ID] = d.File
+			if !d.Abstract {
+				globalC[d.Name] = append(globalC[d.Name], d.ID)
+				if !contains(localC[key], d.ID) {
+					localC[key] = append(localC[key], d.ID)
+				}
+			}
 		}
 	}
 
@@ -159,6 +169,9 @@ func Resolve(results []Result, files []string) model.Extraction {
 				tgt = selfTarget(owner[c.CallerID], c.Callee, super, methods, supers, openSuper)
 			} else {
 				here, all := local[c.File+"\x00"+c.Callee], global[c.Callee]
+				if len(globalC[c.Callee]) > 0 {
+					here, all = localC[c.File+"\x00"+c.Callee], globalC[c.Callee]
+				}
 				if c.Recv != "" {
 					q := recvTail.FindString(c.Recv)
 					ok := func(id string) bool { return q != "" && quals[id][q] }

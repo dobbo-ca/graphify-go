@@ -29,6 +29,7 @@ import (
 type Def struct {
 	ID, Name, File string
 	Owner          string
+	Abstract       bool // bodiless declaration
 }
 
 // Call is an unresolved call site: CallerID invoked a symbol named Callee.
@@ -261,6 +262,8 @@ type builder struct {
 	res    Result
 	seen   map[string]bool
 	pyMods map[string]string // local name -> plainly imported module
+	// rubyMethods holds method names defined in the file (bare self-sends).
+	rubyMethods map[string]bool
 }
 
 func newBuilder(rel string) *builder {

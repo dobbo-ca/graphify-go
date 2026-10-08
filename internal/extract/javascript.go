@@ -52,6 +52,8 @@ func (b *builder) jsStatement(n *ts.Node, src []byte) {
 		b.jsNamedType(n, src)
 	case "lexical_declaration", "variable_declaration":
 		b.jsVarFuncs(n, src)
+	case "expression_statement":
+		b.jsMemberAssign(n, src)
 	}
 }
 
@@ -116,7 +118,7 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 	}
 	for i := uint(0); i < body.ChildCount(); i++ {
 		m := body.Child(i)
-		if m.Kind() != "method_definition" {
+		if m.Kind() != "method_definition" && m.Kind() != "abstract_method_signature" {
 			continue
 		}
 		mname := fieldText(m, "name", src)
@@ -129,7 +131,7 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 			Source: classID, Target: mid, Relation: "contains",
 			Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
 		})
-		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
+		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file, Abstract: m.Kind() == "abstract_method_signature"})
 		b.jsCalls(m.ChildByFieldName("body"), mid, src)
 	}
 }
@@ -162,6 +164,32 @@ func (b *builder) jsVarFuncs(n *ts.Node, src []byte) {
 		b.def(id, name, name+"()", line(d))
 		b.jsCalls(val.ChildByFieldName("body"), id, src)
 	}
+}
+
+// jsMemberAssign captures `obj.name = function () {}` / `() => {}`, named by
+// the property.
+func (b *builder) jsMemberAssign(n *ts.Node, src []byte) {
+	if n.NamedChildCount() == 0 {
+		return
+	}
+	a := n.NamedChild(0)
+	if a.Kind() != "assignment_expression" {
+		return
+	}
+	l, r := a.ChildByFieldName("left"), a.ChildByFieldName("right")
+	if l == nil || r == nil || l.Kind() != "member_expression" {
+		return
+	}
+	if k := r.Kind(); k != "arrow_function" && k != "function_expression" && k != "function" {
+		return
+	}
+	name := fieldText(l, "property", src)
+	if degenerateName(name) {
+		return
+	}
+	id := idutil.MakeID(b.stem, name)
+	b.def(id, name, name+"()", line(n))
+	b.jsCalls(r.ChildByFieldName("body"), id, src)
 }
 
 func (b *builder) jsCalls(body *ts.Node, callerID string, src []byte) {

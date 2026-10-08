@@ -70,7 +70,7 @@ func (b *builder) scalaType(n *ts.Node, src []byte) {
 	}
 	for i := uint(0); i < body.ChildCount(); i++ {
 		m := body.Child(i)
-		if m.Kind() != "function_definition" {
+		if m.Kind() != "function_definition" && m.Kind() != "function_declaration" {
 			continue
 		}
 		mname := fieldText(m, "name", src)
@@ -84,7 +84,7 @@ func (b *builder) scalaType(n *ts.Node, src []byte) {
 			Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
 		})
 		// Register under the bare method name so `x.method()` call sites resolve.
-		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
+		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file, Abstract: m.Kind() == "function_declaration"})
 		b.scalaCalls(m.ChildByFieldName("body"), mid, src)
 	}
 }

@@ -131,6 +131,15 @@ func (b *builder) csCalls(body *ts.Node, callerID string, src []byte) {
 		switch fn.Kind() {
 		case "identifier":
 			b.call(callerID, fn.Utf8Text(src), line(c))
+		case "conditional_access_expression":
+			// `x?.F()`: the callee is the binding's name.
+			for i := uint(0); i < fn.ChildCount(); i++ {
+				if mb := fn.Child(i); mb.Kind() == "member_binding_expression" {
+					if name := mb.ChildByFieldName("name"); name != nil {
+						b.call(callerID, name.Utf8Text(src), line(c))
+					}
+				}
+			}
 		case "member_access_expression", "qualified_name":
 			if name := fn.ChildByFieldName("name"); name != nil {
 				b.callRecv(callerID, name.Utf8Text(src), recvText(fn, name, src), line(c))
