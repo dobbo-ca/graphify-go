@@ -380,6 +380,12 @@ func TestTerraformFallbackValuesRedacted(t *testing.T) {
 output "conn" {
   value = "postgres://u:hunter2out@h/db"
 }
+output "redis" {
+  value = "redis://:hunter2nouser@h:6379"
+}
+output "slash" {
+  value = "postgres://u:hunter2/slash@h/db"
+}
 resource "x_thing" "s" {
   env_single = "DB_PASSWORD=hunter2single"
   conn       = "Server=db;User=sa;Password=hunter2semi"

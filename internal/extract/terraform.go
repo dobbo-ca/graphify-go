@@ -196,7 +196,7 @@ var sensitiveKeyRe = regexp.MustCompile(`(?i)(password|passwd|secret|token|api[-
 const redactedValue = "[redacted]"
 
 // urlCredRe matches user:pass@ credentials embedded in a URL.
-var urlCredRe = regexp.MustCompile(`://[^/@\s]+:[^/@\s]+@`)
+var urlCredRe = regexp.MustCompile(`://[^/@\s]*:[^@\s]+@`)
 
 // bareRefRe matches a plain reference (var.x, data.a.b.id), never a secret.
 var bareRefRe = regexp.MustCompile(`^[A-Za-z_][\w.\[\]*-]*$`)
