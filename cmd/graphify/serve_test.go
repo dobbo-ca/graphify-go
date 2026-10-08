@@ -533,3 +533,26 @@ func TestGraphStatsCommitLine(t *testing.T) {
 		t.Errorf("source change should be stale:\n%s", out)
 	}
 }
+
+func TestNodeArgAliases(t *testing.T) {
+	s := newServer(t)
+	want := s.toolGetNode(map[string]any{"label": "authValidate"})
+	for _, k := range []string{"node_id", "id"} {
+		if got := s.toolGetNode(map[string]any{k: "auth_validate"}); got != want {
+			t.Errorf("get_node %s: got %q, want %q", k, got, want)
+		}
+	}
+	wantN := s.toolGetNeighbors(map[string]any{"label": "checkToken"})
+	for _, k := range []string{"node_id", "id"} {
+		if got := s.toolGetNeighbors(map[string]any{k: "checkToken"}); got != wantN {
+			t.Errorf("get_neighbors %s: got %q, want %q", k, got, wantN)
+		}
+	}
+	const guide = "Provide a node label or id (accepted keys: label, node_id, id)."
+	if got := s.toolGetNode(map[string]any{}); got != guide {
+		t.Errorf("get_node empty: got %q", got)
+	}
+	if got := s.toolGetNeighbors(map[string]any{}); got != guide {
+		t.Errorf("get_neighbors empty: got %q", got)
+	}
+}

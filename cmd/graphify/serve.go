@@ -279,8 +279,24 @@ func (s *mcpServer) toolQueryGraph(args map[string]any) string {
 	return query.Ask(s.g, question, dfs, depth, budget, argStrings(args, "context_filter"))
 }
 
+const nodeArgHelp = "Provide a node label or id (accepted keys: label, node_id, id)."
+
+// nodeArg returns the first non-empty of label, node_id, id; clients
+// echo get_node's "ID:" back under those names.
+func nodeArg(args map[string]any) string {
+	for _, k := range []string{"label", "node_id", "id"} {
+		if v := argString(args, k); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 func (s *mcpServer) toolGetNode(args map[string]any) string {
-	label := argString(args, "label")
+	label := nodeArg(args)
+	if label == "" {
+		return nodeArgHelp
+	}
 	ex, err := query.Explain(s.g, label)
 	if err != nil {
 		return explainError(label, err)
@@ -301,7 +317,10 @@ func (s *mcpServer) toolGetNode(args map[string]any) string {
 }
 
 func (s *mcpServer) toolGetNeighbors(args map[string]any) string {
-	label := argString(args, "label")
+	label := nodeArg(args)
+	if label == "" {
+		return nodeArgHelp
+	}
 	ex, err := query.Explain(s.g, label)
 	if err != nil {
 		return explainError(label, err)
@@ -577,14 +596,15 @@ func toolDefs() []map[string]any {
 			}, "question")},
 		{"name": "get_node",
 			"description": "Get full details for a specific node by label or ID.",
-			"inputSchema": obj(map[string]any{"label": str}, "label")},
+			"inputSchema": obj(map[string]any{"label": str, "node_id": str})},
 		{"name": "get_neighbors",
 			"description": "Get all direct neighbors of a node with edge details.",
 			"inputSchema": obj(map[string]any{
 				"label":           str,
+				"node_id":         str,
 				"relation_filter": map[string]any{"type": "string", "description": "Optional: filter by relation type"},
 				"token_budget":    map[string]any{"type": "integer", "description": "Max output tokens (default 2000)"},
-			}, "label")},
+			})},
 		{"name": "get_community",
 			"description": "Get all nodes in a community by community ID.",
 			"inputSchema": obj(map[string]any{
