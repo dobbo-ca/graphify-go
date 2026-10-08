@@ -186,3 +186,25 @@ func TestExtractJSONMCPConfigStillRoutedToMCPExtractor(t *testing.T) {
 		t.Error(".mcp.json was AST-walked by extractJSON instead of routed to extractMCPConfig")
 	}
 }
+
+func TestExtractJSONSchemaDocumentSkipped(t *testing.T) {
+	src := []byte(`{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.com/x.json",
+  "definitions": {"a": {"type": "string"}},
+  "properties": {"dependencies": {"type": "object"}}
+}`)
+	res := FileFromBytes("contracts/x.json", src)
+	if len(res.Nodes) != 0 || len(res.Edges) != 0 {
+		t.Errorf("schema doc should be skipped, got %d nodes / %d edges", len(res.Nodes), len(res.Edges))
+	}
+}
+
+func TestExtractJSONSchemaAloneStillWalked(t *testing.T) {
+	src := []byte(`{"$schema": "https://example.com/s.json", "thing": {"a": 1}}`)
+	res := FileFromBytes("config/whatever.json", src)
+	labels, _ := jsonNodes(res)
+	if !labels["thing"] {
+		t.Error("$schema-only config should still be walked")
+	}
+}
