@@ -64,3 +64,30 @@ func TestExtractCpp(t *testing.T) {
 		t.Error("no external import edges (expected string)")
 	}
 }
+
+// A `.h` declaring a C++ class routes to the C++ extractor; the C grammar has
+// no class_specifier and would emit a function-shaped `Widget()`.
+func TestCppHeaderRoutesToCppExtractor(t *testing.T) {
+	labels := func(src string) map[string]bool {
+		out := map[string]bool{}
+		for _, n := range FileFromBytes("w.h", []byte(src)).Nodes {
+			out[n.Label] = true
+		}
+		return out
+	}
+
+	got := labels("class Widget { public: void show(); virtual int area() const = 0; int count; };\n")
+	if !got["Widget"] || got["Widget()"] {
+		t.Errorf("C++ header: want class node Widget, got %v", got)
+	}
+
+	// A plain C header keeps the C extractor's output.
+	plain := "#include <stdio.h>\nstruct point { int x; };\nint add(int a, int b);\n"
+	want := map[string]bool{}
+	for _, n := range extractC("w.h", []byte(plain)).Nodes {
+		want[n.Label] = true
+	}
+	if got := labels(plain); len(got) != len(want) || isCppHeader([]byte(plain)) {
+		t.Errorf("plain C header: got %v, want %v", got, want)
+	}
+}

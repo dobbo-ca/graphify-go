@@ -6,6 +6,7 @@
 package extract
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -152,7 +153,12 @@ func FileFromBytes(rel string, src []byte) Result {
 		return extractPython(rel, src)
 	case ".rs":
 		return extractRust(rel, src)
-	case ".c", ".h":
+	case ".h":
+		if isCppHeader(src) {
+			return extractCpp(rel, src)
+		}
+		return extractC(rel, src)
+	case ".c":
 		return extractC(rel, src)
 	case ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx":
 		return extractCpp(rel, src)
@@ -186,6 +192,23 @@ func FileFromBytes(rel string, src []byte) Result {
 		return extractComponent(rel, src, true)
 	}
 	return Result{}
+}
+
+// cppHeaderMarkers are tokens no plain C header contains.
+var cppHeaderMarkers = [][]byte{
+	[]byte("class "), []byte("namespace "), []byte("template"), []byte("::"),
+	[]byte("public:"), []byte("private:"), []byte("protected:"),
+}
+
+// isCppHeader sniffs a `.h` for C++; the C grammar has no class_specifier.
+func isCppHeader(src []byte) bool {
+	head := src[:min(len(src), 256*1024)]
+	for _, m := range cppHeaderMarkers {
+		if bytes.Contains(head, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // parseRoot parses src with the given grammar and returns the root node plus a
