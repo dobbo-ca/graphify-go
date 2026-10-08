@@ -4,9 +4,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/dobbo-ca/graphify-go/internal/detect"
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
 
@@ -28,7 +30,17 @@ type crate struct {
 // rather than an error.
 func IntrospectCargo(root string) (Result, error) {
 	rootManifest := filepath.Join(root, "Cargo.toml")
-	absRoot, err := filepath.Abs(root) // relative roots break path comparison
+	if _, err := os.Stat(rootManifest); err != nil {
+		if found, ferr := shallowestCargo(root); ferr == nil && found != "" {
+			rootManifest = found
+		}
+	}
+	wsRoot := filepath.Dir(rootManifest)
+	absRoot, err := filepath.Abs(wsRoot) // relative roots break path comparison
+	if err != nil {
+		return Result{}, err
+	}
+	scanAbs, err := filepath.Abs(root)
 	if err != nil {
 		return Result{}, err
 	}
@@ -37,7 +49,7 @@ func IntrospectCargo(root string) (Result, error) {
 		return Result{}, err
 	}
 
-	manifests, err := memberManifestPaths(root, rootData)
+	manifests, err := memberManifestPaths(wsRoot, rootData)
 	if err != nil {
 		return Result{}, err
 	}
@@ -121,7 +133,7 @@ func IntrospectCargo(root string) (Result, error) {
 				if !filepath.IsAbs(want) {
 					want = filepath.Join(absRoot, want)
 				}
-				if resolvePath(filepath.Join(want, "Cargo.toml")) != resolvePath(filepath.Join(absRoot, filepath.FromSlash(target.manifest))) {
+				if resolvePath(filepath.Join(want, "Cargo.toml")) != resolvePath(filepath.Join(scanAbs, filepath.FromSlash(target.manifest))) {
 					continue
 				}
 			}
@@ -133,6 +145,30 @@ func IntrospectCargo(root string) (Result, error) {
 		}
 	}
 	return res, nil
+}
+
+// shallowestCargo returns the least-nested Cargo.toml under root that detect
+// keeps (so ignore rules apply), ties broken by path; "" when none exists.
+func shallowestCargo(root string) (string, error) {
+	files, err := detect.CollectManifests(root)
+	if err != nil {
+		return "", err
+	}
+	best := ""
+	for _, f := range files {
+		if filepath.Base(f) != "Cargo.toml" {
+			continue
+		}
+		d := strings.Count(filepath.ToSlash(f), "/")
+		bd := strings.Count(filepath.ToSlash(best), "/")
+		if best == "" || d < bd || (d == bd && f < best) {
+			best = f
+		}
+	}
+	if best == "" {
+		return "", nil
+	}
+	return filepath.Join(root, best), nil
 }
 
 // resolvePath follows symlinks like Python's Path.resolve(); falls back to Clean.

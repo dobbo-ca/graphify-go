@@ -325,3 +325,44 @@ abs = { path = %q }
 		}
 	}
 }
+
+func TestIntrospectCargoSubdir(t *testing.T) {
+	root := t.TempDir()
+	w := func(p, c string) {
+		full := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(full), 0o755)
+		os.WriteFile(full, []byte(c), 0o644)
+	}
+	w("rust/Cargo.toml", "[workspace]\nmembers = [\"app\", \"core\"]\n")
+	w("rust/app/Cargo.toml", "[package]\nname = \"app\"\n\n[dependencies]\ncore = { path = \"../core\" }\n")
+	w("rust/core/Cargo.toml", "[package]\nname = \"core\"\n")
+	res, err := IntrospectCargo(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Nodes) != 2 || len(res.Edges) != 1 {
+		t.Fatalf("nodes=%d edges=%d, want 2/1", len(res.Nodes), len(res.Edges))
+	}
+	if got := res.Nodes[0].SourceFile; got != "rust/app/Cargo.toml" {
+		t.Errorf("SourceFile = %q", got)
+	}
+}
+
+func TestIntrospectCargoSubdirInheritedDep(t *testing.T) {
+	root := t.TempDir()
+	w := func(p, c string) {
+		full := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(full), 0o755)
+		os.WriteFile(full, []byte(c), 0o644)
+	}
+	w("rust/Cargo.toml", "[workspace]\nmembers = [\"crates/*\"]\n\n[workspace.dependencies]\ncore = { path = \"crates/core\" }\n")
+	w("rust/crates/app/Cargo.toml", "[package]\nname = \"app\"\n\n[dependencies]\ncore = { workspace = true }\n")
+	w("rust/crates/core/Cargo.toml", "[package]\nname = \"core\"\n")
+	res, err := IntrospectCargo(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Edges) != 1 {
+		t.Fatalf("edges=%d, want 1", len(res.Edges))
+	}
+}
