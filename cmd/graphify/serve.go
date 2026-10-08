@@ -469,9 +469,14 @@ func commitLine(g *query.Graph) string {
 	git := func(a ...string) bool {
 		return exec.Command("git", append([]string{"-C", dir}, a...)...).Run() == nil
 	}
+	// Only a graphify-out dir is safe to exclude: any other dir may hold source.
+	spec := []string{":/"}
+	if filepath.Base(dir) == "graphify-out" {
+		spec = append(spec, ":(exclude).")
+	}
 	if built == head ||
 		(git("merge-base", "--is-ancestor", built, head) &&
-			git("diff", "--quiet", built, head, "--", ":/", ":(exclude).")) {
+			git(append([]string{"diff", "--quiet", built, head, "--"}, spec...)...)) {
 		return "Built at commit: " + built + " (matches HEAD)\n"
 	}
 	short := func(s string) string {

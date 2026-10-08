@@ -566,3 +566,32 @@ func TestCommitLineRejectsNonSha(t *testing.T) {
 		}
 	}
 }
+
+func TestCommitLineGraphAtRepoRootIsStale(t *testing.T) {
+	repo := t.TempDir()
+	git := func(a ...string) string {
+		c := exec.Command("git", append([]string{"-c", "core.hooksPath=/dev/null", "-c", "user.name=t", "-c", "user.email=t@t"}, a...)...)
+		c.Dir = repo
+		out, err := c.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", a, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "-q")
+	os.WriteFile(filepath.Join(repo, "a.go"), []byte("x"), 0o644)
+	git("add", "-A")
+	git("commit", "-qm", "one")
+	built := git("rev-parse", "HEAD")
+	gp := filepath.Join(repo, "graph.json")
+	os.WriteFile(gp, []byte(`{"nodes":[],"links":[],"built_at_commit":"`+built+`"}`), 0o644)
+	os.WriteFile(filepath.Join(repo, "a.go"), []byte("y"), 0o644)
+	git("commit", "-qam", "edit source")
+	g, err := query.Load(gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out := commitLine(g); strings.Contains(out, "matches HEAD") {
+		t.Errorf("source change with graph at repo root reported fresh:\n%s", out)
+	}
+}
