@@ -31,10 +31,12 @@ type Def struct {
 // Call is an unresolved call site: CallerID invoked a symbol named Callee.
 // Recv is the receiver or qualifier text of a member call (`x` in `x.f()`,
 // `T` in `T::f()`), empty for a bare call. Resolve binds a member call on its
-// receiver, never on the bare name alone.
+// receiver, never on the bare name alone. Module is the import spec Recv names
+// when it is an unshadowed `import x` binding (Python only).
 type Call struct {
 	CallerID, Callee, File, Loc string
 	Recv                        string
+	Module                      string
 }
 
 // ImportAlias is per-file evidence from a top-level `from M import N [as L]`:
@@ -232,6 +234,7 @@ type builder struct {
 	stem   string
 	res    Result
 	seen   map[string]bool
+	pyMods map[string]string // local name -> plainly imported module
 }
 
 func newBuilder(rel string) *builder {

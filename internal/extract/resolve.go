@@ -70,9 +70,12 @@ func Resolve(results []Result, files []string) model.Extraction {
 	// For each file, the corpus files it imports — used to pick the right target
 	// when a called name is defined in more than one file.
 	importedFiles := map[string]map[string]bool{}
+	external := map[string]bool{} // file\x00spec of an import outside the corpus
 	for _, r := range results {
 		for _, im := range r.Imps {
-			for _, target := range importTargets(im, corpus, goPkgs) {
+			targets := importTargets(im, corpus, goPkgs)
+			external[im.File+"\x00"+im.Spec] = len(targets) == 0
+			for _, target := range targets {
 				if importedFiles[im.File] == nil {
 					importedFiles[im.File] = map[string]bool{}
 				}
@@ -170,6 +173,15 @@ func Resolve(results []Result, files []string) model.Extraction {
 				if tgt == "" {
 					tgt = disambiguate(all, c.File, idFile, importedFiles[c.File])
 				}
+			}
+			// A call on an external module has no definition to bind, so it
+			// lands on the module's import node.
+			if tgt == "" && c.Module != "" && external[c.File+"\x00"+c.Module] {
+				out.Edges = append(out.Edges, model.Edge{
+					Source: c.CallerID, Target: idutil.MakeID(c.Module), Relation: "calls",
+					Confidence: "EXTRACTED", SourceFile: c.File, SourceLocation: c.Loc,
+				})
+				continue
 			}
 			if tgt == "" || tgt == c.CallerID {
 				continue

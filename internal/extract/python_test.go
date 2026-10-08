@@ -130,3 +130,50 @@ func TestExtractPythonDocstringAfterComment(t *testing.T) {
 		t.Errorf("expected docstring after leading comment to yield rationale_for edge to %s", fileID)
 	}
 }
+
+// A member call on a plainly imported external module is a call to the module
+// node, unless the receiver could name anything else.
+func TestPythonExternalModuleCalls(t *testing.T) {
+	c := func(src, tgt string) [3]string { return [3]string{src, "calls", tgt} }
+	wantEdges(t, map[string]string{
+		"a.py": "import os\nimport json\nimport numpy as np\nclass A:\n    json: dict\n    def go(self, x: np.ndarray):\n        os.getcwd()\n        return json.dumps({})\ndef f():\n    return np.array([])\n",
+	}, [][3]string{c("A.go()", "os"), c("A.go()", "json"), c("f()", "numpy")})
+
+	// An import that resolves to a corpus file never falls back to the module.
+	wantEdges(t, map[string]string{
+		"helper.py": "def other():\n    pass\n",
+		"a.py":      "import helper\ndef f():\n    helper.get()\n",
+	}, nil, c("f()", "helper.py"), c("f()", "helper"))
+
+	for name, body := range map[string]string{
+		"local":         "def f():\n    os = object()\n    os.getcwd()\n",
+		"parameter":     "def f(os):\n    os.getcwd()\n",
+		"default":       "def f(*, os=None):\n    os.getcwd()\n",
+		"splat":         "def f(**os):\n    os.getcwd()\n",
+		"unpack":        "def f():\n    os, x = pair\n    os.getcwd()\n",
+		"augmented":     "def f():\n    os += 1\n    os.getcwd()\n",
+		"walrus":        "def f():\n    (os := object())\n    os.getcwd()\n",
+		"for":           "def f():\n    for os in xs: pass\n    os.getcwd()\n",
+		"comprehension": "def f():\n    return [os.getcwd() for os in xs]\n",
+		"with":          "def f():\n    with open('x') as os: pass\n    os.getcwd()\n",
+		"except":        "def f():\n    try: pass\n    except Exception as os: pass\n    os.getcwd()\n",
+		"nested def":    "def f():\n    def os(): pass\n    os.getcwd()\n",
+		"del":           "def f():\n    del os\n    os.getcwd()\n",
+		"attribute":     "def f():\n    os.value = 1\n    os.getcwd()\n",
+		"local import":  "def f():\n    import os\n    os.getcwd()\n",
+		"global":        "def f():\n    global os\n    os.getcwd()\n",
+		"match":         "def f():\n    match x:\n        case os: pass\n    os.getcwd()\n",
+		"lambda":        "def f():\n    return (lambda os: os.getcwd())(object())\n",
+		"module":        "os = object()\ndef f():\n    os.getcwd()\n",
+		"guarded":       "if flag:\n    import os\ndef f():\n    os.getcwd()\n",
+		"wildcard":      "from elsewhere import *\ndef f():\n    os.getcwd()\n",
+		"other global":  "def mutate():\n    global os\n    os = other\ndef f():\n    os.getcwd()\n",
+		"reimport":      "import os\ndef f():\n    os.getcwd()\n",
+		"alias clash":   "import other as os\ndef f():\n    os.getcwd()\n",
+		"from import":   "from other import os\ndef f():\n    os.getcwd()\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			wantEdges(t, map[string]string{"a.py": "import os\n" + body}, nil, c("f()", "os"), c("f()", "other"))
+		})
+	}
+}
