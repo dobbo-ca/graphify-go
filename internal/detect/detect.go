@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -97,6 +98,17 @@ const (
 // inMemoryDir reports whether slashRel is graphify-out/memory or a path below it.
 func inMemoryDir(slashRel string) bool {
 	return slashRel == memoryDir || strings.HasPrefix(slashRel, memoryDir+"/")
+}
+
+// isNestedWorktree reports whether dir is a dot-dir's worktrees/ folder
+// (.claude/worktrees) or holds a .git file (linked worktree or submodule).
+func isNestedWorktree(dir, slashRel string) bool {
+	parent := path.Base(path.Dir(slashRel))
+	if filepath.Base(dir) == "worktrees" && parent != "." && parent != ".." && strings.HasPrefix(parent, ".") {
+		return true
+	}
+	fi, err := os.Lstat(filepath.Join(dir, ".git"))
+	return err == nil && !fi.IsDir()
 }
 
 // skipDir reports whether a directory named n should be pruned from the walk
@@ -376,7 +388,7 @@ func CollectFilesReport(root string) (WalkReport, error) {
 			if slashRel == graphifyOut || inMemoryDir(slashRel) {
 				return nil
 			}
-			if skipDir(d.Name()) || ign.ignored(slashRel, true) {
+			if skipDir(d.Name()) || isNestedWorktree(path, slashRel) || ign.ignored(slashRel, true) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -443,7 +455,7 @@ func CollectManifests(root string) ([]string, error) {
 			if path == root {
 				return nil
 			}
-			if skipDir(d.Name()) || ign.ignored(slashRel, true) {
+			if skipDir(d.Name()) || isNestedWorktree(path, slashRel) || ign.ignored(slashRel, true) {
 				return filepath.SkipDir
 			}
 			return nil

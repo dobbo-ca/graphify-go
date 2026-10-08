@@ -6,9 +6,12 @@
 package extract
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf16"
+	"unicode/utf8"
 	"unsafe"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
@@ -21,16 +24,23 @@ import (
 )
 
 // Def records a named definition so cross-file calls can resolve to it by name.
+// Owner names the receiver type of a Go method, which has no contains edge from
+// its type.
 type Def struct {
 	ID, Name, File string
+	Owner          string
+	Abstract       bool // bodiless declaration
 }
 
 // Call is an unresolved call site: CallerID invoked a symbol named Callee.
-// IsMember marks an attribute/method call (`x.f()`), which the Python
-// import-guided resolver must skip — the alias evidence only covers bare names.
+// Recv is the receiver or qualifier text of a member call (`x` in `x.f()`,
+// `T` in `T::f()`), empty for a bare call. Resolve binds a member call on its
+// receiver, never on the bare name alone. Module is the import spec Recv names
+// when it is an unshadowed `import x` binding (Python only).
 type Call struct {
 	CallerID, Callee, File, Loc string
-	IsMember                    bool
+	Recv                        string
+	Module                      string
 }
 
 // ImportAlias is per-file evidence from a top-level `from M import N [as L]`:
@@ -53,6 +63,12 @@ type TypeRef struct {
 type Imp struct {
 	FileID, File, Spec, Loc string
 	TypeOnly                bool
+	// Rel marks a spec that is relative to the importing file's directory even
+	// without a leading dot (a quoted C include, Ruby `require_relative`).
+	Rel bool
+	// Names are the names a Python `from Spec import ...` or Rust `use Spec::...`
+	// binds; each may be a module.
+	Names []string
 }
 
 // ModRef is a Terraform module block's source before resolution: the module
@@ -95,6 +111,8 @@ type Result struct {
 	ModInvokes    []ModInvoke
 	ImportAliases []ImportAlias
 	MDRefs        []MDRef
+	// GoMods maps a go.mod's directory to its module path (manifest pass only).
+	GoMods map[string]string
 }
 
 // File extracts rel (a path relative to root). Unsupported extensions return an
@@ -111,6 +129,7 @@ func File(root, rel string) (Result, error) {
 // that have hashed the file (e.g. the incremental cache) avoid a second read.
 // Unsupported extensions return an empty result.
 func FileFromBytes(rel string, src []byte) Result {
+	src = toUTF8(src)
 	rel = filepath.ToSlash(rel)
 	if IsMCPConfigPath(rel) {
 		return extractMCPConfig(rel, src)
@@ -138,7 +157,12 @@ func FileFromBytes(rel string, src []byte) Result {
 		return extractPython(rel, src)
 	case ".rs":
 		return extractRust(rel, src)
-	case ".c", ".h":
+	case ".h":
+		if isCppHeader(src) {
+			return extractCpp(rel, src)
+		}
+		return extractC(rel, src)
+	case ".c":
 		return extractC(rel, src)
 	case ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx":
 		return extractCpp(rel, src)
@@ -172,6 +196,23 @@ func FileFromBytes(rel string, src []byte) Result {
 		return extractComponent(rel, src, true)
 	}
 	return Result{}
+}
+
+// cppHeaderMarkers are tokens no plain C header contains.
+var cppHeaderMarkers = [][]byte{
+	[]byte("class "), []byte("namespace "), []byte("template"), []byte("::"),
+	[]byte("public:"), []byte("private:"), []byte("protected:"),
+}
+
+// isCppHeader sniffs a `.h` for C++; the C grammar has no class_specifier.
+func isCppHeader(src []byte) bool {
+	head := src[:min(len(src), 256*1024)]
+	for _, m := range cppHeaderMarkers {
+		if bytes.Contains(head, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // parseRoot parses src with the given grammar and returns the root node plus a
@@ -220,6 +261,9 @@ type builder struct {
 	stem   string
 	res    Result
 	seen   map[string]bool
+	pyMods map[string]string // local name -> plainly imported module
+	// rubyMethods holds method names defined in the file (bare self-sends).
+	rubyMethods map[string]bool
 }
 
 func newBuilder(rel string) *builder {
@@ -261,13 +305,37 @@ func (b *builder) call(callerID, callee, loc string) {
 	b.res.Calls = append(b.res.Calls, Call{CallerID: callerID, Callee: callee, File: b.file, Loc: loc})
 }
 
-// callMember records an attribute/method call (`x.f()`). It is identical to call
-// but flags the site as a member call so the Python import-guided resolver skips it.
-func (b *builder) callMember(callerID, callee, loc string) {
+// callRecv records a member or qualified call (`x.f()`, `T::f()`) with its
+// receiver text.
+func (b *builder) callRecv(callerID, callee, recv, loc string) {
 	if callee == "" || callerID == "" {
 		return
 	}
-	b.res.Calls = append(b.res.Calls, Call{CallerID: callerID, Callee: callee, File: b.file, Loc: loc, IsMember: true})
+	b.res.Calls = append(b.res.Calls, Call{CallerID: callerID, Callee: callee, File: b.file, Loc: loc, Recv: recv})
+}
+
+// bindType records that local name holds a typ value; a second, different
+// binding clears it so the receiver stays untyped rather than guessed.
+func bindType(types map[string]string, name, typ string) {
+	if old, ok := types[name]; ok && old != typ {
+		typ = ""
+	}
+	types[name] = typ
+}
+
+// recvSeps are the member-access operators that end a receiver, longest first.
+var recvSeps = []string{"?->", "?.", "->", "::", ".", ":"}
+
+// recvText returns the receiver of a member call: the source between the start
+// of expr and its trailing name, minus the access operator.
+func recvText(expr, name *ts.Node, src []byte) string {
+	s := strings.TrimSpace(string(src[expr.StartByte():name.StartByte()]))
+	for _, sep := range recvSeps {
+		if strings.HasSuffix(s, sep) {
+			return strings.TrimSpace(strings.TrimSuffix(s, sep))
+		}
+	}
+	return s
 }
 
 // typeRef records a supertype reference for Resolve to bind by name.
@@ -297,6 +365,13 @@ func (b *builder) imp(spec, loc string) { b.impTyped(spec, loc, false) }
 func (b *builder) impTyped(spec, loc string, typeOnly bool) {
 	if spec != "" {
 		b.res.Imps = append(b.res.Imps, Imp{FileID: b.fileID, File: b.file, Spec: spec, Loc: loc, TypeOnly: typeOnly})
+	}
+}
+
+// impRel is imp for a spec relative to the importing file's directory.
+func (b *builder) impRel(spec, loc string) {
+	if spec != "" {
+		b.res.Imps = append(b.res.Imps, Imp{FileID: b.fileID, File: b.file, Spec: spec, Loc: loc, Rel: true})
 	}
 }
 
@@ -346,4 +421,29 @@ func walk(n *ts.Node, fn func(*ts.Node) bool) {
 	for i := uint(0); i < n.ChildCount(); i++ {
 		walk(n.Child(i), fn)
 	}
+}
+
+// toUTF8 leaves valid UTF-8 alone, decodes BOM-marked UTF-16, and treats
+// anything else as latin-1 (tree-sitter only reads UTF-8).
+func toUTF8(src []byte) []byte {
+	if utf8.Valid(src) {
+		return src
+	}
+	if len(src) >= 2 && (src[0] == 0xFF && src[1] == 0xFE || src[0] == 0xFE && src[1] == 0xFF) {
+		le := src[0] == 0xFF
+		u := make([]uint16, 0, len(src)/2)
+		for i := 2; i+1 < len(src); i += 2 {
+			if le {
+				u = append(u, uint16(src[i])|uint16(src[i+1])<<8)
+			} else {
+				u = append(u, uint16(src[i])<<8|uint16(src[i+1]))
+			}
+		}
+		return []byte(string(utf16.Decode(u)))
+	}
+	rs := make([]rune, len(src))
+	for i, b := range src {
+		rs[i] = rune(b)
+	}
+	return []byte(string(rs))
 }

@@ -1,6 +1,9 @@
 package extract
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestExtractTerraform(t *testing.T) {
 	root := "testdata/tf"
@@ -364,5 +367,50 @@ resource "aws_instance" "web" {
 	}
 	if v := byLabel["aws_instance.web"]["instance_type"]; v != "t3.large" {
 		t.Errorf("instance_type = %q, want t3.large", v)
+	}
+}
+
+func TestTerraformFallbackValuesRedacted(t *testing.T) {
+	src := []byte(`resource "aws_ecs_task_definition" "t" {
+  container_definitions = jsonencode([{ name = "x", environment = [{ name = "API_TOKEN", value = "hunter2json" }] }])
+  env                   = ["DB_PASSWORD=hunter2inline", "plain"]
+  instance_type         = "t3.large"
+  ami                   = data.aws_ami.x.id
+}
+output "conn" {
+  value = "postgres://u:hunter2out@h/db"
+}
+output "redis" {
+  value = "redis://:hunter2nouser@h:6379"
+}
+output "slash" {
+  value = "postgres://u:hunter2/slash@h/db"
+}
+resource "x_thing" "s" {
+  env_single = "DB_PASSWORD=hunter2single"
+  conn       = "Server=db;User=sa;Password=hunter2semi"
+  hdr        = "Authorization: Bearer hunter2hdr"
+  bare       = "Bearer hunter2bare"
+  plain      = "db-secret-name"
+}
+`)
+	res := FileFromBytes("main.tf", src)
+	for _, n := range res.Nodes {
+		for k, v := range n.Attributes {
+			if strings.Contains(v, "hunter2") {
+				t.Errorf("%s.%s leaks secret: %q", n.Label, k, v)
+			}
+		}
+		if n.Label == "x_thing.s" && n.Attributes["plain"] != "db-secret-name" {
+			t.Errorf("plain = %q, want it kept", n.Attributes["plain"])
+		}
+		if n.Label == "aws_ecs_task_definition.t" {
+			if n.Attributes["instance_type"] != "t3.large" || n.Attributes["ami"] != "data.aws_ami.x.id" {
+				t.Errorf("benign attrs changed: %v", n.Attributes)
+			}
+			if n.Attributes["container_definitions"] != redactedValue {
+				t.Errorf("container_definitions = %q", n.Attributes["container_definitions"])
+			}
+		}
 	}
 }

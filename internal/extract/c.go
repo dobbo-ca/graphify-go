@@ -90,8 +90,8 @@ func (b *builder) cType(n *ts.Node, src []byte) {
 }
 
 // cInclude records the included header path as an import. `<stdio.h>` and
-// `"util.h"` both record the header path; neither is corpus-relative so both
-// resolve to external dependency nodes.
+// `"util.h"` both record the header path; only the quoted form is looked up
+// beside the including file.
 func (b *builder) cInclude(n *ts.Node, src []byte) {
 	p := n.ChildByFieldName("path")
 	if p == nil {
@@ -101,7 +101,7 @@ func (b *builder) cInclude(n *ts.Node, src []byte) {
 	case "system_lib_string":
 		b.imp(trimAngle(p.Utf8Text(src)), line(n))
 	case "string_literal":
-		b.imp(cStringContent(p, src), line(n))
+		b.impRel(cStringContent(p, src), line(n))
 	}
 }
 
@@ -124,7 +124,7 @@ func (b *builder) cCalls(body *ts.Node, callerID string, src []byte) {
 			b.call(callerID, fn.Utf8Text(src), line(c))
 		case "field_expression":
 			if f := fn.ChildByFieldName("field"); f != nil {
-				b.call(callerID, f.Utf8Text(src), line(c))
+				b.callRecv(callerID, f.Utf8Text(src), recvText(fn, f, src), line(c))
 			}
 		}
 		return true

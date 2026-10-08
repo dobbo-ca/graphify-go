@@ -185,7 +185,7 @@ func (b *builder) zigCalls(body *ts.Node, callerID string, src []byte) {
 			b.call(callerID, fn.Utf8Text(src), line(c))
 		case "field_expression":
 			if m := fn.ChildByFieldName("member"); m != nil {
-				b.call(callerID, m.Utf8Text(src), line(c))
+				b.callRecv(callerID, m.Utf8Text(src), recvText(fn, m, src), line(c))
 			}
 		}
 		return true

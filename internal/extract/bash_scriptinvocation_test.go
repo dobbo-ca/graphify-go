@@ -120,3 +120,62 @@ func TestBashScriptInvocationPrunesMissing(t *testing.T) {
 		t.Errorf("edge to a missing script must be pruned from the built graph")
 	}
 }
+
+// Non-shell interpreters link to a literal script argument; dynamic ones don't.
+func TestBashRunnerNonShellTargets(t *testing.T) {
+	for cmd, wantEdge := range map[string]bool{
+		"python3 build.py": true, "node build.js": true, "python3 -u build.py": true,
+		`"$PY" build.py`: false, `python3 "$X"`: false,
+	} {
+		root := t.TempDir()
+		writeScript(t, root, "build.py", "print(1)\n")
+		writeScript(t, root, "build.js", "1\n")
+		writeScript(t, root, "run.sh", "#!/bin/bash\n"+cmd+"\n")
+		ext := resolveFiles(t, root, "run.sh", "build.py", "build.js")
+		got := false
+		for _, f := range []string{"build.py", "build.js"} {
+			got = got || hasScriptCall(ext.Edges, idutil.MakeID("run.sh"), idutil.MakeID(f))
+		}
+		if got != wantEdge {
+			t.Errorf("%q: edge=%v want %v", cmd, got, wantEdge)
+		}
+	}
+}
+
+// `python3 -m app.main` names a module, not a file; it must not hit app_main.
+func TestBashRunnerModuleFlagNoEdge(t *testing.T) {
+	root := t.TempDir()
+	writeScript(t, root, "app.py", "def main():\n    pass\n")
+	writeScript(t, root, "b1.sh", "#!/bin/bash\npython3 -m app.main\n")
+	ext := resolveFiles(t, root, "b1.sh", "app.py")
+	for _, e := range ext.Edges {
+		if e.Source == idutil.MakeID("b1.sh") && e.Target == "app_main" {
+			t.Errorf("module arg resolved to a symbol node: %+v", e)
+		}
+	}
+}
+
+// `-e` is errexit for shells, so `bash -e x.sh` still runs x.sh.
+func TestBashShellErrexitKeepsEdge(t *testing.T) {
+	root := t.TempDir()
+	writeScript(t, root, "deploy.sh", "#!/bin/bash\n")
+	writeScript(t, root, "ci.sh", "#!/bin/bash\nsh -e ./deploy.sh\n")
+	writeScript(t, root, "ci2.sh", "#!/bin/bash\nbash -e deploy.sh\n")
+	ext := resolveFiles(t, root, "deploy.sh", "ci.sh", "ci2.sh")
+	for _, f := range []string{"ci.sh", "ci2.sh"} {
+		if !hasScriptCall(ext.Edges, idutil.MakeID(f), idutil.MakeID("deploy.sh")) {
+			t.Errorf("%s: lost edge to deploy.sh", f)
+		}
+	}
+}
+
+// php's code flag is -r; `php -e s.php` still runs s.php.
+func TestBashPhpDashEKeepsEdge(t *testing.T) {
+	root := t.TempDir()
+	writeScript(t, root, "s.php", "<?php\n")
+	writeScript(t, root, "e1.sh", "#!/bin/bash\nphp -e s.php\n")
+	ext := resolveFiles(t, root, "s.php", "e1.sh")
+	if !hasScriptCall(ext.Edges, idutil.MakeID("e1.sh"), idutil.MakeID("s.php")) {
+		t.Errorf("e1.sh: lost edge to s.php")
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"regexp"
 	"sort"
 	"strings"
@@ -22,6 +23,9 @@ type Graph struct {
 	Nodes []Node     `json:"nodes"`
 	Links []Link     `json:"links"`
 	Attrs GraphAttrs `json:"graph"`
+
+	BuiltAtCommit string `json:"built_at_commit,omitempty"`
+	Path          string `json:"-"` // file Load read, for git lookups
 
 	byID map[string]*Node
 	adj  map[string]map[string]bool
@@ -109,6 +113,7 @@ func Load(path string) (*Graph, error) {
 	if err := json.Unmarshal(data, &g); err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
 	}
+	g.Path = path
 	g.byID = make(map[string]*Node, len(g.Nodes))
 	for i := range g.Nodes {
 		g.byID[g.Nodes[i].ID] = &g.Nodes[i]
@@ -348,7 +353,10 @@ func (g *Graph) bfsPath(aID, bID string, undirected bool) ([]string, bool) {
 		sort.Strings(nbrs)
 		for _, nb := range nbrs {
 			if !undirected && g.edge[[2]string{cur, nb}] == nil {
-				continue // edge points nb -> cur; not traversable directed
+				// contains is walkable upward so symbols reach their file
+				if l := g.edge[[2]string{nb, cur}]; l == nil || l.Relation != "contains" {
+					continue
+				}
 			}
 			if _, seen := prev[nb]; !seen {
 				prev[nb] = cur
@@ -411,8 +419,39 @@ func ambiguous(s string, hits []*Node, total int) *AmbiguousError {
 	return e
 }
 
-// resolve finds a node by exact ID, then by a path::Symbol qualifier, then by
-// exact (case-insensitive) label, then by a case-insensitive label or ID
+// fileNodes picks the file-level node out of nodes sharing a source file: the
+// one labelled with the basename, preferring non-heading nodes (a markdown H1
+// can repeat the filename). Files whose file node has another label (typed
+// markdown) fall back to the lone non-heading node at L1.
+func fileNodes(in []*Node) []*Node {
+	var lab, top []*Node
+	for _, n := range in {
+		if strings.EqualFold(n.Label, path.Base(n.SourceFile)) {
+			lab = append(lab, n)
+		}
+		if n.FileType != "heading" && n.SourceLocation == "L1" {
+			top = append(top, n)
+		}
+	}
+	if len(lab) > 1 {
+		var nonHead []*Node
+		for _, n := range lab {
+			if n.FileType != "heading" {
+				nonHead = append(nonHead, n)
+			}
+		}
+		if len(nonHead) > 0 {
+			lab = nonHead
+		}
+	}
+	if len(lab) == 0 && len(top) == 1 {
+		return top
+	}
+	return lab
+}
+
+// resolve finds a node by exact ID, then by a path::Symbol qualifier, then by a
+// source file path, then by exact (case-insensitive) label, then by a case-insensitive label or ID
 // substring. Matching more than one node at any tier is an *AmbiguousError
 // rather than an arbitrary pick; matching none returns (nil, nil).
 func (g *Graph) resolve(s string) (*Node, error) {
@@ -439,6 +478,28 @@ func (g *Graph) resolve(s string) (*Node, error) {
 	low := strings.ToLower(s)
 	if low == "" {
 		return nil, nil
+	}
+	if p := strings.ToLower(normalizeSeed(s)); p != "" {
+		var exactFiles, suffixFiles []*Node
+		for j := range g.Nodes {
+			n := &g.Nodes[j]
+			sf := strings.ToLower(n.SourceFile)
+			if sf == p {
+				exactFiles = append(exactFiles, n)
+			} else if strings.Contains(p, "/") && strings.HasSuffix(sf, "/"+p) {
+				suffixFiles = append(suffixFiles, n)
+			}
+		}
+		files := fileNodes(exactFiles)
+		if len(files) == 0 {
+			files = fileNodes(suffixFiles)
+		}
+		if len(files) > 0 {
+			if len(files) > 1 {
+				return nil, ambiguous(s, files, len(files))
+			}
+			return files[0], nil
+		}
 	}
 	var exact []*Node
 	for i := range g.Nodes {

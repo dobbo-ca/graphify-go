@@ -181,3 +181,59 @@ func TestExplainLinesShortListUngrouped(t *testing.T) {
 		t.Errorf("explainLines(nil) = %v, want (no connections)", got)
 	}
 }
+
+// TestCmdExplainPathSourceFile verifies explain and path accept a repo-relative
+// file path, with or without a leading "./".
+func TestCmdExplainPathSourceFile(t *testing.T) {
+	dir := t.TempDir()
+	writeTestGraph(t, filepath.Join(dir, "graphify-out", "graph.json"),
+		`{"nodes":[`+
+			`{"id":"pkg_a_py","label":"a.py","source_file":"pkg/a.py"},`+
+			`{"id":"pkg_b_py","label":"b.py","source_file":"pkg/b.py"},`+
+			`{"id":"pkg_b_py_foo","label":"foo()","source_file":"pkg/b.py"},`+
+			`{"id":"o_b_py","label":"b.py","source_file":"other/pkg/b.py"},`+
+			`{"id":"top_py","label":"top.py","source_file":"top.py"},`+
+			`{"id":"sub_top_py","label":"top.py","source_file":"sub/top.py"}],`+
+			`"links":[{"source":"pkg_a_py","target":"pkg_b_py","relation":"imports"}]}`)
+
+	wd, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(wd)
+
+	for _, p := range []string{"pkg/b.py", "./pkg/b.py", "./top.py", "sub/top.py"} {
+		if err := cmdExplain([]string{p}); err != nil {
+			t.Errorf("cmdExplain %q = %v, want success", p, err)
+		}
+	}
+	if err := cmdPath([]string{"pkg/a.py", "./pkg/b.py"}); err != nil {
+		t.Errorf("cmdPath by file path = %v, want success", err)
+	}
+}
+
+// TestCmdPathDirectedContainsReverse verifies a directed path may step from a
+// symbol back out to its containing file over a contains edge.
+func TestCmdPathDirectedContainsReverse(t *testing.T) {
+	dir := t.TempDir()
+	writeTestGraph(t, filepath.Join(dir, "graphify-out", "graph.json"),
+		`{"nodes":[{"id":"run","label":"run()"},{"id":"helper","label":"helper()"},{"id":"b","label":"b.py","source_file":"b.py"}],`+
+			`"links":[{"source":"run","target":"helper","relation":"calls","confidence":"EXTRACTED"},`+
+			`{"source":"b","target":"helper","relation":"contains","confidence":"EXTRACTED"}]}`)
+
+	wd, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(wd)
+
+	out := captureStdout(t, func() {
+		if err := cmdPath([]string{"run()", "b.py"}); err != nil {
+			t.Errorf("cmdPath run() b.py = %v, want success", err)
+		}
+	})
+	want := "run() --calls [EXTRACTED]--> helper() <--contains [EXTRACTED]-- b.py\n"
+	if out != want {
+		t.Errorf("path output = %q, want %q", out, want)
+	}
+}

@@ -10,8 +10,9 @@ import (
 )
 
 // mdLink matches an inline markdown link [text](target). The target is captured
-// up to the first space or closing paren so optional `"titles"` are dropped.
-var mdLink = regexp.MustCompile(`\[[^\]]*\]\(([^)\s]+)`)
+// as `<...>` (spaces allowed) or up to the first space or closing paren, so
+// optional `"titles"` are dropped.
+var mdLink = regexp.MustCompile(`\[[^\]]*\]\((?:<([^>]+)>|([^)\s]+))`)
 
 // mdRefDef matches a reference-style link definition `[label]: target` at the
 // start of a line, dropping an optional <...> wrapper and any trailing title.
@@ -19,7 +20,7 @@ var mdRefDef = regexp.MustCompile(`^\s{0,3}\[[^\]]+\]:\s*<?([^\s>]+)>?`)
 
 // mdWikilink matches a `[[target]]` wikilink, discarding any `#section` anchor
 // or `|alias` display text so only the target survives.
-var mdWikilink = regexp.MustCompile(`\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]`)
+var mdWikilink = regexp.MustCompile(`\[\[([^\]|#\\]+)\\?(?:[#|][^\]]*)?\]\]`)
 
 // mdHeading matches an ATX heading line (one to six `#` then heading text); the
 // `#` count is the heading level used for nesting.
@@ -99,7 +100,7 @@ func extractMarkdown(rel string, src []byte) Result {
 		// References anywhere in the doc (scanned on heading lines too). Inline
 		// `code` spans are candidate references to a bare symbol name.
 		for _, m := range mdLink.FindAllStringSubmatch(lineText, -1) {
-			addRef(m[1], loc)
+			addRef(m[1]+m[2], loc)
 		}
 		for _, m := range mdWikilink.FindAllStringSubmatch(lineText, -1) {
 			addRef(m[1], loc)

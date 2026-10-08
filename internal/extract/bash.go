@@ -12,10 +12,12 @@ import (
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
 
-// bashScriptRunners are the interpreters whose first .sh argument names an
-// invoked script: `bash x.sh`, `sh x.sh`, … (mirrors upstream _BASH_SCRIPT_RUNNERS).
+// bashScriptRunners are the interpreters whose first non-flag argument names an
+// invoked script: `bash x.sh`, `python3 x.py`, … (mirrors upstream _BASH_SCRIPT_RUNNERS).
 var bashScriptRunners = map[string]bool{
 	"bash": true, "sh": true, "zsh": true, "ksh": true, "dash": true,
+	"python": true, "python3": true, "node": true, "ruby": true,
+	"perl": true, "php": true, "deno": true, "bun": true,
 }
 
 // extractBash pulls function definitions, `source`/`.` includes, and call edges
@@ -140,7 +142,7 @@ func (b *builder) scriptInvocationTarget(n *ts.Node, cmdName string, src []byte)
 		}
 		raw = cmdName
 	case bashScriptRunners[cmdName]:
-		lit, ok := firstArgLiteral(n, src)
+		lit, ok := firstArgLiteral(n, src, cmdName)
 		if !ok {
 			return ""
 		}
@@ -148,7 +150,8 @@ func (b *builder) scriptInvocationTarget(n *ts.Node, cmdName string, src []byte)
 	default:
 		return ""
 	}
-	if !strings.HasSuffix(raw, ".sh") {
+	// A bare command must be a .sh; a runner argument may be any file.
+	if path.Ext(raw) == "" {
 		return ""
 	}
 	targetRel := path.Join(path.Dir(filepath.ToSlash(b.file)), raw)
@@ -179,12 +182,38 @@ func firstArg(n *ts.Node, src []byte) string {
 // argument is a static literal — a word or a quoted string with no shell
 // expansion. `bash "./$X.sh"` (an expansion) yields ok=false so dynamic targets
 // are not resolved (mirrors upstream literal()).
-func firstArgLiteral(n *ts.Node, src []byte) (string, bool) {
-	arg := n.ChildByFieldName("argument")
-	if arg == nil || bashHasExpansion(arg) {
-		return "", false
+func firstArgLiteral(n *ts.Node, src []byte, runner string) (string, bool) {
+	cur := n.Walk()
+	defer cur.Close()
+	args := n.ChildrenByFieldName("argument", cur)
+	for i := range args {
+		arg := &args[i]
+		if bashHasExpansion(arg) {
+			return "", false
+		}
+		txt := unquote(arg.Utf8Text(src))
+		if bashCodeFlag(runner, txt) {
+			return "", false
+		}
+		if !strings.HasPrefix(txt, "-") {
+			return txt, true
+		}
 	}
-	return unquote(arg.Utf8Text(src)), true
+	return "", false
+}
+
+// bashCodeFlag reports whether flag makes runner take a module or code string
+// instead of a file. `-e` is errexit for shells, so it only counts elsewhere.
+func bashCodeFlag(runner, flag string) bool {
+	switch runner {
+	case "bash", "sh", "zsh", "ksh", "dash":
+		return flag == "-c"
+	case "python", "python3":
+		return flag == "-m" || flag == "-c"
+	case "php":
+		return flag == "-r" // php -e is a debugger flag
+	}
+	return flag == "-e"
 }
 
 // bashHasExpansion reports whether n contains any shell expansion / substitution

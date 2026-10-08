@@ -3,6 +3,7 @@ package extract
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
@@ -144,5 +145,42 @@ func TestIntrospectManifestsCargoVirtualWorkspace(t *testing.T) {
 	}
 	if len(res.Nodes) != 0 || len(res.Edges) != 0 {
 		t.Errorf("virtual workspace root emitted %+v / %+v, want nothing", res.Nodes, res.Edges)
+	}
+}
+
+func TestIntrospectManifestsPomInheritedGroupAndProperties(t *testing.T) {
+	root := t.TempDir()
+	writeManifestFile(t, root, "lib/pom.xml", `<project>
+  <parent><groupId>com.example</groupId><artifactId>parent</artifactId><version>1</version></parent>
+  <artifactId>lib</artifactId>
+</project>`)
+	writeManifestFile(t, root, "app/pom.xml", `<project>
+  <parent><groupId>com.example</groupId><artifactId>parent</artifactId><version>1</version></parent>
+  <artifactId>app</artifactId>
+  <properties><lib.group>com.example</lib.group></properties>
+  <dependencies>
+    <dependency><groupId>${project.groupId}</groupId><artifactId>lib</artifactId></dependency>
+    <dependency><groupId>${lib.group}</groupId><artifactId>lib</artifactId></dependency>
+    <dependency><groupId>${unknown}</groupId><artifactId>x</artifactId></dependency>
+  </dependencies>
+</project>`)
+	res, err := IntrospectManifests(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, lib := idutil.MakeID("pkg", "com.example:app"), idutil.MakeID("pkg", "com.example:lib")
+	found := false
+	for _, e := range res.Edges {
+		if e.Source == app && e.Target == lib {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("missing app->lib edge: %+v", res.Edges)
+	}
+	for _, n := range res.Nodes {
+		if strings.Contains(n.Label, "${") && n.Label != "${unknown}:x" {
+			t.Errorf("unresolved placeholder in %q", n.Label)
+		}
 	}
 }

@@ -55,11 +55,74 @@ func cmdHook(args []string) error {
 	}
 }
 
+// gitPath runs `git rev-parse <arg>` in root and returns an absolute path.
+func gitPath(root string, arg ...string) (string, error) {
+	out, err := exec.Command("git", append([]string{"-C", root, "rev-parse"}, arg...)...).Output()
+	if err != nil {
+		return "", fmt.Errorf("%s is not a git repository", root)
+	}
+	p := strings.TrimSpace(string(out))
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(root, p)
+	}
+	return filepath.Abs(p)
+}
+
+// realPath resolves symlinks on the longest existing prefix of p.
+func realPath(p string) string {
+	rest := ""
+	for {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(r, rest)
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return filepath.Join(p, rest)
+		}
+		rest = filepath.Join(filepath.Base(p), rest)
+		p = parent
+	}
+}
+
+// resolveHooksDir returns where hooks must be written and git's effective
+// hooks dir. A core.hooksPath outside the repo is refused (no writes outside
+// it); the common-dir hooks are used instead.
+func resolveHooksDir(root string) (dir, effective string, err error) {
+	effective, err = gitPath(root, "--git-path", "hooks")
+	if err != nil {
+		return "", "", err
+	}
+	common, err := gitPath(root, "--git-common-dir")
+	if err != nil {
+		return "", "", err
+	}
+	dir = filepath.Join(common, "hooks")
+	absRoot, _ := filepath.Abs(root)
+	if rel, err := filepath.Rel(realPath(absRoot), realPath(effective)); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		dir = effective
+	} else if realPath(effective) == realPath(dir) {
+		dir = effective
+	}
+	return dir, effective, nil
+}
+
+// hookScript is the exact text hookInstall writes for hook h.
+func hookScript(h, self string) string {
+	// Root resolved at hook time: shared hooks serve every worktree.
+	body := fmt.Sprintf("exec %q update \"$(git rev-parse --show-toplevel)\" >/dev/null 2>&1 || true\n", self)
+	if h == "post-checkout" {
+		// git passes $1=old HEAD, $2=new HEAD, $3=1 for a branch checkout.
+		// Nothing moved, or only files were checked out ⇒ nothing to rebuild.
+		return fmt.Sprintf("#!/bin/sh\n%s\n%s%s", hookMarker, postCheckoutGuards, body)
+	}
+	return fmt.Sprintf("#!/bin/sh\n%s\n%s", hookMarker, body)
+}
+
 // hookInstall writes graphify's update hooks, skipping any hook a user wrote.
 func hookInstall(root string) error {
-	hooksDir := filepath.Join(root, ".git", "hooks")
-	if fi, err := os.Stat(filepath.Dir(hooksDir)); err != nil || !fi.IsDir() {
-		return fmt.Errorf("%s has no .git directory (git worktrees and submodules are not supported by hook install)", root)
+	hooksDir, _, err := resolveHooksDir(root)
+	if err != nil {
+		return err
 	}
 	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
 		return err
@@ -72,16 +135,9 @@ func hookInstall(root string) error {
 	if err != nil {
 		return err
 	}
-	body := fmt.Sprintf("exec %q update %q >/dev/null 2>&1 || true\n", self, absRoot)
-
 	var installed []string
 	for _, h := range managedGitHooks {
-		script := fmt.Sprintf("#!/bin/sh\n%s\n%s", hookMarker, body)
-		if h == "post-checkout" {
-			// git passes $1=old HEAD, $2=new HEAD, $3=1 for a branch checkout.
-			// Nothing moved, or only files were checked out ⇒ nothing to rebuild.
-			script = fmt.Sprintf("#!/bin/sh\n%s\n%s%s", hookMarker, postCheckoutGuards, body)
-		}
+		script := hookScript(h, self)
 		path := filepath.Join(hooksDir, h)
 		if existing, err := os.ReadFile(path); err == nil && !strings.Contains(string(existing), hookMarker) {
 			fmt.Fprintf(os.Stderr, "  warning: %s already exists and was not written by graphify — skipping\n", h)
@@ -153,7 +209,10 @@ func gitConfig(root string, key, value string) error {
 // graphify-owned, so a present marker means we wrote the file and can delete it;
 // hooks the user wrote (no marker) are left untouched.
 func hookUninstall(root string) error {
-	hooksDir := filepath.Join(root, ".git", "hooks")
+	hooksDir, _, err := resolveHooksDir(root)
+	if err != nil {
+		return err
+	}
 	for _, h := range managedGitHooks {
 		path := filepath.Join(hooksDir, h)
 		existing, err := os.ReadFile(path)
@@ -212,11 +271,21 @@ func unregisterMergeDriver(root string) {
 // hookStatus reports, per managed hook, whether the graphify hook is installed,
 // in machine-checkable output.
 func hookStatus(root string) error {
-	hooksDir := filepath.Join(root, ".git", "hooks")
+	hooksDir, effective, err := resolveHooksDir(root)
+	if err != nil {
+		return err
+	}
+	self, _ := os.Executable()
 	for _, h := range managedGitHooks {
 		state := "not installed"
 		if existing, err := os.ReadFile(filepath.Join(hooksDir, h)); err == nil && strings.Contains(string(existing), hookMarker) {
 			state = "installed"
+			if string(existing) != hookScript(h, self) {
+				state += " (out of date: run graphify hook install)"
+			}
+			if effective != hooksDir {
+				state += " (inactive: core.hooksPath=" + effective + ")"
+			}
 		}
 		fmt.Printf("%s: %s\n", h, state)
 	}
@@ -250,7 +319,14 @@ func mergeDriverStatus(root string) string {
 // polls the tree and rebuilds whenever a source file's content changes. It is
 // poll-based (no native filesystem-event dependency); Ctrl-C stops it.
 func cmdWatch(root string) error {
-	if err := cmdUpdate([]string{root}); err != nil {
+	var args []string
+	if root == "" {
+		root = scanRoot()
+	} else {
+		root = updateRoot(root, true)
+		args = []string{root}
+	}
+	if err := cmdUpdate(args); err != nil {
 		return err
 	}
 	fmt.Println("watching for changes (Ctrl-C to stop)…")

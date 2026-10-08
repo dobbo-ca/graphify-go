@@ -176,7 +176,11 @@ func (b *builder) luaCall(c *ts.Node, callerID string, src []byte) {
 		}
 		return
 	}
-	b.call(callerID, callee, line(c))
+	recv := ""
+	if t := name.ChildByFieldName("table"); t != nil {
+		recv = t.Utf8Text(src)
+	}
+	b.callRecv(callerID, callee, recv, line(c))
 }
 
 // luaCalleeName returns the trailing simple name of a call target.

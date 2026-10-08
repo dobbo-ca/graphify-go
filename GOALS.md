@@ -22,7 +22,7 @@ simplest possible implementation, security-first, find performance wins.
 - [x] Clean-room reimplementation of the pipeline: `detect → extract → build → cluster → analyze → report → export`.
 - [x] Tree-sitter extractors for **Go, JavaScript, TypeScript** (files, functions, types, methods; `contains` / `calls` / `imports` / `imports_from` edges).
 - [x] Tree-sitter extractor for **Terraform / HCL** (`.tf`/`.tfvars`/`.hcl`): resources, data sources, modules, variables, outputs, providers, locals; `contains` / `references` / `depends_on` edges, directory-scoped so cross-file references resolve.
-- [x] Whole-corpus call + import resolution (calls resolve to definitions; relative imports resolve to files).
+- [x] Whole-corpus call + import resolution (calls resolve to definitions; JS/TS relative imports and Python relative and in-corpus absolute imports resolve to files).
 - [x] Louvain community detection (gonum) with oversized-community splitting.
 - [x] Analysis: god nodes, surprising connections, file-level import cycles.
 - [x] Outputs: `graph.json` (NetworkX node-link, upstream-compatible), `GRAPH_REPORT.md`.

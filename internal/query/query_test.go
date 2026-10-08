@@ -286,3 +286,30 @@ func TestExplainPathQualifierNeedsBoundary(t *testing.T) {
 		t.Fatalf("err = %v, want match", err)
 	}
 }
+
+func TestResolveFilePathTier(t *testing.T) {
+	body := `{"nodes":[
+ {"id":"claude","label":"CLAUDE.md","file_type":"document","source_file":"CLAUDE.md","source_location":"L1"},
+ {"id":"claude_claude_md","label":"CLAUDE.md","file_type":"heading","source_file":"CLAUDE.md","source_location":"L1"},
+ {"id":"gloss","label":"Business Glossary","file_type":"glossary","source_file":"d/glossary.md","source_location":"L1"},
+ {"id":"gloss_h","label":"Business Glossary","file_type":"heading","source_file":"d/glossary.md","source_location":"L8"},
+ {"id":"top_py","label":"top.py","file_type":"code","source_file":"top.py","source_location":"L1"},
+ {"id":"sub_top_py","label":"top.py","file_type":"code","source_file":"sub/top.py","source_location":"L1"}],"links":[]}`
+	p := filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for q, want := range map[string]string{
+		"./CLAUDE.md": "claude", "CLAUDE.md": "claude", "d/glossary.md": "gloss",
+		"top.py": "top_py", "./top.py": "top_py", "sub/top.py": "sub_top_py",
+	} {
+		n, err := g.resolve(q)
+		if err != nil || n == nil || n.ID != want {
+			t.Errorf("resolve(%q) = %v, %v; want %s", q, n, err, want)
+		}
+	}
+}

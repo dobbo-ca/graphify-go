@@ -243,8 +243,13 @@ func (b *builder) juliaCalls(body *ts.Node, callerID string, src []byte) {
 		if c.Kind() != "call_expression" {
 			return true
 		}
-		if name := juliaCalleeName(c.NamedChild(0), src); name != "" {
-			b.call(callerID, name, line(c))
+		fn := c.NamedChild(0)
+		if name := juliaCalleeName(fn, src); name != "" {
+			recv := ""
+			if fn.Kind() == "field_expression" {
+				recv = fn.NamedChild(0).Utf8Text(src)
+			}
+			b.callRecv(callerID, name, recv, line(c))
 		}
 		return true
 	})

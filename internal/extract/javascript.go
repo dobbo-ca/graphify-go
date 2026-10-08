@@ -22,6 +22,10 @@ func extractJS(rel string, src []byte, langPtr unsafe.Pointer) Result {
 	for i := uint(0); i < root.ChildCount(); i++ {
 		b.jsStatement(root.Child(i), src)
 	}
+	walk(root, func(c *ts.Node) bool {
+		b.jsCallImport(c, src)
+		return true
+	})
 	b.jsRationale(src)
 	return b.res
 }
@@ -32,6 +36,9 @@ func (b *builder) jsStatement(n *ts.Node, src []byte) {
 	case "export_statement":
 		if d := n.ChildByFieldName("declaration"); d != nil {
 			b.jsStatement(d, src)
+		}
+		if s := n.ChildByFieldName("source"); s != nil {
+			b.impTyped(unquote(s.Utf8Text(src)), line(n), jsTypeOnlyImport(n))
 		}
 	case "import_statement":
 		if s := n.ChildByFieldName("source"); s != nil {
@@ -45,11 +52,31 @@ func (b *builder) jsStatement(n *ts.Node, src []byte) {
 		b.jsNamedType(n, src)
 	case "lexical_declaration", "variable_declaration":
 		b.jsVarFuncs(n, src)
+	case "expression_statement":
+		b.jsMemberAssign(n, src)
 	}
 }
 
-// jsTypeOnlyImport reports whether an import_statement is a whole-statement
-// `import type { T } from "m"`. The `type` keyword is a direct child only in
+// jsCallImport records `require("m")` and dynamic `import("m")` as imports.
+// Only a lone string literal counts; a computed spec names no file.
+func (b *builder) jsCallImport(n *ts.Node, src []byte) {
+	if n.Kind() != "call_expression" {
+		return
+	}
+	fn, args := n.ChildByFieldName("function"), n.ChildByFieldName("arguments")
+	if fn == nil || args == nil || args.NamedChildCount() != 1 {
+		return
+	}
+	if fn.Kind() != "import" && (fn.Kind() != "identifier" || fn.Utf8Text(src) != "require") {
+		return
+	}
+	if a := args.NamedChild(0); a.Kind() == "string" {
+		b.imp(unquote(a.Utf8Text(src)), line(n))
+	}
+}
+
+// jsTypeOnlyImport reports whether an import or re-export statement is a
+// whole-statement `import type { T } from "m"`. The `type` keyword is a direct child only in
 // that form; for a mixed `import { type A, B }` tree-sitter nests it inside the
 // specifier, so a direct-child check keeps mixed imports as value imports.
 func jsTypeOnlyImport(n *ts.Node) bool {
@@ -91,7 +118,7 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 	}
 	for i := uint(0); i < body.ChildCount(); i++ {
 		m := body.Child(i)
-		if m.Kind() != "method_definition" {
+		if m.Kind() != "method_definition" && m.Kind() != "abstract_method_signature" {
 			continue
 		}
 		mname := fieldText(m, "name", src)
@@ -104,7 +131,7 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 			Source: classID, Target: mid, Relation: "contains",
 			Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
 		})
-		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
+		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file, Abstract: m.Kind() == "abstract_method_signature"})
 		b.jsCalls(m.ChildByFieldName("body"), mid, src)
 	}
 }
@@ -139,6 +166,32 @@ func (b *builder) jsVarFuncs(n *ts.Node, src []byte) {
 	}
 }
 
+// jsMemberAssign captures `obj.name = function () {}` / `() => {}`, named by
+// the property.
+func (b *builder) jsMemberAssign(n *ts.Node, src []byte) {
+	if n.NamedChildCount() == 0 {
+		return
+	}
+	a := n.NamedChild(0)
+	if a.Kind() != "assignment_expression" {
+		return
+	}
+	l, r := a.ChildByFieldName("left"), a.ChildByFieldName("right")
+	if l == nil || r == nil || l.Kind() != "member_expression" {
+		return
+	}
+	if k := r.Kind(); k != "arrow_function" && k != "function_expression" && k != "function" {
+		return
+	}
+	name := fieldText(l, "property", src)
+	if degenerateName(name) {
+		return
+	}
+	id := idutil.MakeID(b.stem, name)
+	b.def(id, name, name+"()", line(n))
+	b.jsCalls(r.ChildByFieldName("body"), id, src)
+}
+
 func (b *builder) jsCalls(body *ts.Node, callerID string, src []byte) {
 	if body == nil {
 		return
@@ -156,7 +209,7 @@ func (b *builder) jsCalls(body *ts.Node, callerID string, src []byte) {
 			b.call(callerID, fn.Utf8Text(src), line(c))
 		case "member_expression":
 			if p := fn.ChildByFieldName("property"); p != nil {
-				b.call(callerID, p.Utf8Text(src), line(c))
+				b.callRecv(callerID, p.Utf8Text(src), recvText(fn, p, src), line(c))
 			}
 		}
 		return true

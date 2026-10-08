@@ -1,6 +1,7 @@
 package extract
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -53,5 +54,40 @@ func TestExtractJSRationale(t *testing.T) {
 	}
 	if !citesOK {
 		t.Errorf("expected cites edge %s -> %s", fileID, docRefID)
+	}
+}
+
+// CommonJS require, re-exports and dynamic import each link to the target file.
+func TestJSImportFormsResolveToFiles(t *testing.T) {
+	cases := []struct{ name, src string }{
+		{"require", "const lib = require('./lib');\n"},
+		{"nested require", "function f() {\n  return require(\"./lib\").x;\n}\n"},
+		{"export star", "export * from './lib';\n"},
+		{"export named", "export { thing } from './lib';\n"},
+		{"dynamic import", "async function f() {\n  const m = await import('./lib');\n}\n"},
+	}
+	for _, c := range cases {
+		got := importEdges(map[string]string{"src/a.ts": c.src, "src/lib.ts": "export const thing = 1;\n"}, nil)
+		if want := []string{"src_a_ts imports_from src_lib_ts"}; !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: got %v, want %v", c.name, got, want)
+		}
+	}
+	// Not imports: a computed spec, a method named require, a plain export.
+	src := "const a = require(name);\nconst b = obj.require('./lib');\nexport { b };\n"
+	if got := importEdges(map[string]string{"src/a.js": src, "src/lib.js": ""}, nil); len(got) != 0 {
+		t.Errorf("non-imports: got %v, want none", got)
+	}
+}
+
+// `export type { T } from` is type-only, like `import type`.
+func TestJSReExportTypeOnly(t *testing.T) {
+	for src, want := range map[string]bool{
+		"export type { T } from './lib';\n": true,
+		"export { T } from './lib';\n":      false,
+	} {
+		imps := FileFromBytes("a.ts", []byte(src)).Imps
+		if len(imps) != 1 || imps[0].TypeOnly != want {
+			t.Errorf("%q: got %+v, want one import with TypeOnly=%v", src, imps, want)
+		}
 	}
 }

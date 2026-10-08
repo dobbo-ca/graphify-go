@@ -385,3 +385,52 @@ func TestCollectFilesSkipsRenamedGraphifyOut(t *testing.T) {
 		t.Errorf("expected only main.go, got %v", files)
 	}
 }
+
+func TestCollectFilesSkipsNestedWorktrees(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "main.go"), "package main\n")
+	mustWrite(t, filepath.Join(root, ".claude", "worktrees", "x", "a.go"), "package a\n")
+	mustWrite(t, filepath.Join(root, "linked", ".git"), "gitdir: /elsewhere\n")
+	mustWrite(t, filepath.Join(root, "linked", "b.go"), "package b\n")
+	mustWrite(t, filepath.Join(root, ".claude", "workflows", "w.md"), "# w\n")
+	mustWrite(t, filepath.Join(root, ".github", "g.md"), "# g\n")
+
+	files, err := CollectFiles(root)
+	if err != nil {
+		t.Fatalf("CollectFiles: %v", err)
+	}
+	got := map[string]bool{}
+	for _, f := range files {
+		got[filepath.ToSlash(f)] = true
+	}
+	for _, bad := range []string{".claude/worktrees/x/a.go", "linked/b.go"} {
+		if got[bad] {
+			t.Errorf("%s should be skipped", bad)
+		}
+	}
+	for _, want := range []string{"main.go", ".claude/workflows/w.md", ".github/g.md"} {
+		if !got[want] {
+			t.Errorf("%s should be indexed: %v", want, files)
+		}
+	}
+}
+
+func TestCollectFilesKeepsTopLevelWorktreesRelativeRoot(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "m.go"), "package m\n")
+	mustWrite(t, filepath.Join(root, "worktrees", "t.go"), "package t\n")
+	mustWrite(t, filepath.Join(root, ".claude", "worktrees", "x", "a.go"), "package a\n")
+	t.Chdir(root)
+
+	files, err := CollectFiles(".")
+	if err != nil {
+		t.Fatalf("CollectFiles: %v", err)
+	}
+	got := map[string]bool{}
+	for _, f := range files {
+		got[filepath.ToSlash(f)] = true
+	}
+	if !got["worktrees/t.go"] || got[".claude/worktrees/x/a.go"] {
+		t.Errorf("unexpected files: %v", files)
+	}
+}

@@ -205,12 +205,20 @@ func isConfigJSON(rel string, obj *ts.Node, src []byte) bool {
 			return true
 		}
 	}
+	rootKeys := map[string]bool{}
 	for i := uint(0); i < obj.ChildCount(); i++ {
 		child := obj.Child(i)
 		if child == nil || child.Kind() != "pair" {
 			continue
 		}
-		if configJSONKeys[jsonKeyText(child, src)] {
+		rootKeys[jsonKeyText(child, src)] = true
+	}
+	// A JSON Schema document is not a config manifest.
+	if rootKeys["$schema"] && (rootKeys["$defs"] || rootKeys["definitions"] || rootKeys["$id"]) {
+		return false
+	}
+	for k := range rootKeys {
+		if configJSONKeys[k] {
 			return true
 		}
 	}

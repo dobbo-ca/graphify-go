@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -278,8 +280,24 @@ func (s *mcpServer) toolQueryGraph(args map[string]any) string {
 	return query.Ask(s.g, question, dfs, depth, budget, argStrings(args, "context_filter"))
 }
 
+const nodeArgHelp = "Provide a node label or id (accepted keys: label, node_id, id)."
+
+// nodeArg returns the first non-empty of label, node_id, id; clients
+// echo get_node's "ID:" back under those names.
+func nodeArg(args map[string]any) string {
+	for _, k := range []string{"label", "node_id", "id"} {
+		if v := argString(args, k); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 func (s *mcpServer) toolGetNode(args map[string]any) string {
-	label := argString(args, "label")
+	label := nodeArg(args)
+	if label == "" {
+		return nodeArgHelp
+	}
 	ex, err := query.Explain(s.g, label)
 	if err != nil {
 		return explainError(label, err)
@@ -300,7 +318,10 @@ func (s *mcpServer) toolGetNode(args map[string]any) string {
 }
 
 func (s *mcpServer) toolGetNeighbors(args map[string]any) string {
-	label := argString(args, "label")
+	label := nodeArg(args)
+	if label == "" {
+		return nodeArgHelp
+	}
 	ex, err := query.Explain(s.g, label)
 	if err != nil {
 		return explainError(label, err)
@@ -426,7 +447,45 @@ func (s *mcpServer) toolGraphStats(map[string]any) string {
 	if u := s.g.UnclassifiedSummary(); u != "" {
 		out += u + "\n"
 	}
-	return out
+	return out + commitLine(s.g)
+}
+
+var shaRe = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
+
+// commitLine tells a client whether the graph still matches the repo. A graph
+// built at an ancestor of HEAD is fresh when nothing outside the graph dir
+// changed since: CI commits the regenerated graph on top of the build commit.
+func commitLine(g *query.Graph) string {
+	built := g.BuiltAtCommit
+	// graph.json is untrusted: only a sha reaches git and the client.
+	if !shaRe.MatchString(built) {
+		return ""
+	}
+	dir := filepath.Dir(g.Path)
+	head := gitHead(dir)
+	if head == "" {
+		return "Built at commit: " + built + "\n"
+	}
+	git := func(a ...string) bool {
+		return exec.Command("git", append([]string{"-C", dir}, a...)...).Run() == nil
+	}
+	// Only a graphify-out dir is safe to exclude: any other dir may hold source.
+	spec := []string{":/"}
+	if filepath.Base(dir) == "graphify-out" {
+		spec = append(spec, ":(exclude).")
+	}
+	if built == head ||
+		(git("merge-base", "--is-ancestor", built, head) &&
+			git(append([]string{"diff", "--quiet", built, head, "--"}, spec...)...)) {
+		return "Built at commit: " + built + " (matches HEAD)\n"
+	}
+	short := func(s string) string {
+		if len(s) > 7 {
+			return s[:7]
+		}
+		return s
+	}
+	return fmt.Sprintf("HEAD is %s, graph built at %s: graph may be stale\n", short(head), short(built))
 }
 
 func (s *mcpServer) toolShortestPath(args map[string]any) string {
@@ -546,14 +605,15 @@ func toolDefs() []map[string]any {
 			}, "question")},
 		{"name": "get_node",
 			"description": "Get full details for a specific node by label or ID.",
-			"inputSchema": obj(map[string]any{"label": str}, "label")},
+			"inputSchema": obj(map[string]any{"label": str, "node_id": str})},
 		{"name": "get_neighbors",
 			"description": "Get all direct neighbors of a node with edge details.",
 			"inputSchema": obj(map[string]any{
 				"label":           str,
+				"node_id":         str,
 				"relation_filter": map[string]any{"type": "string", "description": "Optional: filter by relation type"},
 				"token_budget":    map[string]any{"type": "integer", "description": "Max output tokens (default 2000)"},
-			}, "label")},
+			})},
 		{"name": "get_community",
 			"description": "Get all nodes in a community by community ID.",
 			"inputSchema": obj(map[string]any{

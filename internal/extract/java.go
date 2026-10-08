@@ -127,7 +127,7 @@ func (b *builder) javaCalls(body *ts.Node, callerID string, src []byte) {
 			return true
 		}
 		if name := c.ChildByFieldName("name"); name != nil {
-			b.call(callerID, name.Utf8Text(src), line(c))
+			b.callRecv(callerID, name.Utf8Text(src), recvText(c, name, src), line(c))
 		}
 		return true
 	})

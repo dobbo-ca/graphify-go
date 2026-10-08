@@ -20,6 +20,7 @@ func extractPython(rel string, src []byte) Result {
 	root, done := parseRoot(src, tspy.Language())
 	defer done()
 	b := newBuilder(rel)
+	b.pyMods = pyModules(root, src)
 
 	for i := uint(0); i < root.ChildCount(); i++ {
 		b.pyStatement(root.Child(i), src)
@@ -39,8 +40,31 @@ func (b *builder) pyStatement(n *ts.Node, src []byte) {
 		b.pyFunc(n, src)
 	case "class_definition":
 		b.pyClass(n, src)
-	case "import_statement", "import_from_statement", "future_import_statement":
-		b.pyImports(n, src)
+	case "import_statement", "import_from_statement", "if_statement", "try_statement", "with_statement":
+		b.pyNestedImports(n, src, false)
+	}
+}
+
+// pyNestedImports records the imports under n, including ones guarded by an
+// if/try/with block. Imports in the body of `if TYPE_CHECKING:` (or
+// `<x>.TYPE_CHECKING`) never run, so they are type-only; else branches are not.
+func (b *builder) pyNestedImports(n *ts.Node, src []byte, typeOnly bool) {
+	guard := false
+	switch n.Kind() {
+	case "import_statement", "import_from_statement":
+		b.pyImports(n, src, typeOnly)
+		return
+	case "function_definition", "class_definition", "decorated_definition":
+		return
+	case "if_statement", "elif_clause":
+		cond := n.ChildByFieldName("condition")
+		if cond != nil && cond.Kind() == "attribute" {
+			cond = cond.ChildByFieldName("attribute")
+		}
+		guard = cond != nil && cond.Kind() == "identifier" && cond.Utf8Text(src) == "TYPE_CHECKING"
+	}
+	for i := uint(0); i < n.ChildCount(); i++ {
+		b.pyNestedImports(n.Child(i), src, typeOnly || guard && n.FieldNameForChild(uint32(i)) == "consequence")
 	}
 }
 
@@ -51,7 +75,7 @@ func (b *builder) pyFunc(n *ts.Node, src []byte) {
 	}
 	id := idutil.MakeID(b.stem, name)
 	b.def(id, name, name+"()", line(n))
-	b.pyCalls(n.ChildByFieldName("body"), id, src)
+	b.pyCalls(n, id, pyLocalTypes(n, src), src)
 }
 
 func (b *builder) pyClass(n *ts.Node, src []byte) {
@@ -89,24 +113,24 @@ func (b *builder) pyClass(n *ts.Node, src []byte) {
 			Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
 		})
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
-		b.pyCalls(m.ChildByFieldName("body"), mid, src)
+		b.pyCalls(m, mid, pyLocalTypes(m, src), src)
 	}
 }
 
 // pyImports records each imported module. `import a.b` and `from a.b import c`
-// both record the module path a.b; the dotted name resolves to an external
-// dependency node (Python relative imports stay external for now).
-func (b *builder) pyImports(n *ts.Node, src []byte) {
+// both record the module path a.b; a from-import also keeps its imported names,
+// since `from . import b` names a module. Resolve binds them to corpus files.
+func (b *builder) pyImports(n *ts.Node, src []byte, typeOnly bool) {
 	switch n.Kind() {
-	case "import_statement", "future_import_statement":
+	case "import_statement":
 		for i := uint(0); i < n.ChildCount(); i++ {
 			c := n.Child(i)
 			switch c.Kind() {
 			case "dotted_name":
-				b.imp(c.Utf8Text(src), line(n))
+				b.impTyped(c.Utf8Text(src), line(n), typeOnly)
 			case "aliased_import":
 				if name := c.ChildByFieldName("name"); name != nil {
-					b.imp(name.Utf8Text(src), line(n))
+					b.impTyped(name.Utf8Text(src), line(n), typeOnly)
 				}
 			}
 		}
@@ -115,7 +139,20 @@ func (b *builder) pyImports(n *ts.Node, src []byte) {
 		if mod == nil {
 			return
 		}
-		b.imp(mod.Utf8Text(src), line(n))
+		b.impTyped(mod.Utf8Text(src), line(n), typeOnly)
+		imp := &b.res.Imps[len(b.res.Imps)-1]
+		for i := uint(0); i < n.ChildCount(); i++ {
+			if n.FieldNameForChild(uint32(i)) != "name" {
+				continue
+			}
+			c := n.Child(i)
+			if c.Kind() == "aliased_import" {
+				c = c.ChildByFieldName("name")
+			}
+			if c != nil {
+				imp.Names = append(imp.Names, c.Utf8Text(src))
+			}
+		}
 		b.pyImportAliases(n, mod, src)
 	}
 }
@@ -167,13 +204,201 @@ func pyModuleStem(mod *ts.Node, src []byte) string {
 	return text
 }
 
-// pyCalls walks a function body and records each call site. Direct calls
-// (`f()`) record the identifier; attribute calls (`x.f()`) record the
-// attribute name.
-func (b *builder) pyCalls(body *ts.Node, callerID string, src []byte) {
+// pyClassName matches a bare capitalized name, the only annotation or callee
+// taken as a class.
+var pyClassName = regexp.MustCompile(`^[A-Z]\w*$`)
+
+// pyLocalTypes maps the locals of function fn to their class, from a parameter
+// annotation (`c: Client`) or a constructor binding (`c = Client()`). A local
+// also bound by anything else (assignment, unpacking, for, with, except, `:=`)
+// maps to "".
+// ponytail: one flat scope per function, nested defs are not tracked; add
+// scopes if a repo shows wrong edges.
+func pyLocalTypes(fn *ts.Node, src []byte) map[string]string {
+	types := map[string]string{}
+	// untype clears every name a binding target rebinds.
+	var untype func(n *ts.Node)
+	untype = func(n *ts.Node) {
+		if n == nil {
+			return
+		}
+		switch n.Kind() {
+		case "identifier":
+			bindType(types, n.Utf8Text(src), "")
+		case "pattern_list", "tuple_pattern", "list_pattern", "list_splat_pattern", "as_pattern_target":
+			for i := uint(0); i < n.NamedChildCount(); i++ {
+				untype(n.NamedChild(i))
+			}
+		}
+	}
+	walk(fn, func(c *ts.Node) bool {
+		var name *ts.Node
+		switch c.Kind() {
+		case "typed_parameter":
+			name = c.NamedChild(0)
+		case "typed_default_parameter":
+			name = c.ChildByFieldName("name")
+		case "assignment":
+			name = c.ChildByFieldName("left")
+			if name != nil && name.Kind() != "identifier" {
+				untype(name)
+			}
+		case "for_statement", "for_in_clause":
+			untype(c.ChildByFieldName("left"))
+		case "as_pattern_target":
+			untype(c)
+		case "named_expression":
+			untype(c.ChildByFieldName("name"))
+		}
+		if name == nil || name.Kind() != "identifier" {
+			return true
+		}
+		typ := fieldText(c, "type", src)
+		if r := c.ChildByFieldName("right"); typ == "" && r != nil {
+			if r.Kind() == "none" {
+				return true
+			}
+			if r.Kind() == "call" {
+				typ = fieldText(r, "function", src)
+			}
+		}
+		if !pyClassName.MatchString(typ) {
+			typ = ""
+		}
+		bindType(types, name.Utf8Text(src), typ)
+		return true
+	})
+	return types
+}
+
+// pyModules maps each local name bound by exactly one module-level `import x`
+// or `import x as y`, and bound nowhere else at module scope, to its module.
+func pyModules(root *ts.Node, src []byte) map[string]string {
+	mods, bound := map[string]string{}, map[string]bool{}
+	for i := uint(0); i < root.ChildCount(); i++ {
+		st := root.Child(i)
+		if st.Kind() != "import_statement" {
+			pyBinds(st, src, false, bound)
+			continue
+		}
+		for j := uint(0); j < st.ChildCount(); j++ {
+			c := st.Child(j)
+			local, spec := "", ""
+			switch c.Kind() {
+			case "dotted_name":
+				// `import a.b` binds a, which is not the module imported.
+				local = c.NamedChild(0).Utf8Text(src)
+				if c.NamedChildCount() == 1 {
+					spec = local
+				}
+			case "aliased_import":
+				local, spec = fieldText(c, "alias", src), fieldText(c, "name", src)
+			default:
+				continue
+			}
+			if _, dup := mods[local]; dup || spec == "" {
+				bound[local] = true
+			}
+			mods[local] = spec
+		}
+	}
+	// `from m import *` can bind any name.
+	if bound["*"] {
+		return nil
+	}
+	for name := range bound {
+		delete(mods, name)
+	}
+	return mods
+}
+
+// pyBinds adds the names bound under n to bound. Unless deep, the body of a
+// def, class or lambda is skipped: it is another scope, and only a `global`
+// reaches out of it.
+func pyBinds(n *ts.Node, src []byte, deep bool, bound map[string]bool) {
+	walk(n, func(c *ts.Node) bool {
+		switch c.Kind() {
+		case "function_definition", "class_definition", "lambda":
+			pyTargets(c.ChildByFieldName("name"), src, bound)
+			if !deep {
+				walk(c, func(g *ts.Node) bool {
+					if g.Kind() == "global_statement" {
+						pyTargets(g, src, bound)
+					}
+					return true
+				})
+				return false
+			}
+		case "parameters", "lambda_parameters":
+			for i := uint(0); i < c.NamedChildCount(); i++ {
+				p := c.NamedChild(i)
+				if name := p.ChildByFieldName("name"); name != nil {
+					p = name
+				} else if p.Kind() == "typed_parameter" {
+					p = p.NamedChild(0)
+				}
+				pyTargets(p, src, bound)
+			}
+		case "assignment", "augmented_assignment", "for_statement", "for_in_clause":
+			pyTargets(c.ChildByFieldName("left"), src, bound)
+		case "named_expression":
+			pyTargets(c.ChildByFieldName("name"), src, bound)
+		case "as_pattern":
+			pyTargets(c.ChildByFieldName("alias"), src, bound)
+		case "global_statement", "nonlocal_statement", "delete_statement", "case_pattern":
+			pyTargets(c, src, bound)
+		case "import_statement", "import_from_statement":
+			for i := uint(0); i < c.ChildCount(); i++ {
+				if c.FieldNameForChild(uint32(i)) != "name" {
+					continue
+				}
+				// `import a.b` binds a alone.
+				name := c.Child(i)
+				if alias := name.ChildByFieldName("alias"); alias != nil {
+					name = alias
+				} else {
+					name = name.NamedChild(0)
+				}
+				pyTargets(name, src, bound)
+			}
+		case "wildcard_import":
+			bound["*"] = true
+		}
+		return true
+	})
+}
+
+// pyTargets adds the names an assignment target t rebinds or mutates: the
+// identifiers of a pattern, and the root object of an attribute or subscript.
+func pyTargets(t *ts.Node, src []byte, bound map[string]bool) {
+	if t == nil {
+		return
+	}
+	switch t.Kind() {
+	case "identifier":
+		bound[t.Utf8Text(src)] = true
+	case "attribute":
+		pyTargets(t.ChildByFieldName("object"), src, bound)
+	case "subscript":
+		pyTargets(t.ChildByFieldName("value"), src, bound)
+	default:
+		for i := uint(0); i < t.NamedChildCount(); i++ {
+			pyTargets(t.NamedChild(i), src, bound)
+		}
+	}
+}
+
+// pyCalls walks the body of function fn and records each call site. Direct
+// calls (`f()`) record the identifier; attribute calls (`x.f()`) record the
+// attribute name, with the receiver's class in place of a typed local.
+func (b *builder) pyCalls(fn *ts.Node, callerID string, types map[string]string, src []byte) {
+	body := fn.ChildByFieldName("body")
 	if body == nil {
 		return
 	}
+	bound := map[string]bool{}
+	pyBinds(fn.ChildByFieldName("parameters"), src, true, bound)
+	pyBinds(body, src, true, bound)
 	walk(body, func(c *ts.Node) bool {
 		if c.Kind() != "call" {
 			return true
@@ -187,7 +412,19 @@ func (b *builder) pyCalls(body *ts.Node, callerID string, src []byte) {
 			b.call(callerID, fn.Utf8Text(src), line(c))
 		case "attribute":
 			if a := fn.ChildByFieldName("attribute"); a != nil {
-				b.callMember(callerID, a.Utf8Text(src), line(c))
+				recv := recvText(fn, a, src)
+				mod := b.pyMods[recv]
+				if bound[recv] {
+					mod = ""
+				}
+				if t := types[recv]; t != "" {
+					recv = t
+				}
+				n := len(b.res.Calls)
+				b.callRecv(callerID, a.Utf8Text(src), recv, line(c))
+				if len(b.res.Calls) > n {
+					b.res.Calls[n].Module = mod
+				}
 			}
 		}
 		return true

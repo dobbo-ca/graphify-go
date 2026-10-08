@@ -1,6 +1,8 @@
 package extract
 
 import (
+	"strings"
+
 	ts "github.com/tree-sitter/go-tree-sitter"
 	tsphp "github.com/tree-sitter/tree-sitter-php/bindings/go"
 
@@ -104,6 +106,9 @@ func (b *builder) phpUse(n *ts.Node, src []byte) {
 	}
 }
 
+// phpConstructs are language constructs that parse like calls.
+var phpConstructs = map[string]bool{"array": true, "die": true, "empty": true, "eval": true, "exit": true, "isset": true, "list": true, "unset": true}
+
 // phpCalls walks a function/method body and records each call site. Direct
 // calls (`f()`), method calls (`$x->f()`, `$x?->f()`), and static calls
 // (`C::f()`) all record the trailing simple name.
@@ -115,11 +120,13 @@ func (b *builder) phpCalls(body *ts.Node, callerID string, src []byte) {
 		switch c.Kind() {
 		case "function_call_expression":
 			if fn := c.ChildByFieldName("function"); fn != nil {
-				b.call(callerID, phpName(fn, src), line(c))
+				if name := phpName(fn, src); !phpConstructs[strings.ToLower(name)] {
+					b.call(callerID, name, line(c))
+				}
 			}
 		case "member_call_expression", "nullsafe_member_call_expression", "scoped_call_expression":
 			if nm := c.ChildByFieldName("name"); nm != nil && nm.Kind() == "name" {
-				b.call(callerID, nm.Utf8Text(src), line(c))
+				b.callRecv(callerID, nm.Utf8Text(src), recvText(c, nm, src), line(c))
 			}
 		}
 		return true
