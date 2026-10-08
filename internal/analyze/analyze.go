@@ -6,6 +6,7 @@ package analyze
 
 import (
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -164,7 +165,7 @@ type Cycle struct {
 // from imports_from edges. Cycles are bounded in length and deduplicated by
 // rotation, shortest first.
 func ImportCycles(g *model.Graph, maxLen, topN int) []Cycle {
-	adj := map[string][]string{}
+	raw := map[string][]string{}
 	for _, e := range g.Edges() {
 		// Type-only imports are erased at compile time, so they cannot form a
 		// runtime cycle (upstream find_import_cycles skips them too).
@@ -175,41 +176,93 @@ func ImportCycles(g *model.Graph, maxLen, topN int) []Cycle {
 		if uf == "" || vf == "" || uf == vf {
 			continue
 		}
-		adj[uf] = append(adj[uf], vf)
+		raw[uf] = append(raw[uf], vf)
 	}
-	seen := map[string]bool{}
-	var cycles []Cycle
-	starts := make([]string, 0, len(adj))
-	for s := range adj {
-		starts = append(starts, s)
+	// Files become ints in sorted order, so int order is name order.
+	names := make([]string, 0, len(raw))
+	for s, vs := range raw {
+		names = append(names, s)
+		names = append(names, vs...)
 	}
-	sort.Strings(starts)
+	sort.Strings(names)
+	names = slices.Compact(names)
+	idx := make(map[string]int32, len(names))
+	for i, s := range names {
+		idx[s] = int32(i)
+	}
+	n := len(names)
+	adj, radj := make([][]int32, n), make([][]int32, n)
+	for s, vs := range raw {
+		u := idx[s]
+		for _, v := range vs {
+			adj[u] = append(adj[u], idx[v])
+		}
+		slices.Sort(adj[u])
+		adj[u] = slices.Compact(adj[u])
+		for _, v := range adj[u] {
+			radj[v] = append(radj[v], u)
+		}
+	}
+	comp := scc(adj)
 
-	var dfs func(start, cur string, path []string, visited map[string]bool)
-	dfs = func(start, cur string, path []string, visited map[string]bool) {
+	var cycles []Cycle
+	visited := make([]bool, n)
+	dist := make([]int32, n) // edges back to start, valid when stamp matches
+	stamp := make([]int32, n)
+	var queue, path []int32
+	var start int32
+	var dfs func(cur int32)
+	dfs = func(cur int32) {
 		if len(path) > maxLen || len(cycles) >= topN*10 {
 			return
 		}
-		nbrs := append([]string(nil), adj[cur]...)
-		sort.Strings(nbrs)
-		for _, nb := range nbrs {
-			if nb == start && len(path) >= 2 {
-				if key := rotateKey(path); !seen[key] {
-					seen[key] = true
-					cycles = append(cycles, Cycle{Files: append([]string(nil), path...)})
+		for _, nb := range adj[cur] {
+			if nb == start {
+				if len(path) >= 2 {
+					files := make([]string, len(path))
+					for i, p := range path {
+						files[i] = names[p]
+					}
+					cycles = append(cycles, Cycle{Files: files})
 				}
 				continue
 			}
-			if nb > start || visited[nb] { // only explore nodes >= start to avoid duplicate rotations
+			// The start is the largest file of its cycle, so each rotation is
+			// found once. Skip nodes that cannot close the cycle within maxLen.
+			if nb > start || visited[nb] || stamp[nb] != start+1 || len(path)+int(dist[nb]) > maxLen {
 				continue
 			}
 			visited[nb] = true
-			dfs(start, nb, append(path, nb), visited)
+			path = append(path, nb)
+			dfs(nb)
+			path = path[:len(path)-1]
 			visited[nb] = false
 		}
 	}
-	for _, s := range starts {
-		dfs(s, s, []string{s}, map[string]bool{s: true})
+	for s := 0; s < n && len(cycles) < topN*10; s++ {
+		start = int32(s)
+		// Reverse BFS inside the start's component: a cycle never leaves it.
+		queue = append(queue[:0], start)
+		stamp[s], dist[s] = start+1, 0
+		for h := 0; h < len(queue); h++ {
+			v := queue[h]
+			if int(dist[v]) >= maxLen {
+				continue
+			}
+			for _, u := range radj[v] {
+				if u < start && comp[u] == comp[s] && stamp[u] != start+1 {
+					stamp[u], dist[u] = start+1, dist[v]+1
+					queue = append(queue, u)
+				}
+			}
+		}
+		if len(queue) == 1 {
+			continue
+		}
+		visited[s] = true
+		path = append(path[:0], start)
+		dfs(start)
+		visited[s] = false
 	}
 	sort.SliceStable(cycles, func(i, j int) bool { return len(cycles[i].Files) < len(cycles[j].Files) })
 	if len(cycles) > topN {
@@ -218,15 +271,61 @@ func ImportCycles(g *model.Graph, maxLen, topN int) []Cycle {
 	return cycles
 }
 
-func rotateKey(path []string) string {
-	min, idx := path[0], 0
-	for i, p := range path {
-		if p < min {
-			min, idx = p, i
+// scc is Tarjan's algorithm with an explicit stack; it returns a component id
+// per node.
+func scc(adj [][]int32) []int32 {
+	n := len(adj)
+	comp, low, num := make([]int32, n), make([]int32, n), make([]int32, n)
+	for i := range comp {
+		comp[i] = -1
+	}
+	var st []int32
+	type frame struct{ v, i int32 }
+	var cnt, nc int32
+	for r := 0; r < n; r++ {
+		if num[r] != 0 {
+			continue
+		}
+		cnt++
+		num[r], low[r] = cnt, cnt
+		st = append(st, int32(r))
+		call := []frame{{int32(r), 0}}
+		for len(call) > 0 {
+			f := &call[len(call)-1]
+			v := f.v
+			if int(f.i) < len(adj[v]) {
+				w := adj[v][f.i]
+				f.i++
+				if num[w] == 0 {
+					cnt++
+					num[w], low[w] = cnt, cnt
+					st = append(st, w)
+					call = append(call, frame{w, 0})
+				} else if comp[w] == -1 && num[w] < low[v] {
+					low[v] = num[w]
+				}
+				continue
+			}
+			call = call[:len(call)-1]
+			if len(call) > 0 {
+				if p := call[len(call)-1].v; low[v] < low[p] {
+					low[p] = low[v]
+				}
+			}
+			if low[v] == num[v] {
+				for {
+					w := st[len(st)-1]
+					st = st[:len(st)-1]
+					comp[w] = nc
+					if w == v {
+						break
+					}
+				}
+				nc++
+			}
 		}
 	}
-	rot := append(append([]string(nil), path[idx:]...), path[:idx]...)
-	return strings.Join(rot, "\x00")
+	return comp
 }
 
 func isFileNode(g *model.Graph, id string) bool {
