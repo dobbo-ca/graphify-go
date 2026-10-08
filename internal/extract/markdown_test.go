@@ -137,6 +137,8 @@ func TestResolveMDTarget(t *testing.T) {
 	corpus := map[string]bool{
 		"index.md":         true,
 		"tables/orders.md": true,
+		"a%20b.md":         true,
+		"c d.md":           true,
 	}
 	tests := []struct {
 		name, from, target, want string
@@ -149,6 +151,8 @@ func TestResolveMDTarget(t *testing.T) {
 		{"mailto ignored", "index.md", "mailto:a@b.com", ""},
 		{"in-page anchor only", "index.md", "#section", ""},
 		{"off corpus", "index.md", "/missing.md", ""},
+		{"literal percent name", "index.md", "a%20b", "a%20b.md"},
+		{"escaped fallback", "index.md", "c%20d.md", "c d.md"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -332,5 +336,28 @@ func TestResolveQualifiedCodeSymbol(t *testing.T) {
 	}
 	if refs != 2 {
 		t.Errorf("references edges from notes = %d, want 2", refs)
+	}
+}
+
+// TestMarkdownSpacedAndEscapedLinks covers angle-bracket and percent-encoded
+// link targets plus the escaped-pipe wikilink alias used inside tables.
+func TestMarkdownSpacedAndEscapedLinks(t *testing.T) {
+	for _, doc := range []string{
+		"[a](<My Note.md>)\n",
+		"[b](My%20Note.md)\n",
+		"| [[My Note\\|alias]] |\n",
+	} {
+		r := extractMarkdown("notes.md", []byte(doc))
+		note := extractMarkdown("My Note.md", []byte("# N\n"))
+		ext := Resolve([]Result{r, note}, []string{"notes.md", "My Note.md"})
+		found := false
+		for _, e := range ext.Edges {
+			if e.Relation == "references" && e.Source == "notes" && e.Target == note.Nodes[0].ID {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%q: no references edge to My Note.md; refs=%+v", doc, r.MDRefs)
+		}
 	}
 }

@@ -1,6 +1,7 @@
 package extract
 
 import (
+	"net/url"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -573,6 +574,17 @@ func resolveMDTarget(fromFile, target string, corpus map[string]bool) string {
 	if target == "" || isExternalLink(target) {
 		return ""
 	}
+	// Raw first so literal %XX note names (and wikilinks) stay verbatim.
+	if hit := lookupMD(fromFile, target, corpus); hit != "" {
+		return hit
+	}
+	if u, err := url.PathUnescape(target); err == nil && u != target {
+		return lookupMD(fromFile, u, corpus)
+	}
+	return ""
+}
+
+func lookupMD(fromFile, target string, corpus map[string]bool) string {
 	var base string
 	if strings.HasPrefix(target, "/") {
 		base = path.Clean(strings.TrimPrefix(target, "/"))
