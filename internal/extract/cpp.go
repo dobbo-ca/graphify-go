@@ -117,7 +117,8 @@ func (b *builder) cppInclude(n *ts.Node, src []byte) {
 	spec := p.Utf8Text(src)
 	switch p.Kind() {
 	case "string_literal":
-		spec = trimDelims(spec, '"', '"')
+		b.impRel(trimDelims(spec, '"', '"'), line(n))
+		return
 	case "system_lib_string":
 		spec = trimDelims(spec, '<', '>')
 	}

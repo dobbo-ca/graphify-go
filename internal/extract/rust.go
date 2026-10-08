@@ -38,6 +38,9 @@ func (b *builder) rustItems(n *ts.Node, src []byte) {
 		case "mod_item":
 			if body := c.ChildByFieldName("body"); body != nil {
 				b.rustItems(body, src)
+			} else if name := fieldText(c, "name", src); name != "" {
+				// `mod x;` loads x.rs, so the file depends on it.
+				b.imp("self::"+name, line(c))
 			}
 		}
 	}
@@ -94,17 +97,31 @@ func (b *builder) rustImpl(n *ts.Node, src []byte) {
 }
 
 // rustUse records the module path of a `use` declaration as an import. Grouped
-// (`use a::{b, c}`) and aliased uses record the leading path.
+// (`use a::{b, c}`) and aliased uses record the leading path; the names bound
+// under it are kept too, since `use crate::a` names a module.
 func (b *builder) rustUse(n *ts.Node, src []byte) {
 	arg := n.ChildByFieldName("argument")
 	if arg == nil {
 		return
 	}
-	if p := arg.ChildByFieldName("path"); p != nil {
-		b.imp(p.Utf8Text(src), line(n))
+	p := arg.ChildByFieldName("path")
+	if p == nil {
+		b.imp(arg.Utf8Text(src), line(n))
 		return
 	}
-	b.imp(arg.Utf8Text(src), line(n))
+	b.imp(p.Utf8Text(src), line(n))
+	imp := &b.res.Imps[len(b.res.Imps)-1]
+	switch arg.Kind() {
+	case "scoped_identifier":
+		imp.Names = []string{fieldText(arg, "name", src)}
+	case "scoped_use_list":
+		list := arg.ChildByFieldName("list")
+		for i := uint(0); list != nil && i < list.ChildCount(); i++ {
+			if c := list.Child(i); c.Kind() == "identifier" || c.Kind() == "scoped_identifier" {
+				imp.Names = append(imp.Names, c.Utf8Text(src))
+			}
+		}
+	}
 }
 
 // rustTypeName returns a bare type name for impl targets, ignoring generic

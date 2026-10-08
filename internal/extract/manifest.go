@@ -53,6 +53,7 @@ func IntrospectManifests(root string) (Result, error) {
 	// Pass 1: parse each manifest, keyed by canonical package id (last one wins
 	// on a name collision — deterministic given the sorted file order).
 	modules := map[string]manifestInfo{}
+	goMods := map[string]string{}
 	for _, rel := range files {
 		eco, ok := manifestEcosystems[filepath.Base(rel)]
 		if !ok {
@@ -64,6 +65,9 @@ func IntrospectManifests(root string) (Result, error) {
 		}
 		id := idutil.MakeID("pkg", name)
 		modules[id] = manifestInfo{pkgID: id, name: name, rel: filepath.ToSlash(rel), deps: deps}
+		if eco == "go" {
+			goMods[filepath.ToSlash(filepath.Dir(rel))] = name
+		}
 	}
 
 	ids := make([]string, 0, len(modules))
@@ -72,7 +76,7 @@ func IntrospectManifests(root string) (Result, error) {
 	}
 	sort.Strings(ids)
 
-	var res Result
+	res := Result{GoMods: goMods}
 	// Module nodes first, then dependency stubs, for a deterministic node order.
 	for _, id := range ids {
 		m := modules[id]

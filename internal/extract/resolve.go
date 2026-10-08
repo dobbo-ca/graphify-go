@@ -40,12 +40,39 @@ func Resolve(results []Result, files []string) model.Extraction {
 		}
 	}
 
+	// Go import path -> the files of that package, for every .go file under a
+	// go.mod in the corpus (the nearest one above the file names its module).
+	goMods := map[string]string{}
+	for _, r := range results {
+		for dir, mod := range r.GoMods {
+			goMods[dir] = mod
+		}
+	}
+	goPkgs := map[string][]string{}
+	for _, f := range files {
+		f = filepath.ToSlash(f)
+		if len(goMods) == 0 || !strings.HasSuffix(f, ".go") {
+			continue
+		}
+		pkg := path.Dir(f)
+		for dir := pkg; ; dir = path.Dir(dir) {
+			if mod, ok := goMods[dir]; ok {
+				ip := path.Join(mod, strings.TrimPrefix(pkg, strings.TrimPrefix(dir, ".")))
+				goPkgs[ip] = append(goPkgs[ip], f)
+				break
+			}
+			if dir == "." || dir == "/" {
+				break
+			}
+		}
+	}
+
 	// For each file, the corpus files it imports — used to pick the right target
 	// when a called name is defined in more than one file.
 	importedFiles := map[string]map[string]bool{}
 	for _, r := range results {
 		for _, im := range r.Imps {
-			for _, target := range importTargets(im, corpus) {
+			for _, target := range importTargets(im, corpus, goPkgs) {
 				if importedFiles[im.File] == nil {
 					importedFiles[im.File] = map[string]bool{}
 				}
@@ -173,7 +200,7 @@ func Resolve(results []Result, files []string) model.Extraction {
 	impEdge := map[string]int{}
 	for _, r := range results {
 		for _, im := range r.Imps {
-			targets := importTargets(im, corpus)
+			targets := importTargets(im, corpus, goPkgs)
 			for _, target := range targets {
 				tgtID := idutil.MakeID(target)
 				if i, ok := impEdge[im.FileID+"\x00"+tgtID]; ok {
@@ -688,27 +715,99 @@ func unique(ids []string, pred func(string) bool) string {
 }
 
 // importTargets returns the corpus files an import binds to: at most one for a
-// path specifier, and for Python the module plus any imported name that is
-// itself a module (`from . import b`, `from pkg import submodule`).
-func importTargets(im Imp, corpus map[string]bool) []string {
+// path specifier, for Python the module plus any imported name that is itself a
+// module (`from . import b`, `from pkg import submodule`), for Rust the module
+// each used name lives in, and for Go every file of the imported package.
+func importTargets(im Imp, corpus map[string]bool, goPkgs map[string][]string) []string {
 	from := filepath.ToSlash(im.File)
-	if !strings.HasSuffix(from, ".py") {
-		if t := resolveRelImport(im.File, im.Spec, corpus); t != "" {
-			return []string{t}
-		}
-		return nil
-	}
 	var out []string
 	add := func(t string) {
 		if t != "" && t != from && !contains(out, t) {
 			out = append(out, t)
 		}
 	}
-	add(resolvePyModule(from, im.Spec, corpus))
-	for _, name := range im.Names {
-		add(resolvePyModule(from, strings.TrimSuffix(im.Spec, ".")+"."+name, corpus))
+	switch path.Ext(from) {
+	case ".py":
+		add(resolvePyModule(from, im.Spec, corpus))
+		for _, name := range im.Names {
+			add(resolvePyModule(from, strings.TrimSuffix(im.Spec, ".")+"."+name, corpus))
+		}
+	case ".rs":
+		if len(im.Names) == 0 {
+			add(resolveRustPath(from, im.Spec, corpus))
+		}
+		for _, name := range im.Names {
+			add(resolveRustPath(from, im.Spec+"::"+name, corpus))
+		}
+	case ".go":
+		for _, f := range goPkgs[im.Spec] {
+			add(f)
+		}
+	default:
+		spec := im.Spec
+		if im.Rel && !strings.HasPrefix(spec, ".") && !strings.HasPrefix(spec, "/") {
+			spec = "./" + spec
+		}
+		if path.Ext(from) == ".rb" && path.Ext(spec) != ".rb" {
+			spec += ".rb"
+		}
+		if t := resolveRelImport(im.File, spec, corpus); t != "" {
+			return []string{t}
+		}
 	}
 	return out
+}
+
+// resolveRustPath maps a `crate::`, `self::` or `super::` path to the corpus
+// file of the deepest module it names (a/b.rs or a/b/mod.rs), dropping trailing
+// segments that are items rather than modules. Any other path is external.
+func resolveRustPath(from, spec string, corpus map[string]bool) string {
+	segs := strings.Split(strings.TrimSuffix(spec, "::*"), "::")
+	dir := path.Dir(from)
+	// Children of mod.rs, lib.rs and main.rs sit beside it; any other file
+	// keeps them in a directory named after itself.
+	own := dir
+	if b := path.Base(from); b != "mod.rs" && b != "lib.rs" && b != "main.rs" {
+		own = path.Join(dir, strings.TrimSuffix(b, ".rs"))
+	}
+	var bases []string
+	switch segs[0] {
+	case "crate":
+		for root := dir; ; root = path.Dir(root) {
+			if corpus[path.Join(root, "lib.rs")] || corpus[path.Join(root, "main.rs")] {
+				bases = []string{root}
+				break
+			}
+			if root == "." || root == "/" {
+				return ""
+			}
+		}
+		segs = segs[1:]
+	case "self":
+		// A crate root that is not lib.rs/main.rs (src/bin/x.rs) also keeps
+		// its children beside it.
+		bases = []string{own, dir}
+		segs = segs[1:]
+	case "super":
+		for ; len(segs) > 0 && segs[0] == "super"; segs = segs[1:] {
+			own = path.Dir(own)
+		}
+		bases = []string{own}
+	default:
+		return ""
+	}
+	for _, base := range bases {
+		for n := len(segs); n > 0; n-- {
+			p := path.Join(base, path.Join(segs[:n]...))
+			if corpus[p+".rs"] {
+				return p + ".rs"
+			}
+			if corpus[p+"/mod.rs"] {
+				return p + "/mod.rs"
+			}
+		}
+	}
+	return ""
 }
 
 // resolvePyModule maps a dotted Python module to a corpus file. Leading dots

@@ -102,7 +102,9 @@ func (b *builder) rubyRequire(n *ts.Node, callerID string, src []byte) {
 	}
 	name := method.Utf8Text(src)
 	if rubyRequires[name] {
-		if spec := rubyFirstStringArg(n, src); spec != "" {
+		if spec := rubyFirstStringArg(n, src); name == "require_relative" {
+			b.impRel(spec, line(n))
+		} else {
 			b.imp(spec, line(n))
 		}
 		return

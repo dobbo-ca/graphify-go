@@ -57,7 +57,11 @@ type TypeRef struct {
 type Imp struct {
 	FileID, File, Spec, Loc string
 	TypeOnly                bool
-	// Names are the names a Python `from Spec import ...` binds; each may be a module.
+	// Rel marks a spec that is relative to the importing file's directory even
+	// without a leading dot (a quoted C include, Ruby `require_relative`).
+	Rel bool
+	// Names are the names a Python `from Spec import ...` or Rust `use Spec::...`
+	// binds; each may be a module.
 	Names []string
 }
 
@@ -101,6 +105,8 @@ type Result struct {
 	ModInvokes    []ModInvoke
 	ImportAliases []ImportAlias
 	MDRefs        []MDRef
+	// GoMods maps a go.mod's directory to its module path (manifest pass only).
+	GoMods map[string]string
 }
 
 // File extracts rel (a path relative to root). Unsupported extensions return an
@@ -318,6 +324,13 @@ func (b *builder) imp(spec, loc string) { b.impTyped(spec, loc, false) }
 func (b *builder) impTyped(spec, loc string, typeOnly bool) {
 	if spec != "" {
 		b.res.Imps = append(b.res.Imps, Imp{FileID: b.fileID, File: b.file, Spec: spec, Loc: loc, TypeOnly: typeOnly})
+	}
+}
+
+// impRel is imp for a spec relative to the importing file's directory.
+func (b *builder) impRel(spec, loc string) {
+	if spec != "" {
+		b.res.Imps = append(b.res.Imps, Imp{FileID: b.fileID, File: b.file, Spec: spec, Loc: loc, Rel: true})
 	}
 }
 
