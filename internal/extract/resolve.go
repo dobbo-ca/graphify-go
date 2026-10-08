@@ -67,19 +67,13 @@ func Resolve(results []Result, files []string) model.Extraction {
 			continue
 		}
 		pkg := path.Dir(f)
-		for dir := pkg; ; dir = path.Dir(dir) {
-			if mod, ok := goMods[dir]; ok {
-				rel := pkg
-				if dir != "." {
-					rel = strings.TrimPrefix(pkg, dir)
-				}
-				ip := path.Join(mod, rel)
-				goPkgs[ip] = append(goPkgs[ip], f)
-				break
+		if dir := goModDir(goMods, f); dir != "" {
+			rel := pkg
+			if dir != "." {
+				rel = strings.TrimPrefix(pkg, dir)
 			}
-			if dir == "." || dir == "/" {
-				break
-			}
+			ip := path.Join(goMods[dir], rel)
+			goPkgs[ip] = append(goPkgs[ip], f)
 		}
 	}
 
@@ -89,7 +83,7 @@ func Resolve(results []Result, files []string) model.Extraction {
 	external := map[string]bool{} // file\x00spec of an import outside the corpus
 	for _, r := range results {
 		for _, im := range r.Imps {
-			targets := importTargets(im, corpus, goPkgs)
+			targets := importTargets(im, corpus, goPkgs, goMods)
 			external[im.File+"\x00"+im.Spec] = len(targets) == 0
 			for _, target := range targets {
 				if importedFiles[im.File] == nil {
@@ -231,7 +225,7 @@ func Resolve(results []Result, files []string) model.Extraction {
 	impEdge := map[string]int{}
 	for _, r := range results {
 		for _, im := range r.Imps {
-			targets := importTargets(im, corpus, goPkgs)
+			targets := importTargets(im, corpus, goPkgs, goMods)
 			for _, target := range targets {
 				tgtID := idutil.MakeID(target)
 				if i, ok := impEdge[im.FileID+"\x00"+tgtID]; ok {
@@ -766,11 +760,23 @@ func unique(ids []string, pred func(string) bool) string {
 	return found
 }
 
+// goModDir returns the directory of the nearest go.mod above file f, or "".
+func goModDir(goMods map[string]string, f string) string {
+	for dir := path.Dir(f); ; dir = path.Dir(dir) {
+		if _, ok := goMods[dir]; ok {
+			return dir
+		}
+		if dir == "." || dir == "/" {
+			return ""
+		}
+	}
+}
+
 // importTargets returns the corpus files an import binds to: at most one for a
 // path specifier, for Python the module plus any imported name that is itself a
 // module (`from . import b`, `from pkg import submodule`), for Rust the module
 // each used name lives in, and for Go every non-test file of the imported package.
-func importTargets(im Imp, corpus map[string]bool, goPkgs map[string][]string) []string {
+func importTargets(im Imp, corpus map[string]bool, goPkgs map[string][]string, goMods map[string]string) []string {
 	from := filepath.ToSlash(im.File)
 	var out []string
 	add := func(t string) {
@@ -792,7 +798,13 @@ func importTargets(im Imp, corpus map[string]bool, goPkgs map[string][]string) [
 			add(resolveRustPath(from, im.Spec+"::"+name, corpus))
 		}
 	case ".go":
-		for _, f := range goPkgs[im.Spec] {
+		pkg := goPkgs[im.Spec]
+		// Two checkouts of one module: bind inside the importer's own.
+		own := goModDir(goMods, from)
+		if mine := keep(pkg, func(f string) bool { return goModDir(goMods, f) == own }); len(mine) > 0 {
+			pkg = mine
+		}
+		for _, f := range pkg {
 			add(f)
 		}
 	default:

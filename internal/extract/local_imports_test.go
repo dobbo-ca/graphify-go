@@ -57,6 +57,11 @@ func TestLocalImportsResolveToFiles(t *testing.T) {
 			".tools/gen/util/u.go": "package util\n",
 		}, map[string]string{".tools/gen": "example.com/dot"},
 			[]string{"tools_gen_main_go imports_from tools_gen_util_u_go"}},
+		{"go same module path in two directories", map[string]string{
+			"a/main.go": "package main\nimport \"example.com/same/util\"\n", "a/util/u.go": "package util\n",
+			"b/main.go": "package main\nimport \"example.com/same/util\"\n", "b/util/u.go": "package util\n",
+		}, map[string]string{"a": "example.com/same", "b": "example.com/same"},
+			[]string{"a_main_go imports_from a_util_u_go", "b_main_go imports_from b_util_u_go"}},
 		{"go without go.mod stays external", map[string]string{
 			"main.go": "package main\nimport \"example.com/m/util\"\n", "util/a.go": "package util\n",
 		}, nil, []string{"main_go imports example_com_m_util"}},
