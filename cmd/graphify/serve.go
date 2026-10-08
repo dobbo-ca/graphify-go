@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -426,7 +427,37 @@ func (s *mcpServer) toolGraphStats(map[string]any) string {
 	if u := s.g.UnclassifiedSummary(); u != "" {
 		out += u + "\n"
 	}
-	return out
+	return out + commitLine(s.g)
+}
+
+// commitLine tells a client whether the graph still matches the repo. A graph
+// built at an ancestor of HEAD is fresh when nothing outside the graph dir
+// changed since: CI commits the regenerated graph on top of the build commit.
+func commitLine(g *query.Graph) string {
+	built := g.BuiltAtCommit
+	if built == "" {
+		return ""
+	}
+	dir := filepath.Dir(g.Path)
+	head := gitHead(dir)
+	if head == "" {
+		return "Built at commit: " + built + "\n"
+	}
+	git := func(a ...string) bool {
+		return exec.Command("git", append([]string{"-C", dir}, a...)...).Run() == nil
+	}
+	if built == head ||
+		(git("merge-base", "--is-ancestor", built, head) &&
+			git("diff", "--quiet", built, head, "--", ":/", ":(exclude).")) {
+		return "Built at commit: " + built + " (matches HEAD)\n"
+	}
+	short := func(s string) string {
+		if len(s) > 7 {
+			return s[:7]
+		}
+		return s
+	}
+	return fmt.Sprintf("HEAD is %s, graph built at %s: graph may be stale\n", short(head), short(built))
 }
 
 func (s *mcpServer) toolShortestPath(args map[string]any) string {

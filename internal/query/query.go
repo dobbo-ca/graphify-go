@@ -24,6 +24,9 @@ type Graph struct {
 	Links []Link     `json:"links"`
 	Attrs GraphAttrs `json:"graph"`
 
+	BuiltAtCommit string `json:"built_at_commit,omitempty"`
+	Path          string `json:"-"` // file Load read, for git lookups
+
 	byID map[string]*Node
 	adj  map[string]map[string]bool
 	edge map[[2]string]*Link // directed (source,target) -> link, for relation lookup
@@ -110,6 +113,7 @@ func Load(path string) (*Graph, error) {
 	if err := json.Unmarshal(data, &g); err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
 	}
+	g.Path = path
 	g.byID = make(map[string]*Node, len(g.Nodes))
 	for i := range g.Nodes {
 		g.byID[g.Nodes[i].ID] = &g.Nodes[i]

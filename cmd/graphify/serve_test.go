@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -488,5 +489,47 @@ func TestToolGodNodesExcludeHubsPercentile(t *testing.T) {
 	out := s.toolGodNodes(map[string]any{"top_n": float64(5), "exclude_hubs_percentile": float64(50)})
 	if strings.Contains(out, "checkToken() - 2 edges") {
 		t.Errorf("p50 should suppress the top hub:\n%s", out)
+	}
+}
+
+func TestGraphStatsCommitLine(t *testing.T) {
+	repo := t.TempDir()
+	git := func(a ...string) string {
+		c := exec.Command("git", append([]string{"-c", "core.hooksPath=/dev/null", "-c", "user.name=t", "-c", "user.email=t@t"}, a...)...)
+		c.Dir = repo
+		out, err := c.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", a, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "-q")
+	os.MkdirAll(filepath.Join(repo, "graphify-out"), 0o755)
+	os.WriteFile(filepath.Join(repo, "a.go"), []byte("x"), 0o644)
+	git("add", "-A")
+	git("commit", "-qm", "one")
+	built := git("rev-parse", "HEAD")
+	gp := filepath.Join(repo, "graphify-out", "graph.json")
+	os.WriteFile(gp, []byte(`{"nodes":[],"links":[],"built_at_commit":"`+built+`"}`), 0o644)
+	stats := func() string {
+		g, err := query.Load(gp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return newMCPServer(g).toolGraphStats(nil)
+	}
+	if out := stats(); !strings.Contains(out, "Built at commit: "+built+" (matches HEAD)") {
+		t.Errorf("equal HEAD:\n%s", out)
+	}
+	// CI-style follow-up commit touching only graphify-out stays fresh.
+	git("add", "-A", "-f")
+	git("commit", "-qm", "chore: regenerate")
+	if out := stats(); !strings.Contains(out, "(matches HEAD)") {
+		t.Errorf("graphify-out-only commit should be fresh:\n%s", out)
+	}
+	os.WriteFile(filepath.Join(repo, "a.go"), []byte("y"), 0o644)
+	git("commit", "-qam", "edit source")
+	if out := stats(); !strings.Contains(out, "graph built at "+built[:7]+": graph may be stale") {
+		t.Errorf("source change should be stale:\n%s", out)
 	}
 }
