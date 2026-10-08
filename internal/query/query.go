@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"regexp"
 	"sort"
 	"strings"
@@ -411,8 +412,8 @@ func ambiguous(s string, hits []*Node, total int) *AmbiguousError {
 	return e
 }
 
-// resolve finds a node by exact ID, then by a path::Symbol qualifier, then by
-// exact (case-insensitive) label, then by a case-insensitive label or ID
+// resolve finds a node by exact ID, then by a path::Symbol qualifier, then by a
+// source file path, then by exact (case-insensitive) label, then by a case-insensitive label or ID
 // substring. Matching more than one node at any tier is an *AmbiguousError
 // rather than an arbitrary pick; matching none returns (nil, nil).
 func (g *Graph) resolve(s string) (*Node, error) {
@@ -439,6 +440,31 @@ func (g *Graph) resolve(s string) (*Node, error) {
 	low := strings.ToLower(s)
 	if low == "" {
 		return nil, nil
+	}
+	if p := strings.ToLower(normalizeSeed(s)); strings.Contains(s, "/") {
+		var exactFiles, suffixFiles []*Node
+		for j := range g.Nodes {
+			n := &g.Nodes[j]
+			if !strings.EqualFold(n.Label, path.Base(n.SourceFile)) {
+				continue
+			}
+			sf := strings.ToLower(n.SourceFile)
+			if sf == p {
+				exactFiles = append(exactFiles, n)
+			} else if strings.Contains(p, "/") && strings.HasSuffix(sf, "/"+p) {
+				suffixFiles = append(suffixFiles, n)
+			}
+		}
+		files := exactFiles
+		if len(files) == 0 {
+			files = suffixFiles
+		}
+		if len(files) > 0 {
+			if len(files) > 1 {
+				return nil, ambiguous(s, files, len(files))
+			}
+			return files[0], nil
+		}
 	}
 	var exact []*Node
 	for i := range g.Nodes {
