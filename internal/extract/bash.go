@@ -12,10 +12,12 @@ import (
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
 
-// bashScriptRunners are the interpreters whose first .sh argument names an
-// invoked script: `bash x.sh`, `sh x.sh`, … (mirrors upstream _BASH_SCRIPT_RUNNERS).
+// bashScriptRunners are the interpreters whose first non-flag argument names an
+// invoked script: `bash x.sh`, `python3 x.py`, … (mirrors upstream _BASH_SCRIPT_RUNNERS).
 var bashScriptRunners = map[string]bool{
 	"bash": true, "sh": true, "zsh": true, "ksh": true, "dash": true,
+	"python": true, "python3": true, "node": true, "ruby": true,
+	"perl": true, "php": true, "deno": true, "bun": true,
 }
 
 // extractBash pulls function definitions, `source`/`.` includes, and call edges
@@ -148,7 +150,8 @@ func (b *builder) scriptInvocationTarget(n *ts.Node, cmdName string, src []byte)
 	default:
 		return ""
 	}
-	if !strings.HasSuffix(raw, ".sh") {
+	// A bare command must be a .sh; a runner argument may be any file.
+	if path.Ext(raw) == "" {
 		return ""
 	}
 	targetRel := path.Join(path.Dir(filepath.ToSlash(b.file)), raw)
@@ -180,11 +183,19 @@ func firstArg(n *ts.Node, src []byte) string {
 // expansion. `bash "./$X.sh"` (an expansion) yields ok=false so dynamic targets
 // are not resolved (mirrors upstream literal()).
 func firstArgLiteral(n *ts.Node, src []byte) (string, bool) {
-	arg := n.ChildByFieldName("argument")
-	if arg == nil || bashHasExpansion(arg) {
-		return "", false
+	cur := n.Walk()
+	defer cur.Close()
+	args := n.ChildrenByFieldName("argument", cur)
+	for i := range args {
+		arg := &args[i]
+		if bashHasExpansion(arg) {
+			return "", false
+		}
+		if txt := unquote(arg.Utf8Text(src)); !strings.HasPrefix(txt, "-") {
+			return txt, true
+		}
 	}
-	return unquote(arg.Utf8Text(src)), true
+	return "", false
 }
 
 // bashHasExpansion reports whether n contains any shell expansion / substitution

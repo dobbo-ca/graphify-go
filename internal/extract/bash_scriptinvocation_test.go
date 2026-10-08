@@ -120,3 +120,24 @@ func TestBashScriptInvocationPrunesMissing(t *testing.T) {
 		t.Errorf("edge to a missing script must be pruned from the built graph")
 	}
 }
+
+// Non-shell interpreters link to a literal script argument; dynamic ones don't.
+func TestBashRunnerNonShellTargets(t *testing.T) {
+	for cmd, wantEdge := range map[string]bool{
+		"python3 build.py": true, "node build.js": true, "python3 -u build.py": true,
+		`"$PY" build.py`: false, `python3 "$X"`: false,
+	} {
+		root := t.TempDir()
+		writeScript(t, root, "build.py", "print(1)\n")
+		writeScript(t, root, "build.js", "1\n")
+		writeScript(t, root, "run.sh", "#!/bin/bash\n"+cmd+"\n")
+		ext := resolveFiles(t, root, "run.sh", "build.py", "build.js")
+		got := false
+		for _, f := range []string{"build.py", "build.js"} {
+			got = got || hasScriptCall(ext.Edges, idutil.MakeID("run.sh"), idutil.MakeID(f))
+		}
+		if got != wantEdge {
+			t.Errorf("%q: edge=%v want %v", cmd, got, wantEdge)
+		}
+	}
+}
