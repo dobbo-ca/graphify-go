@@ -34,11 +34,16 @@ func TestLocalImportsResolveToFiles(t *testing.T) {
 		goMods map[string]string
 		want   []string
 	}{
-		{"go package links every file", map[string]string{
+		{"go package links every non-test file", map[string]string{
 			"main.go":        "package main\nimport (\n\t\"fmt\"\n\t\"example.com/m/util\"\n)\n",
 			"util/a.go":      "package util\n",
 			"util/b_test.go": "package util\n",
-		}, root, []string{"main_go imports fmt", "main_go imports_from util_a_go", "main_go imports_from util_b_test_go"}},
+		}, root, []string{"main_go imports fmt", "main_go imports_from util_a_go"}},
+		// No edge into a_test.go, so no cycle with b.
+		{"go external test importing its importer", map[string]string{
+			"a/a.go": "package a\n", "a/a_test.go": "package a_test\nimport \"example.com/m/b\"\n",
+			"b/b.go": "package b\nimport \"example.com/m/a\"\n",
+		}, root, []string{"a_a_test_go imports_from b_b_go", "b_b_go imports_from a_a_go"}},
 		{"go nested module wins", map[string]string{
 			"main.go":       "package main\nimport \"example.com/m/sub/util\"\nimport \"example.com/sub/util\"\n",
 			"sub/util/a.go": "package util\n",

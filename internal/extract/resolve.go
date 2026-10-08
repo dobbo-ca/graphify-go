@@ -62,7 +62,8 @@ func Resolve(results []Result, files []string) model.Extraction {
 	goPkgs := map[string][]string{}
 	for _, f := range files {
 		f = filepath.ToSlash(f)
-		if len(goMods) == 0 || !strings.HasSuffix(f, ".go") {
+		// Importers never see a package's test files.
+		if len(goMods) == 0 || !strings.HasSuffix(f, ".go") || strings.HasSuffix(f, "_test.go") {
 			continue
 		}
 		pkg := path.Dir(f)
@@ -757,7 +758,7 @@ func unique(ids []string, pred func(string) bool) string {
 // importTargets returns the corpus files an import binds to: at most one for a
 // path specifier, for Python the module plus any imported name that is itself a
 // module (`from . import b`, `from pkg import submodule`), for Rust the module
-// each used name lives in, and for Go every file of the imported package.
+// each used name lives in, and for Go every non-test file of the imported package.
 func importTargets(im Imp, corpus map[string]bool, goPkgs map[string][]string) []string {
 	from := filepath.ToSlash(im.File)
 	var out []string
