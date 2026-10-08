@@ -85,20 +85,28 @@ const rootFileName = ".graphify_root"
 // directory's own parent or an ancestor of the cwd — a stale, foreign or
 // hostile marker must not redirect the scan onto an arbitrary tree.
 func scanRoot() string {
+	r, _ := scanRootMarked()
+	return r
+}
+
+// scanRootMarked is scanRoot plus whether the root came from a trusted absolute
+// marker, as opposed to the out directory's parent fallback.
+func scanRootMarked() (string, bool) {
 	out := outDir()
 	base := filepath.Dir(out)
 	rec := readRootMarker(filepath.Join(out, rootFileName))
 	if rec == "" {
-		return base
+		return base, false
 	}
-	if !filepath.IsAbs(rec) {
+	abs := filepath.IsAbs(rec)
+	if !abs {
 		rec = filepath.Join(base, rec)
 	}
 	if !rootUsable(rec, base) {
 		fmt.Fprintf(os.Stderr, "warning: ignoring %s recording %q (not a directory containing the current directory)\n", rootFileName, rec)
-		return base
+		return base, false
 	}
-	return rec
+	return rec, abs
 }
 
 // readRootMarker reads the recorded scan root, bounded so a bogus sidecar
@@ -155,7 +163,7 @@ func main() {
 	case "update":
 		err = cmdUpdate(os.Args[2:])
 	case "watch":
-		err = cmdWatch(arg(2, "."))
+		err = cmdWatch(arg(2, ""))
 	case "hook":
 		err = cmdHook(os.Args[2:])
 	case "install":
@@ -371,7 +379,12 @@ func writeOutputs(root string, walk detect.WalkReport, results []extract.Result,
 	// Record the scanned tree so `update` from a subdirectory (or with a
 	// relocated GRAPHIFY_OUT) refreshes this graph instead of building a stray
 	// second one rooted at the cwd.
-	if err := os.WriteFile(filepath.Join(outDir, rootFileName), []byte(root+"\n"), 0o644); err != nil {
+	// Absolute, so a relative root is not resolved against a relocated out dir.
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		absRoot = root
+	}
+	if err := os.WriteFile(filepath.Join(outDir, rootFileName), []byte(absRoot+"\n"), 0o644); err != nil {
 		return nil, nil, err
 	}
 	return g, communities, nil
@@ -554,6 +567,19 @@ func cmdUpdate(args []string) error {
 		// No explicit target: update the graph the read commands would load,
 		// not a new one rooted at the cwd.
 		root = scanRoot()
+	} else if _, err := os.Stat(filepath.Join(root, "graphify-out", "graph.json")); err != nil {
+		// An explicit path inside the recorded scan root must not fork a
+		// partial graph or shrink the repo one.
+		sr, marked := scanRootMarked()
+		// With GRAPHIFY_OUT the parent fallback is not a scan root.
+		if os.Getenv("GRAPHIFY_OUT") != "" && !marked {
+			sr = root
+		}
+		if abs, err := filepath.Abs(root); err == nil {
+			if rel, err := filepath.Rel(sr, abs); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				root = sr
+			}
+		}
 	}
 	rep, err := detect.CollectFilesReport(root)
 	if err != nil {

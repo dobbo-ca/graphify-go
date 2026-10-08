@@ -250,7 +250,13 @@ func mergeDriverStatus(root string) string {
 // polls the tree and rebuilds whenever a source file's content changes. It is
 // poll-based (no native filesystem-event dependency); Ctrl-C stops it.
 func cmdWatch(root string) error {
-	if err := cmdUpdate([]string{root}); err != nil {
+	var args []string
+	if root == "" {
+		root = scanRoot()
+	} else {
+		args = []string{root}
+	}
+	if err := cmdUpdate(args); err != nil {
 		return err
 	}
 	fmt.Println("watching for changes (Ctrl-C to stop)…")

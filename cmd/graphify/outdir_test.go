@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -144,5 +145,91 @@ func TestBuildFromSubdirKeepsSubdirOut(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(sub, "graphify-out", "graph.json")); err != nil {
 		t.Errorf("build from a subdirectory did not write its own graphify-out: %v", err)
+	}
+}
+
+// TestUpdateExplicitSubdirRedirectsToRoot verifies an explicit path inside the
+// recorded scan root updates the repo graph instead of forking a subdir one.
+func TestUpdateExplicitSubdirRedirectsToRoot(t *testing.T) {
+	for _, env := range []bool{false, true} {
+		dir, _ := filepath.EvalSymlinks(t.TempDir()) // macOS /var symlink
+		sub := filepath.Join(dir, "sub")
+		other := filepath.Join(dir, "other")
+		for p, src := range map[string]string{
+			filepath.Join(sub, "a.go"):   "package a\n\nfunc Alpha() {}\n",
+			filepath.Join(other, "b.go"): "package b\n\nfunc Beta() {}\n",
+		} {
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		out := filepath.Join(dir, "graphify-out")
+		if env {
+			out = filepath.Join(t.TempDir(), "out")
+			t.Setenv("GRAPHIFY_OUT", out)
+		} else {
+			t.Setenv("GRAPHIFY_OUT", "")
+		}
+		t.Chdir(dir)
+		if err := cmdBuild([]string{"."}); err != nil {
+			t.Fatal(err)
+		}
+		arg := "."
+		if env {
+			arg = "sub"
+		} else {
+			t.Chdir(sub)
+		}
+		if err := cmdUpdate([]string{arg}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(filepath.Join(sub, "graphify-out")); err == nil {
+			t.Errorf("env=%v: stray sub/graphify-out created", env)
+		}
+		g, err := os.ReadFile(filepath.Join(out, "graph.json"))
+		if err != nil || !strings.Contains(string(g), "Beta") {
+			t.Errorf("env=%v: sibling symbol lost from graph (err=%v)", env, err)
+		}
+	}
+}
+
+// TestUpdateDotWithSiblingOutKeepsRoot verifies `update .` never widens to the
+// parent of GRAPHIFY_OUT when no trusted marker exists.
+func TestUpdateDotWithSiblingOutKeepsRoot(t *testing.T) {
+	for _, marker := range []string{"", "."} {
+		base, _ := filepath.EvalSymlinks(t.TempDir())
+		repo := filepath.Join(base, "repo")
+		for p, src := range map[string]string{
+			filepath.Join(repo, "a.go"):              "package a\n\nfunc Alpha() {}\n",
+			filepath.Join(base, "unrelated", "u.go"): "package u\n\nfunc Foreign() {}\n",
+		} {
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		out := filepath.Join(base, "out")
+		t.Setenv("GRAPHIFY_OUT", out)
+		t.Chdir(repo)
+		if err := cmdBuild([]string{"."}); err != nil {
+			t.Fatal(err)
+		}
+		if marker == "" {
+			os.Remove(filepath.Join(out, rootFileName))
+		} else if err := os.WriteFile(filepath.Join(out, rootFileName), []byte(marker), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := cmdUpdate([]string{"."}); err != nil {
+			t.Fatal(err)
+		}
+		g, err := os.ReadFile(filepath.Join(out, "graph.json"))
+		if err != nil || strings.Contains(string(g), "Foreign") || !strings.Contains(string(g), "Alpha") {
+			t.Errorf("marker=%q: update . scanned outside the repo (err=%v)", marker, err)
+		}
 	}
 }
