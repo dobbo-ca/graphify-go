@@ -419,6 +419,37 @@ func ambiguous(s string, hits []*Node, total int) *AmbiguousError {
 	return e
 }
 
+// fileNodes picks the file-level node out of nodes sharing a source file: the
+// one labelled with the basename, preferring non-heading nodes (a markdown H1
+// can repeat the filename). Files whose file node has another label (typed
+// markdown) fall back to the lone non-heading node at L1.
+func fileNodes(in []*Node) []*Node {
+	var lab, top []*Node
+	for _, n := range in {
+		if strings.EqualFold(n.Label, path.Base(n.SourceFile)) {
+			lab = append(lab, n)
+		}
+		if n.FileType != "heading" && n.SourceLocation == "L1" {
+			top = append(top, n)
+		}
+	}
+	if len(lab) > 1 {
+		var nonHead []*Node
+		for _, n := range lab {
+			if n.FileType != "heading" {
+				nonHead = append(nonHead, n)
+			}
+		}
+		if len(nonHead) > 0 {
+			lab = nonHead
+		}
+	}
+	if len(lab) == 0 && len(top) == 1 {
+		return top
+	}
+	return lab
+}
+
 // resolve finds a node by exact ID, then by a path::Symbol qualifier, then by a
 // source file path, then by exact (case-insensitive) label, then by a case-insensitive label or ID
 // substring. Matching more than one node at any tier is an *AmbiguousError
@@ -448,13 +479,10 @@ func (g *Graph) resolve(s string) (*Node, error) {
 	if low == "" {
 		return nil, nil
 	}
-	if p := strings.ToLower(normalizeSeed(s)); strings.Contains(s, "/") {
+	if p := strings.ToLower(normalizeSeed(s)); p != "" {
 		var exactFiles, suffixFiles []*Node
 		for j := range g.Nodes {
 			n := &g.Nodes[j]
-			if !strings.EqualFold(n.Label, path.Base(n.SourceFile)) {
-				continue
-			}
 			sf := strings.ToLower(n.SourceFile)
 			if sf == p {
 				exactFiles = append(exactFiles, n)
@@ -462,9 +490,9 @@ func (g *Graph) resolve(s string) (*Node, error) {
 				suffixFiles = append(suffixFiles, n)
 			}
 		}
-		files := exactFiles
+		files := fileNodes(exactFiles)
 		if len(files) == 0 {
-			files = suffixFiles
+			files = fileNodes(suffixFiles)
 		}
 		if len(files) > 0 {
 			if len(files) > 1 {
