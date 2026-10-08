@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -449,12 +450,15 @@ func (s *mcpServer) toolGraphStats(map[string]any) string {
 	return out + commitLine(s.g)
 }
 
+var shaRe = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
+
 // commitLine tells a client whether the graph still matches the repo. A graph
 // built at an ancestor of HEAD is fresh when nothing outside the graph dir
 // changed since: CI commits the regenerated graph on top of the build commit.
 func commitLine(g *query.Graph) string {
 	built := g.BuiltAtCommit
-	if built == "" {
+	// graph.json is untrusted: only a sha reaches git and the client.
+	if !shaRe.MatchString(built) {
 		return ""
 	}
 	dir := filepath.Dir(g.Path)

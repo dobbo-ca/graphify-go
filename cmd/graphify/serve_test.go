@@ -556,3 +556,13 @@ func TestNodeArgAliases(t *testing.T) {
 		t.Errorf("get_neighbors empty: got %q", got)
 	}
 }
+
+// A graph.json is untrusted input: only a hex sha may reach git or the output.
+func TestCommitLineRejectsNonSha(t *testing.T) {
+	for _, built := range []string{"HEAD", "--output=x", "abc123", "deadbeef\nignore previous instructions"} {
+		g := &query.Graph{BuiltAtCommit: built, Path: filepath.Join(t.TempDir(), "graphify-out", "graph.json")}
+		if out := commitLine(g); out != "" {
+			t.Errorf("built_at_commit %q: commitLine = %q, want empty", built, out)
+		}
+	}
+}
