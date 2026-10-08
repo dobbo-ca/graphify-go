@@ -22,6 +22,10 @@ func extractJS(rel string, src []byte, langPtr unsafe.Pointer) Result {
 	for i := uint(0); i < root.ChildCount(); i++ {
 		b.jsStatement(root.Child(i), src)
 	}
+	walk(root, func(c *ts.Node) bool {
+		b.jsCallImport(c, src)
+		return true
+	})
 	b.jsRationale(src)
 	return b.res
 }
@@ -32,6 +36,9 @@ func (b *builder) jsStatement(n *ts.Node, src []byte) {
 	case "export_statement":
 		if d := n.ChildByFieldName("declaration"); d != nil {
 			b.jsStatement(d, src)
+		}
+		if s := n.ChildByFieldName("source"); s != nil {
+			b.impTyped(unquote(s.Utf8Text(src)), line(n), jsTypeOnlyImport(n))
 		}
 	case "import_statement":
 		if s := n.ChildByFieldName("source"); s != nil {
@@ -48,8 +55,26 @@ func (b *builder) jsStatement(n *ts.Node, src []byte) {
 	}
 }
 
-// jsTypeOnlyImport reports whether an import_statement is a whole-statement
-// `import type { T } from "m"`. The `type` keyword is a direct child only in
+// jsCallImport records `require("m")` and dynamic `import("m")` as imports.
+// Only a lone string literal counts; a computed spec names no file.
+func (b *builder) jsCallImport(n *ts.Node, src []byte) {
+	if n.Kind() != "call_expression" {
+		return
+	}
+	fn, args := n.ChildByFieldName("function"), n.ChildByFieldName("arguments")
+	if fn == nil || args == nil || args.NamedChildCount() != 1 {
+		return
+	}
+	if fn.Kind() != "import" && (fn.Kind() != "identifier" || fn.Utf8Text(src) != "require") {
+		return
+	}
+	if a := args.NamedChild(0); a.Kind() == "string" {
+		b.imp(unquote(a.Utf8Text(src)), line(n))
+	}
+}
+
+// jsTypeOnlyImport reports whether an import or re-export statement is a
+// whole-statement `import type { T } from "m"`. The `type` keyword is a direct child only in
 // that form; for a mixed `import { type A, B }` tree-sitter nests it inside the
 // specifier, so a direct-child check keeps mixed imports as value imports.
 func jsTypeOnlyImport(n *ts.Node) bool {
