@@ -86,7 +86,7 @@ detect → extract → build → cluster → analyze → report → export
   method) and edges (`contains`, `calls`, `imports`/`imports_from`).
 - **build** — assemble the undirected graph; drop dangling and phantom
   cross-language inferred calls.
-- **cluster** — Louvain community detection (gonum), with oversized-community
+- **cluster** — Louvain community detection, with oversized-community
   splitting.
 - **analyze** — god nodes (most connected), surprising cross-file connections,
   import cycles.

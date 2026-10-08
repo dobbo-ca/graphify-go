@@ -1,4 +1,4 @@
-// Package cluster runs community detection (Louvain, via gonum) on the graph,
+// Package cluster runs community detection (Louvain) on the graph,
 // then post-processes the result the way the Python original does: oversized
 // communities are split, and IDs are assigned by descending size with a lexical
 // tie-break so the same grouping always yields the same IDs across runs.
@@ -6,10 +6,6 @@ package cluster
 
 import (
 	"sort"
-
-	"golang.org/x/exp/rand"
-	"gonum.org/v1/gonum/graph/community"
-	"gonum.org/v1/gonum/graph/simple"
 
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
@@ -43,36 +39,27 @@ func Cluster(g *model.Graph) map[int][]string {
 	return reindexBySize(final)
 }
 
-// louvain runs gonum's Louvain modularization over the induced subgraph on the
-// given node set and returns the detected communities as string-ID groups.
+// louvain runs Louvain over the induced subgraph on the given node set and
+// returns the detected communities as string-ID groups.
 func louvain(g *model.Graph, nodeSet []string) [][]string {
-	idOf := make(map[string]int64, len(nodeSet))
-	nameOf := make(map[int64]string, len(nodeSet))
-	in := make(map[string]bool, len(nodeSet))
-	gg := simple.NewUndirectedGraph()
+	idOf := make(map[string]int, len(nodeSet))
 	for i, id := range nodeSet {
-		idOf[id] = int64(i)
-		nameOf[int64(i)] = id
-		in[id] = true
-		gg.AddNode(simple.Node(int64(i)))
+		idOf[id] = i
 	}
-	for _, e := range g.Edges() {
-		if e.Source == e.Target || !in[e.Source] || !in[e.Target] {
-			continue
+	adj := make([][]int, len(nodeSet))
+	for i, id := range nodeSet {
+		for _, nb := range g.Neighbors(id) {
+			if j, ok := idOf[nb]; ok && j != i {
+				adj[i] = append(adj[i], j)
+			}
 		}
-		f, t := idOf[e.Source], idOf[e.Target]
-		if gg.HasEdgeBetween(f, t) {
-			continue
-		}
-		gg.SetEdge(simple.Edge{F: simple.Node(f), T: simple.Node(t)})
 	}
 
-	reduced := community.Modularize(gg, 1.0, rand.NewSource(seed))
 	var out [][]string
-	for _, comm := range reduced.Communities() {
+	for _, comm := range modularize(adj) {
 		group := make([]string, 0, len(comm))
 		for _, n := range comm {
-			group = append(group, nameOf[n.ID()])
+			group = append(group, nodeSet[n])
 		}
 		out = append(out, group)
 	}
