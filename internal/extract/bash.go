@@ -191,7 +191,12 @@ func firstArgLiteral(n *ts.Node, src []byte) (string, bool) {
 		if bashHasExpansion(arg) {
 			return "", false
 		}
-		if txt := unquote(arg.Utf8Text(src)); !strings.HasPrefix(txt, "-") {
+		txt := unquote(arg.Utf8Text(src))
+		// -m/-c/-e take a module or code string, not a file.
+		if txt == "-m" || txt == "-c" || txt == "-e" {
+			return "", false
+		}
+		if !strings.HasPrefix(txt, "-") {
 			return txt, true
 		}
 	}

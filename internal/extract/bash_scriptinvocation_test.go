@@ -141,3 +141,16 @@ func TestBashRunnerNonShellTargets(t *testing.T) {
 		}
 	}
 }
+
+// `python3 -m app.main` names a module, not a file; it must not hit app_main.
+func TestBashRunnerModuleFlagNoEdge(t *testing.T) {
+	root := t.TempDir()
+	writeScript(t, root, "app.py", "def main():\n    pass\n")
+	writeScript(t, root, "b1.sh", "#!/bin/bash\npython3 -m app.main\n")
+	ext := resolveFiles(t, root, "b1.sh", "app.py")
+	for _, e := range ext.Edges {
+		if e.Source == idutil.MakeID("b1.sh") && e.Target == "app_main" {
+			t.Errorf("module arg resolved to a symbol node: %+v", e)
+		}
+	}
+}
