@@ -303,6 +303,8 @@ func (e xmlElem) childText(local string) string {
 	return ""
 }
 
+var pomPlaceholder = regexp.MustCompile(`\$\{([^}]+)\}`)
+
 // parsePom reads the project coordinate and its dependency coordinates from a
 // pom.xml. Names are `groupId:artifactId` (or bare artifactId when no groupId).
 // Every <dependencies>/<dependency> at any depth is collected (so
@@ -317,8 +319,46 @@ func parsePom(text string) (string, []string) {
 	if aid == "" {
 		return "", nil
 	}
+	var parent xmlElem
+	var props = map[string]string{}
+	for _, c := range root.Children {
+		switch c.XMLName.Local {
+		case "parent":
+			parent = c
+		case "properties":
+			for _, p := range c.Children {
+				if v := strings.TrimSpace(p.Chardata); v != "" {
+					props[p.XMLName.Local] = v
+				}
+			}
+		}
+	}
+	gid := root.childText("groupId")
+	if gid == "" {
+		gid = parent.childText("groupId")
+	}
+	for k, v := range map[string]string{
+		"project.groupId":        gid,
+		"project.artifactId":     aid,
+		"project.version":        root.childText("version"),
+		"project.parent.groupId": parent.childText("groupId"),
+		"project.parent.version": parent.childText("version"),
+	} {
+		if _, set := props[k]; !set && v != "" {
+			props[k] = v
+		}
+	}
+	resolve := func(s string) string {
+		return pomPlaceholder.ReplaceAllStringFunc(s, func(m string) string {
+			if v, ok := props[m[2:len(m)-1]]; ok {
+				return v
+			}
+			return m
+		})
+	}
+	gid = resolve(gid)
 	name := aid
-	if gid := root.childText("groupId"); gid != "" {
+	if gid != "" {
 		name = gid + ":" + aid
 	}
 	var deps []string
@@ -329,11 +369,11 @@ func parsePom(text string) (string, []string) {
 				if c.XMLName.Local != "dependency" {
 					continue
 				}
-				da := c.childText("artifactId")
+				da := resolve(c.childText("artifactId"))
 				if da == "" {
 					continue
 				}
-				if dg := c.childText("groupId"); dg != "" {
+				if dg := resolve(c.childText("groupId")); dg != "" {
 					deps = append(deps, dg+":"+da)
 				} else {
 					deps = append(deps, da)
