@@ -28,6 +28,10 @@ type crate struct {
 // rather than an error.
 func IntrospectCargo(root string) (Result, error) {
 	rootManifest := filepath.Join(root, "Cargo.toml")
+	absRoot, err := filepath.Abs(root) // relative roots break path comparison
+	if err != nil {
+		return Result{}, err
+	}
 	rootData, err := loadTOML(rootManifest)
 	if err != nil {
 		return Result{}, err
@@ -71,6 +75,8 @@ func IntrospectCargo(root string) (Result, error) {
 			ID: c.id, Label: name, FileType: "code", SourceFile: c.manifest, SourceLocation: "L1",
 		})
 	}
+	wsDeps, _ := rootData["workspace"].(map[string]any)
+	wsDeps, _ = wsDeps["dependencies"].(map[string]any)
 	for _, name := range names {
 		c := crates[name]
 		deps, ok := c.data["dependencies"].(map[string]any)
@@ -88,7 +94,19 @@ func IntrospectCargo(root string) (Result, error) {
 			// (#1858). A rename pointing at a registry/external crate simply misses
 			// `crates` and stays a no-op, like any other non-internal dep.
 			lookup := depName
-			if spec, ok := deps[depName].(map[string]any); ok {
+			spec, _ := deps[depName].(map[string]any)
+			inherited := false
+			if spec != nil && spec["workspace"] != nil {
+				if spec["workspace"] != true {
+					continue
+				}
+				inherited = true
+				spec, _ = wsDeps[depName].(map[string]any)
+				if p, _ := spec["path"].(string); p == "" {
+					continue // registry/git dep: name match proves nothing
+				}
+			}
+			if spec != nil {
 				if pkg, ok := spec["package"].(string); ok && pkg != "" {
 					lookup = pkg
 				}
@@ -96,6 +114,16 @@ func IntrospectCargo(root string) (Result, error) {
 			target, ok := crates[lookup]
 			if !ok {
 				continue // registry dep or unknown crate — not an internal edge
+			}
+			if inherited {
+				// Shared paths are relative to the workspace root.
+				want := spec["path"].(string)
+				if !filepath.IsAbs(want) {
+					want = filepath.Join(absRoot, want)
+				}
+				if resolvePath(filepath.Join(want, "Cargo.toml")) != resolvePath(filepath.Join(absRoot, filepath.FromSlash(target.manifest))) {
+					continue
+				}
 			}
 			res.Edges = append(res.Edges, model.Edge{
 				Source: c.id, Target: target.id, Relation: "crate_depends_on",
@@ -105,6 +133,14 @@ func IntrospectCargo(root string) (Result, error) {
 		}
 	}
 	return res, nil
+}
+
+// resolvePath follows symlinks like Python's Path.resolve(); falls back to Clean.
+func resolvePath(p string) string {
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	return filepath.Clean(p)
 }
 
 // loadTOML decodes a manifest into a generic map (mirroring tomllib.load), so
