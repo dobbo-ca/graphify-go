@@ -211,3 +211,29 @@ func TestCmdExplainPathSourceFile(t *testing.T) {
 		t.Errorf("cmdPath by file path = %v, want success", err)
 	}
 }
+
+// TestCmdPathDirectedContainsReverse verifies a directed path may step from a
+// symbol back out to its containing file over a contains edge.
+func TestCmdPathDirectedContainsReverse(t *testing.T) {
+	dir := t.TempDir()
+	writeTestGraph(t, filepath.Join(dir, "graphify-out", "graph.json"),
+		`{"nodes":[{"id":"run","label":"run()"},{"id":"helper","label":"helper()"},{"id":"b","label":"b.py","source_file":"b.py"}],`+
+			`"links":[{"source":"run","target":"helper","relation":"calls","confidence":"EXTRACTED"},`+
+			`{"source":"b","target":"helper","relation":"contains","confidence":"EXTRACTED"}]}`)
+
+	wd, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(wd)
+
+	out := captureStdout(t, func() {
+		if err := cmdPath([]string{"run()", "b.py"}); err != nil {
+			t.Errorf("cmdPath run() b.py = %v, want success", err)
+		}
+	})
+	want := "run() --calls [EXTRACTED]--> helper() <--contains [EXTRACTED]-- b.py\n"
+	if out != want {
+		t.Errorf("path output = %q, want %q", out, want)
+	}
+}

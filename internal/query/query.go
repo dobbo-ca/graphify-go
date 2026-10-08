@@ -353,7 +353,10 @@ func (g *Graph) bfsPath(aID, bID string, undirected bool) ([]string, bool) {
 		sort.Strings(nbrs)
 		for _, nb := range nbrs {
 			if !undirected && g.edge[[2]string{cur, nb}] == nil {
-				continue // edge points nb -> cur; not traversable directed
+				// contains is walkable upward so symbols reach their file
+				if l := g.edge[[2]string{nb, cur}]; l == nil || l.Relation != "contains" {
+					continue
+				}
 			}
 			if _, seen := prev[nb]; !seen {
 				prev[nb] = cur
