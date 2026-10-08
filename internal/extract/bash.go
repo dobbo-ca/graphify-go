@@ -210,6 +210,8 @@ func bashCodeFlag(runner, flag string) bool {
 		return flag == "-c"
 	case "python", "python3":
 		return flag == "-m" || flag == "-c"
+	case "php":
+		return flag == "-r" // php -e is a debugger flag
 	}
 	return flag == "-e"
 }

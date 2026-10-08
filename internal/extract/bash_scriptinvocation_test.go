@@ -168,3 +168,14 @@ func TestBashShellErrexitKeepsEdge(t *testing.T) {
 		}
 	}
 }
+
+// php's code flag is -r; `php -e s.php` still runs s.php.
+func TestBashPhpDashEKeepsEdge(t *testing.T) {
+	root := t.TempDir()
+	writeScript(t, root, "s.php", "<?php\n")
+	writeScript(t, root, "e1.sh", "#!/bin/bash\nphp -e s.php\n")
+	ext := resolveFiles(t, root, "s.php", "e1.sh")
+	if !hasScriptCall(ext.Edges, idutil.MakeID("e1.sh"), idutil.MakeID("s.php")) {
+		t.Errorf("e1.sh: lost edge to s.php")
+	}
+}
