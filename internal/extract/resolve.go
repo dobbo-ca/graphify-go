@@ -493,6 +493,8 @@ func defOwners(results []Result) map[string]string {
 // when the chain passes a base outside the corpus, rather than guess.
 func selfTarget(cls, name string, super bool, methods, supers map[string][]string, openSuper map[string]bool) string {
 	level := []string{cls}
+	// Each class once, or a cyclic chain fans out per level.
+	seen := map[string]bool{cls: true}
 	// Bounded so a cyclic inherits chain can't hang.
 	for depth := 0; cls != "" && len(level) > 0 && depth < 16; depth++ {
 		var hits, next []string
@@ -516,7 +518,12 @@ func selfTarget(cls, name string, super bool, methods, supers map[string][]strin
 			if openSuper[c] {
 				return ""
 			}
-			next = append(next, supers[c]...)
+			for _, p := range supers[c] {
+				if !seen[p] {
+					seen[p] = true
+					next = append(next, p)
+				}
+			}
 		}
 		level = next
 	}

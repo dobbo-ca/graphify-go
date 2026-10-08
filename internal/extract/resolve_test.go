@@ -1,6 +1,9 @@
 package extract
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // hasCall scans resolved edges for a src->tgt calls edge.
 func hasCall(edges []edge, src, tgt string) bool {
@@ -215,5 +218,29 @@ func TestResolveReceiverCalls(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			wantEdges(t, tc.srcs, tc.want, tc.unwanted...)
 		})
+	}
+}
+
+// TestSelfTargetCyclicInherits checks that a cyclic inherits graph is walked
+// once per class instead of fanning out at every level.
+func TestSelfTargetCyclicInherits(t *testing.T) {
+	ids := []string{"a", "b", "c", "d", "e", "f"}
+	supers := map[string][]string{}
+	for _, c := range ids {
+		for _, o := range ids {
+			if o != c {
+				supers[c] = append(supers[c], o)
+			}
+		}
+	}
+	done := make(chan string, 1)
+	go func() { done <- selfTarget("a", "missing", false, nil, supers, nil) }()
+	select {
+	case got := <-done:
+		if got != "" {
+			t.Errorf("selfTarget = %q, want no target", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("selfTarget did not finish on a 6-class inherits cycle")
 	}
 }
