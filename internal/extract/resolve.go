@@ -69,7 +69,11 @@ func Resolve(results []Result, files []string) model.Extraction {
 		pkg := path.Dir(f)
 		for dir := pkg; ; dir = path.Dir(dir) {
 			if mod, ok := goMods[dir]; ok {
-				ip := path.Join(mod, strings.TrimPrefix(pkg, strings.TrimPrefix(dir, ".")))
+				rel := pkg
+				if dir != "." {
+					rel = strings.TrimPrefix(pkg, dir)
+				}
+				ip := path.Join(mod, rel)
 				goPkgs[ip] = append(goPkgs[ip], f)
 				break
 			}

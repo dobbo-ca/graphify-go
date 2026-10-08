@@ -52,6 +52,11 @@ func TestLocalImportsResolveToFiles(t *testing.T) {
 		{"go external test package skips itself", map[string]string{
 			"util/a.go": "package util\n", "util/a_test.go": "package util_test\nimport \"example.com/m/util\"\n",
 		}, root, []string{"util_a_test_go imports_from util_a_go"}},
+		{"go module under a dot directory", map[string]string{
+			".tools/gen/main.go":   "package main\nimport \"example.com/dot/util\"\n",
+			".tools/gen/util/u.go": "package util\n",
+		}, map[string]string{".tools/gen": "example.com/dot"},
+			[]string{"tools_gen_main_go imports_from tools_gen_util_u_go"}},
 		{"go without go.mod stays external", map[string]string{
 			"main.go": "package main\nimport \"example.com/m/util\"\n", "util/a.go": "package util\n",
 		}, nil, []string{"main_go imports example_com_m_util"}},
