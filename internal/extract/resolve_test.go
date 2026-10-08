@@ -214,6 +214,24 @@ func TestResolveReceiverCalls(t *testing.T) {
 		{name: "go composite literal", srcs: map[string]string{
 			"a.go": "package a\ntype S struct{}\ntype T struct{}\nfunc (s *S) b() {}\nfunc (t T) b() {}\nfunc use() { x := &S{}; y := T{}; x.b(); y.b() }\n",
 		}, want: [][3]string{c("use()", "S.b()"), c("use()", "T.b()")}},
+		{name: "python for target shadows typed local", srcs: map[string]string{
+			"a.py": "class Client:\n    def fetch(self):\n        pass\ndef looped(c: Client, items):\n    for c in items:\n        c.fetch()\n",
+		}, unwanted: [][3]string{c("looped()", "Client.fetch()")}},
+		{name: "python comprehension target shadows typed local", srcs: map[string]string{
+			"a.py": "class Client:\n    def fetch(self):\n        pass\ndef comp(c: Client, items):\n    return [c.fetch() for c in items]\n",
+		}, unwanted: [][3]string{c("comp()", "Client.fetch()")}},
+		{name: "python with target shadows typed local", srcs: map[string]string{
+			"a.py": "class Client:\n    def fetch(self):\n        pass\ndef withed(c: Client):\n    with opener() as c:\n        c.fetch()\n",
+		}, unwanted: [][3]string{c("withed()", "Client.fetch()")}},
+		{name: "python tuple target shadows typed local", srcs: map[string]string{
+			"a.py": "class Client:\n    def fetch(self):\n        pass\ndef tupled(c: Client):\n    c, d = pair()\n    c.fetch()\n",
+		}, unwanted: [][3]string{c("tupled()", "Client.fetch()")}},
+		{name: "python walrus shadows typed local", srcs: map[string]string{
+			"a.py": "class Client:\n    def fetch(self):\n        pass\ndef walrus(c: Client):\n    if (c := pick()):\n        c.fetch()\n",
+		}, unwanted: [][3]string{c("walrus()", "Client.fetch()")}},
+		{name: "python attribute assignment keeps typed local", srcs: map[string]string{
+			"a.py": "class Client:\n    def fetch(self):\n        pass\nclass Other:\n    def fetch(self):\n        pass\ndef use(c: Client):\n    c.x, c.y = 1, 2\n    c.fetch()\n",
+		}, want: [][3]string{c("use()", "Client.fetch()")}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			wantEdges(t, tc.srcs, tc.want, tc.unwanted...)

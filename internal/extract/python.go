@@ -210,11 +210,27 @@ var pyClassName = regexp.MustCompile(`^[A-Z]\w*$`)
 
 // pyLocalTypes maps the locals of function fn to their class, from a parameter
 // annotation (`c: Client`) or a constructor binding (`c = Client()`). A local
-// also assigned anything else maps to "".
-// ponytail: one flat scope per function, nested defs and for/with targets are
-// not tracked; add scopes if a repo shows wrong edges.
+// also bound by anything else (assignment, unpacking, for, with, except, `:=`)
+// maps to "".
+// ponytail: one flat scope per function, nested defs are not tracked; add
+// scopes if a repo shows wrong edges.
 func pyLocalTypes(fn *ts.Node, src []byte) map[string]string {
 	types := map[string]string{}
+	// untype clears every name a binding target rebinds.
+	var untype func(n *ts.Node)
+	untype = func(n *ts.Node) {
+		if n == nil {
+			return
+		}
+		switch n.Kind() {
+		case "identifier":
+			bindType(types, n.Utf8Text(src), "")
+		case "pattern_list", "tuple_pattern", "list_pattern", "list_splat_pattern", "as_pattern_target":
+			for i := uint(0); i < n.NamedChildCount(); i++ {
+				untype(n.NamedChild(i))
+			}
+		}
+	}
 	walk(fn, func(c *ts.Node) bool {
 		var name *ts.Node
 		switch c.Kind() {
@@ -224,6 +240,15 @@ func pyLocalTypes(fn *ts.Node, src []byte) map[string]string {
 			name = c.ChildByFieldName("name")
 		case "assignment":
 			name = c.ChildByFieldName("left")
+			if name != nil && name.Kind() != "identifier" {
+				untype(name)
+			}
+		case "for_statement", "for_in_clause":
+			untype(c.ChildByFieldName("left"))
+		case "as_pattern_target":
+			untype(c)
+		case "named_expression":
+			untype(c.ChildByFieldName("name"))
 		}
 		if name == nil || name.Kind() != "identifier" {
 			return true
