@@ -1,0 +1,26 @@
+{
+ "redis.go": {
+  "out": 23.0,
+  "graph": 12.7
+ },
+ "redis.cgo": {
+  "out": 28.2,
+  "graph": 12.7
+ },
+ "redis.up": {
+  "out": 52.7,
+  "graph": 20.1
+ },
+ "curl.go": {
+  "out": 19.1,
+  "graph": 10.4
+ },
+ "curl.cgo": {
+  "out": 21.2,
+  "graph": 10.4
+ },
+ "curl.up": {
+  "out": 42.7,
+  "graph": 15.7
+ }
+}
