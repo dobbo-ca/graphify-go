@@ -317,21 +317,21 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		if js {
 			bound = jm.bound(&r)
 		}
-		var alias map[string]string // local name -> the name its last import has
+		var alias map[string]ImportAlias // local name -> its last import
 		for _, a := range r.ImportAliases {
 			if len(r.TypeRefs) > 0 {
 				if alias == nil {
-					alias = map[string]string{}
+					alias = map[string]ImportAlias{}
 				}
-				alias[a.Local] = a.Imported
+				alias[a.Local] = a
 			}
 		}
 		for _, t := range r.TypeRefs {
 			ref := t.Relation == "references"
 			// `from m import Real as R`: R names Real of another file.
 			name, aliased := t.Name, false
-			if a := alias[name]; a != "" && a != name && len(local[[2]string{t.File, name}]) == 0 {
-				name, aliased = a, true
+			if a := alias[name]; a.Imported != "" && a.Imported != name && len(typeDefs(local[[2]string{t.File, name}], name, idFile)) == 0 {
+				name, aliased = a.Imported, true
 			}
 			// A supertype or a type position names a type; a decorator can
 			// name a function.
@@ -351,7 +351,17 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 			} else if ids := cands(local[[2]string{t.File, name}]); len(ids) == 1 && !aliased {
 				tgt = ids[0]
 			}
-			if tgt == "" && !js {
+			if aliased {
+				// Only the files its import statement resolved to hold it.
+				a := alias[t.Name]
+				for _, im := range r.Imps {
+					if im.Loc != a.Loc || !contains(im.Names, name) {
+						continue
+					}
+					files := importTargets(im, corpus, goPkgs, goMods, goTargets)
+					tgt = unique(cands(global[name]), func(id string) bool { return contains(files, idFile[id]) })
+				}
+			} else if tgt == "" && !js {
 				tgt = disambiguate(cands(global[name]), t.File, idFile, &imported)
 			}
 			if tgt == "" || tgt == t.FromID || langfamily.Cross(t.File, idFile[tgt]) {
