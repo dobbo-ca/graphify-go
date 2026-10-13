@@ -352,7 +352,8 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		}
 		var alias map[string][]ImportAlias // local name -> its imports
 		for _, a := range r.ImportAliases {
-			if len(r.TypeRefs) > 0 {
+			// An import inside a function binds no module-level name.
+			if len(r.TypeRefs) > 0 && !a.InFunc {
 				if alias == nil {
 					alias = map[string][]ImportAlias{}
 				}
