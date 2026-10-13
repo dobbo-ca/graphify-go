@@ -348,6 +348,7 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 		return
 	}
 	var pending []*ts.Node // decorators written before the next member
+	var overloads []*ts.Node
 	for i := uint(0); i < body.ChildCount(); i++ {
 		m := body.Child(i)
 		if m.Kind() == "class_static_block" {
@@ -357,6 +358,14 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 		if m.Kind() == "decorator" {
 			pending = append(pending, m)
 			continue
+		}
+		// A comment or a `;` does not part a decorator from its member.
+		if !m.IsNamed() || m.Kind() == "comment" {
+			continue
+		}
+		// An overload signature adds its types to the method it overloads.
+		if m.Kind() == "method_signature" {
+			overloads = append(overloads, m)
 		}
 		decos := pending
 		pending = nil
@@ -389,6 +398,11 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 		}
 		b.jsSignature(mid, m, src)
 		b.jsFnBody(m.ChildByFieldName("body"), mid, src)
+	}
+	for _, m := range overloads {
+		if mid := b.id(name, fieldText(m, "name", src)); b.seen[mid] {
+			b.jsSignature(mid, m, src)
+		}
 	}
 }
 
