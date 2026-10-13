@@ -74,7 +74,7 @@ func (b *builder) pyFunc(n *ts.Node, src []byte) {
 	if name == "" {
 		return
 	}
-	id := idutil.MakeID(b.stem, name)
+	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
 	b.pyCalls(n, id, src)
 }
@@ -84,7 +84,7 @@ func (b *builder) pyClass(n *ts.Node, src []byte) {
 	if name == "" {
 		return
 	}
-	classID := idutil.MakeID(b.stem, name)
+	classID := b.id(name)
 	b.def(classID, name, name, line(n))
 	b.pySuperclasses(classID, n, src)
 
@@ -107,7 +107,7 @@ func (b *builder) pyClass(n *ts.Node, src []byte) {
 		if mname == "" {
 			continue
 		}
-		mid := idutil.MakeID(b.stem, name, mname)
+		mid := b.id(name, mname)
 		b.addNode(mid, name+"."+mname+"()", line(m))
 		b.res.Edges = append(b.res.Edges, model.Edge{
 			Source: classID, Target: mid, Relation: model.RelContains,
@@ -529,7 +529,7 @@ func (b *builder) pyWalkDocstrings(n *ts.Node, parentID string, src []byte) {
 			name := fieldText(n, "name", src)
 			body := n.ChildByFieldName("body")
 			if name != "" && body != nil {
-				nid := idutil.MakeID(b.stem, name)
+				nid := b.id(name)
 				if text, ln, ok := pyDocstring(body, src); ok {
 					b.addRationale(text, ln, nid)
 				}
@@ -542,7 +542,7 @@ func (b *builder) pyWalkDocstrings(n *ts.Node, parentID string, src []byte) {
 			name := fieldText(n, "name", src)
 			body := n.ChildByFieldName("body")
 			if name != "" && body != nil {
-				nid := idutil.MakeID(b.stem, name)
+				nid := b.id(name)
 				if parentID != b.fileID {
 					nid = idutil.MakeID(parentID, name)
 				}

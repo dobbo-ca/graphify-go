@@ -58,7 +58,7 @@ func extractMCPConfig(rel string, src []byte) Result {
 	}}}
 	seenNode := map[string]bool{fileID: true}
 	seenEdge := map[string]bool{}
-	stem := fileStem(rel)
+	stem := rel
 
 	addNode := func(id, label string) {
 		if id == "" || seenNode[id] {

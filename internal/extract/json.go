@@ -83,7 +83,7 @@ func extractJSON(rel string, src []byte) Result {
 	}}}
 	seenNode := map[string]bool{fileID: true}
 	seenEdge := map[string]bool{}
-	stem := fileStem(rel)
+	stem := rel
 
 	addNode := func(id, label string, loc model.Loc, fileType string) {
 		if id == "" || seenNode[id] {

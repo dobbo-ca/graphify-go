@@ -124,7 +124,7 @@ func TestCppExportMacroClass(t *testing.T) {
 	}
 	inherits := false
 	for _, r := range res.TypeRefs {
-		if r.FromID == "w_widget" && r.Name == "Base" && r.Relation == "inherits" {
+		if r.FromID == "w_h_widget" && r.Name == "Base" && r.Relation == "inherits" {
 			inherits = true
 		}
 	}

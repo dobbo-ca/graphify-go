@@ -4,7 +4,6 @@ import (
 	tslua "github.com/dobbo-ca/gositter/grammars/lua"
 	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
-	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
 
@@ -51,7 +50,7 @@ func (b *builder) luaFunc(n *ts.Node, src []byte) {
 	switch name.Kind() {
 	case "identifier":
 		fn := name.Utf8Text(src)
-		id := idutil.MakeID(b.stem, fn)
+		id := b.id(fn)
 		b.def(id, fn, fn+"()", line(n))
 		b.luaCalls(body, id, src)
 	case "dot_index_expression":
@@ -72,10 +71,10 @@ func (b *builder) luaMethod(table, field, body, decl *ts.Node, src []byte) {
 	}
 	b.luaEnsureType(typeName, line(decl))
 
-	mid := idutil.MakeID(b.stem, typeName, mname)
+	mid := b.id(typeName, mname)
 	b.addNode(mid, typeName+"."+mname+"()", line(decl))
 	b.res.Edges = append(b.res.Edges, model.Edge{
-		Source: idutil.MakeID(b.stem, typeName), Target: mid, Relation: model.RelContains,
+		Source: b.id(typeName), Target: mid, Relation: model.RelContains,
 		Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(decl),
 	})
 	// Register under the bare method name so `x.method()` call sites resolve.
@@ -85,7 +84,7 @@ func (b *builder) luaMethod(table, field, body, decl *ts.Node, src []byte) {
 
 // luaEnsureType registers a table name as a type definition if not already seen.
 func (b *builder) luaEnsureType(name string, loc model.Loc) {
-	id := idutil.MakeID(b.stem, name)
+	id := b.id(name)
 	if b.seen[id] {
 		return
 	}

@@ -78,7 +78,7 @@ func (b *builder) bashFunc(n *ts.Node, src []byte, funcs map[string]bool) {
 	if name == "" {
 		return
 	}
-	id := idutil.MakeID(b.stem, name)
+	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
 	if body := n.ChildByFieldName("body"); body != nil {
 		b.bashItems(body, src, id, funcs)

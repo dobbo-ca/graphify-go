@@ -69,7 +69,7 @@ func TestBashScriptInvocationFromFunction(t *testing.T) {
 	writeScript(t, root, "deploy.sh", "#!/bin/bash\ndeploy() { bash ./helpers.sh; }\n")
 
 	ext := resolveFiles(t, root, "deploy.sh", "helpers.sh")
-	fn := idutil.MakeID("deploy", "deploy") // fileStem "deploy" + func "deploy"
+	fn := idutil.MakeID("deploy.sh", "deploy")
 	to := idutil.MakeID("helpers.sh")
 	if !hasScriptCall(ext.Edges, fn, to) {
 		t.Errorf("expected edge from deploy() function node; edges=%v", ext.Edges)
@@ -149,7 +149,7 @@ func TestBashRunnerModuleFlagNoEdge(t *testing.T) {
 	writeScript(t, root, "b1.sh", "#!/bin/bash\npython3 -m app.main\n")
 	ext := resolveFiles(t, root, "b1.sh", "app.py")
 	for _, e := range ext.Edges {
-		if e.Source == idutil.MakeID("b1.sh") && e.Target == "app_main" {
+		if e.Source == idutil.MakeID("b1.sh") && e.Target == idutil.MakeID("app.py", "main") {
 			t.Errorf("module arg resolved to a symbol node: %+v", e)
 		}
 	}

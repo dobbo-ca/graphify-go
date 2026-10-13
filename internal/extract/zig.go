@@ -4,7 +4,6 @@ import (
 	tszig "github.com/dobbo-ca/gositter/grammars/zig"
 	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
-	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
 
@@ -40,7 +39,7 @@ func (b *builder) zigFunc(n *ts.Node, src []byte) {
 	if name == "" {
 		return
 	}
-	id := idutil.MakeID(b.stem, name)
+	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
 	b.zigCalls(n.ChildByFieldName("body"), id, src)
 }
@@ -70,7 +69,7 @@ func (b *builder) zigVarDecl(n *ts.Node, src []byte) {
 // zigType records a container type definition and each method (a
 // function_declaration directly inside the container body) scoped under it.
 func (b *builder) zigType(name string, container *ts.Node, src []byte) {
-	typeID := idutil.MakeID(b.stem, name)
+	typeID := b.id(name)
 	b.def(typeID, name, name, line(container))
 
 	for i := uint(0); i < container.ChildCount(); i++ {
@@ -82,7 +81,7 @@ func (b *builder) zigType(name string, container *ts.Node, src []byte) {
 		if mname == "" {
 			continue
 		}
-		mid := idutil.MakeID(b.stem, name, mname)
+		mid := b.id(name, mname)
 		b.addNode(mid, name+"."+mname+"()", line(m))
 		b.res.Edges = append(b.res.Edges, model.Edge{
 			Source: typeID, Target: mid, Relation: model.RelContains,

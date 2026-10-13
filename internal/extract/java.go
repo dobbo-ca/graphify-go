@@ -39,7 +39,7 @@ func (b *builder) javaType(n *ts.Node, src []byte) {
 	if name == "" {
 		return
 	}
-	typeID := idutil.MakeID(b.stem, name)
+	typeID := b.id(name)
 	b.def(typeID, name, name, line(n))
 	b.javaSupertypes(typeID, n, src)
 

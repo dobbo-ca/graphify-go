@@ -17,7 +17,7 @@ const auditSrc = "class Audit {\n  public string Build() { return \"y\"; }\n}\n"
 // are not emitted yet, so the dispatch pass is fed the edge it will walk.
 func implementsEdge(implFile, implType string) model.Edge {
 	return model.Edge{
-		Source: idutil.MakeID(fileStem(implFile), implType), Target: idutil.MakeID("ireport", "IReport"),
+		Source: idutil.MakeID(implFile, implType), Target: idutil.MakeID("ireport.cs", "IReport"),
 		Relation: model.Rel("implements"), Confidence: model.ConfExtracted, SourceFile: model.FileOf(implFile),
 	}
 }

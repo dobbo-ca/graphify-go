@@ -4,7 +4,6 @@ import (
 	tsjulia "github.com/dobbo-ca/gositter/grammars/julia"
 	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
-	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
 
@@ -48,7 +47,7 @@ func (b *builder) juliaFunc(n *ts.Node, src []byte) {
 	if name == "" {
 		return
 	}
-	id := idutil.MakeID(b.stem, name)
+	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
 	b.juliaCalls(juliaBody(n), id, src)
 }
@@ -64,7 +63,7 @@ func (b *builder) juliaShortFunc(n *ts.Node, src []byte) {
 	if name == "" {
 		return
 	}
-	id := idutil.MakeID(b.stem, name)
+	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
 	// Record calls on the right-hand side of the definition.
 	if rhs := n.NamedChild(1); rhs != nil {
@@ -78,7 +77,7 @@ func (b *builder) juliaType(n *ts.Node, src []byte) {
 	if name == "" {
 		return
 	}
-	b.def(idutil.MakeID(b.stem, name), name, name, line(n))
+	b.def(b.id(name), name, name, line(n))
 }
 
 // juliaModule registers a module as a type-like node and scopes the functions
@@ -89,7 +88,7 @@ func (b *builder) juliaModule(n *ts.Node, src []byte) {
 	if name == "" {
 		return
 	}
-	modID := idutil.MakeID(b.stem, name)
+	modID := b.id(name)
 	b.def(modID, name, name, line(n))
 
 	body := juliaBody(n)
@@ -104,7 +103,7 @@ func (b *builder) juliaModule(n *ts.Node, src []byte) {
 			if mname == "" {
 				continue
 			}
-			mid := idutil.MakeID(b.stem, name, mname)
+			mid := b.id(name, mname)
 			b.addNode(mid, name+"."+mname+"()", line(m))
 			b.res.Edges = append(b.res.Edges, model.Edge{
 				Source: modID, Target: mid, Relation: model.RelContains,

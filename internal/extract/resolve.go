@@ -88,6 +88,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	// which is what a miss falls back to.
 	localC := map[[2]string][]string{}
 	globalC := map[string][]string{}
+	value := map[string]bool{} // def ids of consts
 	// Filled beside the import targets below, which do not read them.
 	defsDone.Go(func() {
 		abstract := map[string]bool{}
@@ -100,17 +101,19 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		}
 		for _, r := range results {
 			for _, d := range r.Defs {
-				global[d.Name] = append(global[d.Name], d.ID)
 				key := [2]string{d.File, d.Name}
+				// One definition in both branches of an #ifdef is one candidate.
 				if !contains(local[key], d.ID) {
+					global[d.Name] = append(global[d.Name], d.ID)
 					local[key] = append(local[key], d.ID)
 				}
 				idFile[d.ID] = d.File
-				if !d.Abstract && abstract[d.Name] {
+				if d.Value {
+					value[d.ID] = true
+				}
+				if !d.Abstract && abstract[d.Name] && !contains(localC[key], d.ID) {
 					globalC[d.Name] = append(globalC[d.Name], d.ID)
-					if !contains(localC[key], d.ID) {
-						localC[key] = append(localC[key], d.ID)
-					}
+					localC[key] = append(localC[key], d.ID)
 				}
 			}
 		}
@@ -269,7 +272,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	// It reads the indexes alone, so it runs beside the calls.
 	var md model.Extraction
 	var mdDone sync.WaitGroup
-	mdDone.Go(func() { resolveMarkdown(results, files, corpus, quals, global, &md) })
+	mdDone.Go(func() { resolveMarkdown(results, files, corpus, quals, global, value, &md) })
 
 	// Python import-guided calls: explicit `from M import N [as L]` evidence
 	// resolves a call to the unique (module_stem, symbol) definition with
@@ -286,13 +289,22 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	imported := importedSet{targets: impTargets}
 	supers := map[string][]string{} // type id -> resolved base type ids
 	openSuper := map[string]bool{}  // type id with a base outside the corpus
+	jm := newJSMods(results, corpus, local, idFile)
+	jsAlias := jm.aliases()
 	for _, r := range results {
+		js := len(r.TypeRefs) > 0 && jsLike(r.File)
+		var bound map[string]string
+		if js {
+			bound = jm.bound(&r)
+		}
 		for _, t := range r.TypeRefs {
 			tgt := ""
-			if ids := typeDefs(local[[2]string{t.File, t.Name}], t.Name, idFile); len(ids) == 1 {
+			if js {
+				tgt = jm.supertype(t, &r, bound)
+			} else if ids := typeDefs(local[[2]string{t.File, t.Name}], t.Name, idFile); len(ids) == 1 {
 				tgt = ids[0]
 			}
-			if tgt == "" {
+			if tgt == "" && !js {
 				tgt = disambiguate(typeDefs(global[t.Name], t.Name, idFile), t.File, idFile, &imported)
 			}
 			if tgt == "" || tgt == t.FromID || langfamily.Cross(t.File, idFile[tgt]) {
@@ -304,9 +316,13 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 			if t.Relation == "inherits" {
 				supers[t.FromID] = append(supers[t.FromID], tgt)
 			}
+			conf := model.ConfInferred
+			if js {
+				conf = model.ConfExtracted
+			}
 			inherit = append(inherit, model.Edge{
 				Source: t.FromID, Target: tgt, Relation: model.Rel(t.Relation),
-				Confidence: model.ConfInferred, SourceFile: fc.of(t.File), SourceLocation: t.Loc,
+				Confidence: conf, SourceFile: fc.of(t.File), SourceLocation: t.Loc,
 			})
 		}
 	}
@@ -337,6 +353,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		imported := importedSet{targets: impTargets}
 		kept := map[string][]string{}      // callee\x00qualifier -> the definitions it qualifies
 		allQuals := map[string][]qualSet{} // callee -> quals of each id in its global list
+		bareJS := map[string][]string{}    // callee -> its global list without class members
 		for _, r := range results {
 			rf := model.FileOf(r.File)
 			for i, n := range r.Calls {
@@ -356,6 +373,16 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					here, all := localC[lkey], globalC[c.Callee]
 					if len(all) == 0 {
 						here, all = local[lkey], global[c.Callee]
+					}
+					if c.Recv == "" && langfamily.Of(r.File) == "jsts" {
+						// A bare JS/TS call names no class method.
+						here = keep(here, func(id string) bool { return owner[id] == "" })
+						ids, done := bareJS[c.Callee]
+						if !done {
+							ids = keep(all, func(id string) bool { return owner[id] == "" })
+							bareJS[c.Callee] = ids
+						}
+						all = ids
 					}
 					if c.Recv != "" {
 						q := recvTail(c.Recv)
@@ -389,12 +416,23 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					// Two types in one file can each own a method of the same name; a
 					// bare call then has no unambiguous local target, so fall through
 					// to disambiguate rather than guess.
-					if len(here) == 1 {
+					if c.Recv == "" {
+						tgt = jsAlias[lkey]
+					}
+					if tgt == "" && len(here) == 1 {
 						tgt = here[0]
 					}
 					if tgt == "" {
 						tgt = disambiguate(all, r.File, idFile, &imported)
 					}
+				}
+				// Never bind a call to a definition in a different language family:
+				// the same short name (render, parse, Path) collides across languages,
+				// and a name match across a family boundary is a phantom edge, not a
+				// real call. Unknown families (non-code, unrecognized ext) stay
+				// permissive.
+				if tgt != "" && langfamily.Cross(r.File, idFile[tgt]) {
+					tgt = ""
 				}
 				// A call on an external module has no definition to bind, so it
 				// lands on the module's import node.
@@ -406,14 +444,6 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					continue
 				}
 				if tgt == "" || tgt == c.CallerID {
-					continue
-				}
-				// Never bind a call to a definition in a different language family:
-				// the same short name (render, parse, Path) collides across languages,
-				// and a name match across a family boundary is a phantom edge, not a
-				// real call. Unknown families (non-code, unrecognized ext) stay
-				// permissive.
-				if langfamily.Cross(r.File, idFile[tgt]) {
 					continue
 				}
 				add(model.Edge{
@@ -448,7 +478,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	for _, parts := range callEdges {
 		nParts += len(parts)
 	}
-	edges := make([][]model.Edge, 0, len(results)+nParts+6)
+	edges := make([][]model.Edge, 0, len(results)+nParts+7)
 	for _, r := range results {
 		nodes = append(nodes, r.Nodes)
 		edges = append(edges, r.Edges)
@@ -457,7 +487,28 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	for _, parts := range callEdges {
 		edges = append(edges, parts...)
 	}
-	edges = append(edges, inherit)
+	edges = append(edges, inherit, jm.edges(&fc))
+	// A method whose type is in the sibling file of the same stem.
+	var owned []model.Edge
+	for _, r := range results {
+		inSibling := map[string]string{} // method id -> type id
+		for _, d := range r.Defs {
+			if o := owner[d.ID]; d.Owner != "" && !strings.Contains(o, "\x00") {
+				inSibling[d.ID] = o
+			}
+		}
+		if len(inSibling) == 0 {
+			continue
+		}
+		for _, e := range r.Edges {
+			// the file's contains edge gives the location
+			if o := inSibling[e.Target]; o != "" && e.Relation == model.RelContains {
+				e.Source = o
+				owned = append(owned, e)
+			}
+		}
+	}
+	edges = append(edges, owned)
 
 	// A Go corpus has as many import edges as all the rest, so they go in
 	// parts too.
@@ -570,7 +621,7 @@ var mdCodeSep = regexp.MustCompile(`::|\.`)
 // file. Defs are exactly the code definitions, so markdown concept/heading nodes
 // never appear there; a name mapping to more than one definition is ambiguous
 // and drops (no map iteration feeds this).
-func resolveMarkdown(results []Result, files []string, corpus map[string]bool, quals map[string]qualSet, symDefs map[string][]string, out *model.Extraction) {
+func resolveMarkdown(results []Result, files []string, corpus map[string]bool, quals map[string]qualSet, symDefs map[string][]string, value map[string]bool, out *model.Extraction) {
 	var fc fileMemo
 	seenSym := map[string]bool{} // FromID\x00defID, to not emit a symbol edge twice
 	for _, r := range results {
@@ -586,7 +637,7 @@ func resolveMarkdown(results []Result, files []string, corpus map[string]bool, q
 			// Not a markdown link: a backtick `symbol` matching a unique code
 			// definition becomes a references edge to that definition. Drop on
 			// ambiguity (0 or >1 candidates) and on non-identifier noise.
-			id := uniqueCodeDef(m.Target, symDefs, quals)
+			id := uniqueCodeDef(m.Target, symDefs, quals, value)
 			if id == "" {
 				continue
 			}
@@ -715,6 +766,24 @@ func recvTail(s string) string {
 // definition contained only by its file has no owner.
 func defOwners(results []Result) map[string]string {
 	owner := map[string]string{}
+	// path without extension, type name -> top-level types of that name, for
+	// the owner names only: foo.cpp finds its class in foo.h.
+	sibling := map[[2]string][]Def{}
+	for _, r := range results {
+		for _, d := range r.Defs {
+			if d.Owner != "" {
+				sibling[[2]string{noExt(d.File), d.Owner}] = nil
+			}
+		}
+	}
+	for _, r := range results {
+		for _, d := range r.Defs {
+			k := [2]string{noExt(d.File), d.Name}
+			if _, ok := sibling[k]; ok && d.ID == idutil.MakeID(d.File, d.Name) {
+				sibling[k] = append(sibling[k], d)
+			}
+		}
+	}
 	for _, r := range results {
 		for _, e := range r.Edges {
 			if e.Relation == model.RelContains {
@@ -724,6 +793,16 @@ func defOwners(results []Result) map[string]string {
 		for _, d := range r.Defs {
 			if d.Owner != "" {
 				owner[d.ID] = path.Dir(filepath.ToSlash(d.File)) + "\x00" + d.Owner
+				var in []string
+				for _, s := range sibling[[2]string{noExt(d.File), d.Owner}] {
+					// a forward declaration repeats the id
+					if fam := langfamily.Of(d.File); s.File != d.File && fam != "" && fam == langfamily.Of(s.File) && !contains(in, s.ID) {
+						in = append(in, s.ID)
+					}
+				}
+				if len(in) == 1 {
+					owner[d.ID] = in[0]
+				}
 			} else if owner[d.ID] == idutil.MakeID(d.File) {
 				delete(owner, d.ID)
 			}
@@ -731,6 +810,8 @@ func defOwners(results []Result) map[string]string {
 	}
 	return owner
 }
+
+func noExt(file string) string { return strings.TrimSuffix(file, path.Ext(file)) }
 
 // selfTarget binds a self/this call made from a method of type cls: the method
 // of that name on cls, else on the nearest ancestor reached over resolved
@@ -791,7 +872,7 @@ func keep(ids []string, pred func(string) bool) []string {
 // zero/several definitions survive (drop-on-ambiguity). For a qualified span
 // (`pkg.Widget`, `Widget::render`) the last segment is the name and every
 // preceding segment must be a qualifier the candidate answers to.
-func uniqueCodeDef(sym string, index map[string][]string, quals map[string]qualSet) string {
+func uniqueCodeDef(sym string, index map[string][]string, quals map[string]qualSet, value map[string]bool) string {
 	if !mdCodeSymbol.MatchString(sym) {
 		return ""
 	}
@@ -799,6 +880,9 @@ func uniqueCodeDef(sym string, index map[string][]string, quals map[string]qualS
 	name, prefix := segs[len(segs)-1], segs[:len(segs)-1]
 	var hit string
 	for _, id := range index[name] {
+		if value[id] {
+			continue
+		}
 		ok := true
 		for _, q := range prefix {
 			if !quals[id].has(q) {
@@ -984,12 +1068,12 @@ func isLocalSource(s string) bool {
 // it. A supertype reference can only bind to a type, and a Java constructor is
 // registered under its class's name (`A.A()`), which would otherwise make every
 // `class B extends A` lookup ambiguous and silently drop the edge. A top-level
-// type's id is MakeID(fileStem(file), name) while a member's is nested under its
+// type's id is MakeID(file, name) while a member's is nested under its
 // owner, so the id shape separates the two.
 func typeDefs(ids []string, name string, idFile map[string]string) []string {
 	var out []string
 	for _, id := range ids {
-		if idutil.MakeID(fileStem(idFile[id]), name) == id {
+		if idutil.MakeID(idFile[id], name) == id {
 			out = append(out, id)
 		}
 	}
@@ -1139,6 +1223,13 @@ func importTargets(im Imp, corpus map[string]bool, goPkgs map[string][]string, g
 		}
 		if t := resolveRelImport(im.File, spec, corpus); t != "" {
 			return []string{t}
+		}
+		// TypeScript names the output file: `./x.js` is x.ts on disk.
+		if ext := path.Ext(spec); jsLike(im.File) && (ext == ".js" || ext == ".jsx") {
+			ts := strings.TrimSuffix(spec, ext) + ".t" + ext[2:]
+			if t := resolveRelImport(im.File, ts, corpus); t != "" && t != from {
+				return []string{t}
+			}
 		}
 	}
 	return out

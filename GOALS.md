@@ -68,11 +68,24 @@ graphify-go + homebrew-taps, verify `brew install dobbo-ca/taps/graphify-go`
 post-release (macOS arm64/amd64 + linux), and guard the `release.yml` /
 `graph.yml` concurrent-push race. Non-parity infra work.
 
-## Parity vs upstream — COMPLETE
+## Parity vs upstream — capture parity in progress
 
-graphify-go is a deliberate agent-first **subset** of upstream
-`Graphify-Labs/graphify` (was `safishamsi/graphify`). In-scope parity is complete
-across two adversarially-verified audits (running state + method: `bd memories parity`):
+**Owner decision 2026-10-13:** graphify-go matches upstream
+`Graphify-Labs/graphify` in what it captures. The target is every node kind and
+relation kind that upstream 0.9.88 emits on the same files, including classes this
+project used to skip by design: type-reference edges, stub nodes for unresolved
+names, struct fields, enum members and interface method specs. Epic
+`graphify-go-vi5`; evidence in `docs/benchmark-upstream-v0.9.88.md`. Two things
+stay different on purpose: the edge store keeps one edge per (source, target,
+relation) where upstream keeps one per node pair, and the upstream resolution
+errors listed in `graphify-go-vi5.12` are not copied.
+
+Node ids are not upstream's. A symbol id is its file's id (the full relative
+path, extension included) plus the symbol name, so it depends on that file alone
+and survives the per-file cache; upstream salts colliding ids in a corpus-wide
+pass. Compare graphs across the two tools by `(source_file, label)`.
+
+History, before that decision (running state + method: `bd memories parity`):
 
 - **Audit 1 — v0.9.11 (2026-07-09).** 16 in-scope gaps found and landed. Epic
   `graphify-go-1fz` (closed); PRs #36/#37. Six dimensions (CLI, extractors,
@@ -86,16 +99,16 @@ across two adversarially-verified audits (running state + method: `bd memories p
   (redundant with `relation`; no re-export tracked; no consumer). Epic
   `graphify-go-e5v` (closed); PR #38. Suite → 254.
 
-Most upstream churn is resolver correctness that does not reproduce here: Go's
-resolver emits no type-reference/inheritance edges and **drops-on-ambiguity** rather
-than guessing, sidestepping whole bug classes — `#1726 #1713 #1603 #1707 #1729 #1744
+Most upstream churn is resolver correctness that did not reproduce here: at the
+time Go's resolver emitted no type-reference edges (now in scope, `graphify-go-vi5.8`)
+and it **drops-on-ambiguity** rather than guessing, sidestepping whole bug classes — `#1726 #1713 #1603 #1707 #1729 #1744
 #1581 #1668 #1638 #1781 #1696 #1770 #1753 #1745 #1747 #1775` are all confirmed
 Go-safe. The determinism invariant (two fresh builds produce a byte-identical
 `graph.json`) is verified and load-bearing for the incremental cache.
 
 **Next re-audit:** diff the upstream CHANGELOG/commits past the last audited HEAD
-(`df74ab4`); file beads for real in-scope gaps only. Anything not in scope is a
-deliberate non-port (below).
+(`df74ab4`); file beads for every node kind or relation kind upstream gained.
+The features listed below stay out.
 
 ## Out of scope (intentionally not ported)
 

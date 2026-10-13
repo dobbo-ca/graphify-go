@@ -4,7 +4,6 @@ import (
 	tsrust "github.com/dobbo-ca/gositter/grammars/rust"
 	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
-	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
 
@@ -51,7 +50,7 @@ func (b *builder) rustFunc(n *ts.Node, src []byte) {
 	if name == "" {
 		return
 	}
-	id := idutil.MakeID(b.stem, name)
+	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
 	b.rustCalls(n.ChildByFieldName("body"), id, src)
 }
@@ -61,7 +60,7 @@ func (b *builder) rustType(n *ts.Node, src []byte) {
 	if name == "" {
 		return
 	}
-	b.def(idutil.MakeID(b.stem, name), name, name, line(n))
+	b.def(b.id(name), name, name, line(n))
 }
 
 // rustImpl records the methods of an `impl Type { ... }` (or `impl Trait for
@@ -84,10 +83,10 @@ func (b *builder) rustImpl(n *ts.Node, src []byte) {
 		if mname == "" {
 			continue
 		}
-		mid := idutil.MakeID(b.stem, typeName, mname)
+		mid := b.id(typeName, mname)
 		b.addNode(mid, typeName+"."+mname+"()", line(m))
 		b.res.Edges = append(b.res.Edges, model.Edge{
-			Source: idutil.MakeID(b.stem, typeName), Target: mid, Relation: model.RelContains,
+			Source: b.id(typeName), Target: mid, Relation: model.RelContains,
 			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
 		})
 		// Register under the bare method name so `x.method()` call sites resolve.

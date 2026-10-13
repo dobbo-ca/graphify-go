@@ -27,10 +27,10 @@ after.all();
 		got = append(got, call{c.CallerID, c.Callee, c.Recv, c.Loc.String()})
 	}
 	want := []call{
-		{"src_f_a", "one", "", "L3"}, {"src_f_a", "two", "x", "L3"}, {"src_f_a", "three", "", "L3"}, {"src_f_a", "require", "", "L3"},
-		{"src_f_b", "four", "", "L4"}, {"src_f_c", "six", "five", "L4"},
-		{"src_f_k_m", "seven", "this", "L6"}, {"src_f_k_o", "eight", "", "L8"},
-		{"src_f_p", "nine", "", "L11"}, {"src_f_d", "ten", "", "L12"},
+		{"src_f_ts_a", "one", "", "L3"}, {"src_f_ts_a", "two", "x", "L3"}, {"src_f_ts_a", "three", "", "L3"}, {"src_f_ts_a", "require", "", "L3"},
+		{"src_f_ts_b", "four", "", "L4"}, {"src_f_ts_c", "six", "five", "L4"},
+		{"src_f_ts_k_m", "seven", "this", "L6"}, {"src_f_ts_k_o", "eight", "", "L8"},
+		{"src_f_ts_p", "nine", "", "L11"}, {"src_f_ts_d", "ten", "", "L12"},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("calls = %v\nwant %v", got, want)

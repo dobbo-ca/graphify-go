@@ -8,7 +8,6 @@ import (
 	tscpp "github.com/dobbo-ca/gositter/grammars/cpp"
 	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
-	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
 
@@ -116,6 +115,17 @@ func (b *builder) cppItems(n *ts.Node, src []byte) {
 		case "template_declaration":
 			// Unwrap `template<...>` and re-dispatch on the templated item.
 			b.cppItems(c, src)
+		case "preproc_if", "preproc_ifdef", "preproc_else", "preproc_elif", "preproc_elifdef",
+			"linkage_specification", "declaration_list", "ERROR":
+			b.cppItems(c, src)
+		case "type_definition":
+			// `typedef struct S {...} T;` defines S.
+			if spec := c.ChildByFieldName("type"); spec != nil && spec.ChildByFieldName("body") != nil {
+				switch spec.Kind() {
+				case "struct_specifier", "union_specifier", "enum_specifier":
+					b.cppType(spec, src)
+				}
+			}
 		}
 	}
 }
@@ -129,17 +139,25 @@ func (b *builder) cppFunc(n *ts.Node, src []byte) {
 		return
 	}
 	if scope != "" {
-		mid := idutil.MakeID(b.stem, scope, name)
+		mid := b.id(scope, name)
 		b.addNode(mid, scope+"."+name+"()", line(n))
+		typeID := b.id(scope)
+		if !b.seen[typeID] {
+			// class is in a header: Resolve finds it
+			b.contains(mid, line(n))
+			b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: name, File: b.file, Owner: scope})
+			b.cppCalls(n.ChildByFieldName("body"), mid, src)
+			return
+		}
 		b.res.Edges = append(b.res.Edges, model.Edge{
-			Source: idutil.MakeID(b.stem, scope), Target: mid, Relation: model.RelContains,
+			Source: typeID, Target: mid, Relation: model.RelContains,
 			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(n),
 		})
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: name, File: b.file})
 		b.cppCalls(n.ChildByFieldName("body"), mid, src)
 		return
 	}
-	id := idutil.MakeID(b.stem, name)
+	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
 	b.cppCalls(n.ChildByFieldName("body"), id, src)
 }
@@ -152,7 +170,7 @@ func (b *builder) cppType(n *ts.Node, src []byte) {
 	if name == "" {
 		return
 	}
-	typeID := idutil.MakeID(b.stem, name)
+	typeID := b.id(name)
 	b.def(typeID, name, name, line(n))
 
 	for i := uint(0); i < n.NamedChildCount(); i++ {
@@ -165,12 +183,20 @@ func (b *builder) cppType(n *ts.Node, src []byte) {
 		}
 	}
 
-	body := n.ChildByFieldName("body")
-	if body == nil {
-		return
+	if body := n.ChildByFieldName("body"); body != nil {
+		b.cppMembers(body, typeID, name, src)
 	}
+}
+
+// cppMembers records the inline methods directly under body, and those behind
+// a preprocessor conditional in it.
+func (b *builder) cppMembers(body *ts.Node, typeID, name string, src []byte) {
 	for i := uint(0); i < body.ChildCount(); i++ {
 		m := body.Child(i)
+		if strings.HasPrefix(m.Kind(), "preproc_") {
+			b.cppMembers(m, typeID, name, src)
+			continue
+		}
 		if m.Kind() != "function_definition" {
 			continue
 		}
@@ -178,7 +204,7 @@ func (b *builder) cppType(n *ts.Node, src []byte) {
 		if mname == "" {
 			continue
 		}
-		mid := idutil.MakeID(b.stem, name, mname)
+		mid := b.id(name, mname)
 		b.addNode(mid, name+"."+mname+"()", line(m))
 		b.res.Edges = append(b.res.Edges, model.Edge{
 			Source: typeID, Target: mid, Relation: model.RelContains,

@@ -4,7 +4,6 @@ import (
 	tsc "github.com/dobbo-ca/gositter/grammars/c"
 	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
-	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
 
@@ -17,9 +16,19 @@ func extractC(rel string, src []byte) Result {
 	defer done()
 	b := newBuilder(rel)
 
+	b.cItems(root, src)
+	return b.res
+}
+
+// cItems handles each item directly under n, and the items behind a
+// preprocessor conditional or inside an `extern "C"` block.
+func (b *builder) cItems(root *ts.Node, src []byte) {
 	for i := uint(0); i < root.ChildCount(); i++ {
 		n := root.Child(i)
 		switch n.Kind() {
+		case "preproc_if", "preproc_ifdef", "preproc_else", "preproc_elif", "preproc_elifdef",
+			"linkage_specification", "declaration_list", "ERROR":
+			b.cItems(n, src)
 		case "function_definition":
 			b.cFunc(n, src)
 		case "struct_specifier", "union_specifier", "enum_specifier":
@@ -37,7 +46,6 @@ func extractC(rel string, src []byte) Result {
 			}
 		}
 	}
-	return b.res
 }
 
 func (b *builder) cFunc(n *ts.Node, src []byte) {
@@ -45,7 +53,7 @@ func (b *builder) cFunc(n *ts.Node, src []byte) {
 	if name == "" {
 		return
 	}
-	id := idutil.MakeID(b.stem, name)
+	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
 	b.cCalls(n.ChildByFieldName("body"), id, src)
 }
@@ -57,13 +65,14 @@ func (b *builder) cType(n *ts.Node, src []byte) {
 	if name == "" {
 		return
 	}
-	typeID := idutil.MakeID(b.stem, name)
-	b.def(typeID, name, name, line(n))
-
+	// `struct S;` and `struct S v;` name a type, they do not define it.
 	body := n.ChildByFieldName("body")
 	if body == nil {
 		return
 	}
+	typeID := b.id(name)
+	b.def(typeID, name, name, line(n))
+
 	for i := uint(0); i < body.ChildCount(); i++ {
 		f := body.Child(i)
 		if f.Kind() != "field_declaration" {
@@ -79,7 +88,7 @@ func (b *builder) cType(n *ts.Node, src []byte) {
 		if mname == "" {
 			continue
 		}
-		mid := idutil.MakeID(b.stem, name, mname)
+		mid := b.id(name, mname)
 		b.addNode(mid, name+"."+mname+"()", line(f))
 		b.res.Edges = append(b.res.Edges, model.Edge{
 			Source: typeID, Target: mid, Relation: model.RelContains,

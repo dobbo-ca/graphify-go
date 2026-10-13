@@ -6,7 +6,6 @@ import (
 	tscs "github.com/dobbo-ca/gositter/grammars/csharp"
 	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
-	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
 
@@ -58,7 +57,7 @@ func (b *builder) csFunc(n *ts.Node, src []byte) {
 	if name == "" {
 		return
 	}
-	id := idutil.MakeID(b.stem, name)
+	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
 	b.csCalls(n.ChildByFieldName("body"), id, src)
 }
@@ -70,7 +69,7 @@ func (b *builder) csType(n *ts.Node, src []byte, ifaces map[string]bool) {
 	if name == "" {
 		return
 	}
-	typeID := idutil.MakeID(b.stem, name)
+	typeID := b.id(name)
 	b.def(typeID, name, name, line(n))
 	b.csBases(typeID, n, src, ifaces)
 
@@ -87,7 +86,7 @@ func (b *builder) csType(n *ts.Node, src []byte, ifaces map[string]bool) {
 		if mname == "" {
 			continue
 		}
-		mid := idutil.MakeID(b.stem, name, mname)
+		mid := b.id(name, mname)
 		b.addNode(mid, name+"."+mname+"()", line(m))
 		b.res.Edges = append(b.res.Edges, model.Edge{
 			Source: typeID, Target: mid, Relation: model.RelContains,

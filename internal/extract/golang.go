@@ -6,7 +6,6 @@ import (
 	tsgo "github.com/dobbo-ca/gositter/grammars/golang"
 	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
-	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
 
@@ -46,7 +45,7 @@ func (b *builder) goFunc(n *ts.Node, src []byte, rets map[string]string) {
 	if name == "" {
 		return
 	}
-	id := idutil.MakeID(b.stem, name)
+	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
 	b.goCalls(n, id, "", src, rets)
 }
@@ -57,7 +56,7 @@ func (b *builder) goMethod(n *ts.Node, src []byte, rets map[string]string) {
 		return
 	}
 	recv := goReceiverType(n, src)
-	id := idutil.MakeID(b.stem, recv, name)
+	id := b.id(recv, name)
 	label := name + "()"
 	if recv != "" {
 		label = recv + "." + name + "()"
@@ -104,7 +103,7 @@ func (b *builder) goTypes(n *ts.Node, src []byte) {
 		if name == "" {
 			continue
 		}
-		b.def(idutil.MakeID(b.stem, name), name, name, line(c))
+		b.def(b.id(name), name, name, line(c))
 	}
 }
 
