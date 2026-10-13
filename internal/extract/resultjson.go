@@ -48,7 +48,14 @@ func (r *Result) AppendJSON(b []byte) ([]byte, error) {
 	b = append(b, `,"TypeRefs":`...)
 	b, _ = appendJSONArr(b, r.TypeRefs, func(b []byte, t *TypeRef) ([]byte, error) {
 		b = appendJSONFields(b, `{"FromID":`, t.FromID, `,"Name":`, t.Name, `,"Relation":`, t.Relation, `,"File":`, t.File)
-		return append(t.Loc.AppendJSON(append(b, `,"Loc":`...)), '}'), nil
+		b = t.Loc.AppendJSON(append(b, `,"Loc":`...))
+		if t.Stub {
+			b = append(b, `,"Stub":true`...)
+		}
+		if t.Deco {
+			b = append(b, `,"Deco":true`...)
+		}
+		return append(b, '}'), nil
 	})
 	b = append(b, `,"Imps":`...)
 	b, _ = appendJSONArr(b, r.Imps, func(b []byte, i *Imp) ([]byte, error) {

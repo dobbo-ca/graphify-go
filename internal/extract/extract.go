@@ -82,13 +82,18 @@ type ImportAlias struct {
 	InFunc                      bool `json:",omitempty"`
 }
 
-// TypeRef is an unresolved supertype reference: the type FromID declared Name
-// as a parent, with Relation "inherits" (extends / base class) or "implements"
-// (interface conformance). Resolve binds Name to a definition the same way a
+// TypeRef is an unresolved type reference: FromID declared Name as a parent,
+// with Relation "inherits" (extends / base class) or "implements" (interface
+// conformance), or named it in a signature, a field or a decorator, with
+// Relation "references". Resolve binds Name to a definition the same way a
 // call is bound.
 type TypeRef struct {
 	FromID, Name, Relation, File string
 	Loc                          model.Loc
+	// Stub makes Resolve point the edge at a sourceless node named Name when
+	// no definition binds. Deco marks a decorator, which a function can be.
+	Stub bool `json:",omitempty"`
+	Deco bool `json:",omitempty"`
 }
 
 // Imp is an unresolved import: File imported the module named Spec. TypeOnly

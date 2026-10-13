@@ -291,8 +291,8 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 
 	// Inheritance: a declared supertype name binds the same way a call does —
 	// same file first, then disambiguated among the definitions sharing the name.
-	// An unresolvable base (a library type outside the corpus) drops rather than
-	// creating a stub node. Resolved ahead of the calls so a self/super call can
+	// An unresolvable name (a library type outside the corpus) drops, or binds to
+	// a sourceless stub node when the reference asks for one. Resolved ahead of the calls so a self/super call can
 	// walk the chain; the edges are appended after them.
 	var inherit []model.Edge
 	imported := importedSet{targets: impTargets}
@@ -300,6 +300,22 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	openSuper := map[string]bool{}  // type id with a base outside the corpus
 	jm := newJSMods(results, corpus, local, idFile)
 	jsAlias := jm.aliases()
+	var fns map[string]bool // ids of function nodes, made for the first reference
+	isType := func(id string) bool {
+		if fns == nil {
+			fns = map[string]bool{}
+			for _, r := range results {
+				for _, n := range r.Nodes {
+					if strings.HasSuffix(n.Label, ")") {
+						fns[n.ID] = true
+					}
+				}
+			}
+		}
+		return !fns[id] && !value[id]
+	}
+	stubSeen := map[string]bool{}
+	var stubs []model.Node
 	for _, r := range results {
 		js := len(r.TypeRefs) > 0 && jsLike(r.File)
 		var bound map[string]string
@@ -307,26 +323,47 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 			bound = jm.bound(&r)
 		}
 		for _, t := range r.TypeRefs {
+			ref := t.Relation == "references"
+			// A supertype or a type position names a type; a decorator can
+			// name a function.
+			cands := func(ids []string) []string {
+				ids = typeDefs(ids, t.Name, idFile)
+				if ref && !t.Deco {
+					ids = keep(ids, isType)
+				}
+				return ids
+			}
 			tgt := ""
 			if js {
 				tgt = jm.supertype(t, &r, bound)
-			} else if ids := typeDefs(local[[2]string{t.File, t.Name}], t.Name, idFile); len(ids) == 1 {
+			} else if ids := cands(local[[2]string{t.File, t.Name}]); len(ids) == 1 {
 				tgt = ids[0]
 			}
 			if tgt == "" && !js {
-				tgt = disambiguate(typeDefs(global[t.Name], t.Name, idFile), t.File, idFile, &imported)
+				tgt = disambiguate(cands(global[t.Name]), t.File, idFile, &imported)
 			}
 			if tgt == "" || tgt == t.FromID || langfamily.Cross(t.File, idFile[tgt]) {
 				if t.Relation == "inherits" {
 					openSuper[t.FromID] = true
 				}
-				continue
-			}
-			if t.Relation == "inherits" {
+				if !t.Stub || tgt == t.FromID {
+					continue
+				}
+				// The stub id is the id a definition of Name in this file
+				// has; a definition there that differs in case owns it.
+				tgt = idutil.MakeID(t.File, t.Name)
+				if _, def := idFile[tgt]; def {
+					continue
+				}
+				if !stubSeen[tgt] {
+					stubSeen[tgt] = true
+					stubs = append(stubs, model.Node{ID: tgt, Label: t.Name, FileType: "code"})
+				}
+			} else if t.Relation == "inherits" {
 				supers[t.FromID] = append(supers[t.FromID], tgt)
 			}
 			conf := model.ConfInferred
-			if js {
+			if js || ref {
 				conf = model.ConfExtracted
 			}
 			inherit = append(inherit, model.Edge{
@@ -600,7 +637,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		edges = append(edges, part)
 	}
 	// From here out holds what the passes below add.
-	out.Nodes, out.Edges = impNodes, nil
+	out.Nodes, out.Edges = append(impNodes, stubs...), nil
 
 	// Terraform module sources: a local source resolves to the target directory
 	// node (created once, with contains edges to that directory's files so the
