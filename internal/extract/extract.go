@@ -324,13 +324,14 @@ func itoa(i int) string {
 
 // builder accumulates nodes/edges/defs for one file, de-duplicating node IDs.
 type builder struct {
-	file   string
-	src    model.File // file, as edges hold it
-	fileID string
-	stem   string // id prefix of the symbols: the file path
-	res    Result
-	seen   map[string]bool
-	pyMods map[string]string // local name -> plainly imported module
+	file     string
+	src      model.File // file, as edges hold it
+	fileID   string
+	stem     string // id prefix of the symbols: the file path
+	res      Result
+	seen     map[string]bool
+	pyMods   map[string]string // local name -> what a module-level import binds it to
+	pyBodies []pyBody          // function bodies awaiting the Python call walk
 	// rubyMethods holds method names defined in the file (bare self-sends).
 	rubyMethods map[string]bool
 	jsBodies    []jsBody             // function bodies awaiting the JS call walk

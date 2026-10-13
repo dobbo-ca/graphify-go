@@ -257,3 +257,98 @@ def lazy():
 		t.Errorf("imports_from:\n got %q\nwant %q", got, want)
 	}
 }
+
+// Round 1 of the review of the nested defs and the import-bound calls.
+func TestPythonNestedAndImportEdgeCases(t *testing.T) {
+	cases := []struct {
+		name string
+		srcs map[string]string
+		rels []model.Relation
+		want []string
+	}{
+		{"self in a def nested in a method is the self of the method", map[string]string{"a.py": `class K:
+    def save(self): pass
+    def m(self):
+        def in_m():
+            self.save()
+            def deeper():
+                self.save()
+`}, []model.Relation{model.RelCalls}, []string{"deeper() -calls-> K.save()", "in_m() -calls-> K.save()"}},
+		{"self in a method of a local class is not", map[string]string{"a.py": `class K:
+    def save(self): pass
+    def m(self):
+        class Local:
+            def go(self):
+                self.save()
+                def inner():
+                    self.save()
+`}, []model.Relation{model.RelCalls}, nil},
+		{"a nested def keeps off the id of a module-level def", map[string]string{"a.py": `def alpha(): pass
+def beta(): pass
+def load():
+    def config():
+        beta()
+    return config()
+def load_config():
+    alpha()
+`}, []model.Relation{model.RelCalls, model.RelContains}, []string{
+			"a.py -contains-> alpha()", "a.py -contains-> beta()", "a.py -contains-> load()", "a.py -contains-> load_config()",
+			"config() -calls-> beta()", "load() -calls-> config()", "load() -contains-> config()", "load_config() -calls-> alpha()",
+		}},
+		{"and off the id of a method", map[string]string{"a.py": `def other(): pass
+class K:
+    def m_helper(self): pass
+    def m(self):
+        def helper():
+            other()
+`}, []model.Relation{model.RelCalls, model.RelContains}, []string{
+			"K -contains-> K.m()", "K -contains-> K.m_helper()", "K.m() -contains-> helper()",
+			"a.py -contains-> K", "a.py -contains-> other()", "helper() -calls-> other()",
+		}},
+		{"a default and an annotation of a nested def run in the function around it", map[string]string{"a.py": `def make(): pass
+def ann(): pass
+def outer(x=make()):
+    def inner(x=make()) -> ann():
+        pass
+`}, []model.Relation{model.RelCalls}, []string{"outer() -calls-> ann()", "outer() -calls-> make()"}},
+		{"an import in the function hides the import of the module", map[string]string{
+			"utils.py": "def run(): pass\n", "shim.py": "def run(): pass\n",
+			"app.py": `from utils import run
+def build():
+    run()
+def deploy():
+    from shim import run
+    run()
+`}, []model.Relation{model.RelCalls}, []string{"build() -calls-> utils.py:run()", "deploy() -calls-> shim.py:run()"}},
+		{"an import in a nested def does not reach the function around it", map[string]string{
+			"m.py": "def run(): pass\n", "n.py": "def run(): pass\n",
+			"nest.py": `import m as x
+def outer():
+    def inner():
+        import n as x
+        x.run()
+    def sibling():
+        x.run()
+    x.run()
+`}, []model.Relation{model.RelCalls}, []string{"inner() -calls-> n.py:run()", "outer() -calls-> m.py:run()", "sibling() -calls-> m.py:run()"}},
+		{"a from-imported name is no external module", map[string]string{"pkg/a.py": `from sqlalchemy import orm
+from sqlalchemy.orm import Session
+from . import x
+from .x import y
+def f():
+    orm.sessionmaker()
+    x.go()
+`}, []model.Relation{model.RelCalls}, nil},
+		{"a from-import in a class body", map[string]string{
+			"mod.py": "def top(): pass\n",
+			"cb.py":  "class Cls:\n    from mod import top\n",
+		}, []model.Relation{model.RelImports}, []string{"cb.py -imports-> top()"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := pyEdges(c.srcs, c.rels...); !slices.Equal(got, c.want) {
+				t.Errorf("edges:\n got %q\nwant %q", got, c.want)
+			}
+		})
+	}
+}

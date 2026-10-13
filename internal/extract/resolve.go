@@ -410,7 +410,13 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				}
 				if tgt != "" {
 				} else if isSelf {
-					tgt = selfTarget(owner[c.CallerID], c.Callee, super, methods, supers, openSuper)
+					self := c.CallerID
+					// A Python def inside a method closes over the method's
+					// self. Such a def is no definition of the corpus.
+					for n := 0; path.Ext(r.File) == ".py" && self != "" && idFile[self] == "" && n < 16; n++ {
+						self = owner[self]
+					}
+					tgt = selfTarget(owner[self], c.Callee, super, methods, supers, openSuper)
 				} else {
 					lkey := [2]string{r.File, c.Callee}
 					here, all := localC[lkey], globalC[c.Callee]
@@ -1069,13 +1075,17 @@ func resolveImportGuided(results []Result, idFile map[string]string, out *model.
 			}
 		}
 		rf := model.FileOf(r.File)
-		for _, n := range r.Calls {
+		for i, n := range r.Calls {
 			c := r.call(n)
 			if c.Recv != "" {
 				continue
 			}
 			a, ok := aliases[c.Callee]
 			if !ok {
+				continue
+			}
+			// An import inside the function binds the callee to another name.
+			if i < len(r.CallMods) && r.CallMods[i] != "" && r.CallMods[i] != a.Spec+":"+a.Imported {
 				continue
 			}
 			ids := index[a.ModuleStem+"\x00"+a.Imported]
@@ -1113,11 +1123,18 @@ func pySymbol(from, spec, name string, corpus map[string]bool, local map[[2]stri
 		if f == "" {
 			return ""
 		}
-		if ids := keep(local[[2]string{f, name}], func(id string) bool { return owner[id] == "" }); len(ids) > 0 {
-			if len(ids) > 1 {
+		// A method or a nested type of that name is not what the import binds.
+		hit, n := "", 0
+		for _, id := range local[[2]string{f, name}] {
+			if owner[id] == "" {
+				hit, n = id, n+1
+			}
+		}
+		if n > 0 {
+			if n > 1 {
 				return ""
 			}
-			return ids[0]
+			return hit
 		}
 		a := reexports[[2]string{f, name}]
 		if a == nil {

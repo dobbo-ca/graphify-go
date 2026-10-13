@@ -26,6 +26,9 @@ func extractPython(rel string, src []byte) Result {
 	for i := uint(0); i < root.ChildCount(); i++ {
 		b.pyStatement(root.Child(i), src)
 	}
+	for i := range b.pyBodies {
+		b.pyCalls(&b.pyBodies[i].fn, b.pyBodies[i].id, src)
+	}
 	b.pyRationale(root, src)
 	return b.res
 }
@@ -76,7 +79,7 @@ func (b *builder) pyFunc(n *ts.Node, src []byte) {
 	}
 	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
-	b.pyCalls(n, id, src)
+	b.pyBodies = append(b.pyBodies, pyBody{*n, id})
 }
 
 func (b *builder) pyClass(n *ts.Node, src []byte) {
@@ -101,6 +104,7 @@ func (b *builder) pyClass(n *ts.Node, src []byte) {
 			}
 		}
 		if m.Kind() != "function_definition" {
+			pyImportNames(m, src, func(local, val string) { b.pyInFuncAlias(local, val, line(m)) })
 			continue
 		}
 		mname := fieldText(m, "name", src)
@@ -114,7 +118,7 @@ func (b *builder) pyClass(n *ts.Node, src []byte) {
 			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
 		})
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
-		b.pyCalls(m, mid, src)
+		b.pyBodies = append(b.pyBodies, pyBody{*m, mid})
 	}
 }
 
@@ -434,10 +438,30 @@ func pyTargets(t *ts.Node, src []byte, bound map[string]bool) {
 
 // pyScope is the function or class the pyCalls walk is inside. A class adds
 // to the ids below it alone: fn and the body are those of the function around.
+// outer is the function a def is made in, which runs its defaults; local marks
+// a method of a class made in a function, where self is not that of fn.
 type pyScope struct {
-	id, fn         string
+	id, fn, outer  string
 	end            uint
 	bodyLo, bodyHi uint
+	local          bool
+}
+
+// pyBody is a function whose calls pyCalls records once the file's own
+// definitions have their ids.
+type pyBody struct {
+	fn ts.Node
+	id string
+}
+
+// pyInFuncAlias records the name a from-import inside a function or class
+// binds, for the edge from the file to what it names.
+func (b *builder) pyInFuncAlias(local, val string, loc model.Loc) {
+	if mod, name, ok := strings.Cut(val, ":"); ok {
+		b.res.ImportAliases = append(b.res.ImportAliases, ImportAlias{
+			Local: local, Imported: name, Spec: mod, Loc: loc, InFunc: true,
+		})
+	}
 }
 
 // pyCalls records each call site in the body of function fn. Direct
@@ -458,50 +482,57 @@ func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
 		return of != nil && c.StartByte() >= of.StartByte() && c.EndByte() <= of.EndByte()
 	}
 	types, bound := map[string]string{}, map[string]bool{}
-	mods := map[string]string{} // names the imports inside fn bind
+	mods := map[[2]string]string{} // function, name -> what an import inside it binds
+	made := map[string]bool{}      // ids of the defs inside fn
 	localType := pyLocalTyper(types, src)
 	// Types and bound names cover the whole function, so a receiver is
 	// resolved only after the walk.
 	type site struct {
 		caller, callee, recv string
 		loc                  model.Loc
-		member               bool
+		member, local        bool
 	}
 	var sites []site
-	scopes := []pyScope{{callerID, callerID, fn.EndByte(), body.StartByte(), body.EndByte()}}
+	scopes := []pyScope{{id: callerID, fn: callerID, end: fn.EndByte(), bodyLo: body.StartByte(), bodyHi: body.EndByte()}}
 	walkKinds(fn, pyCallKinds, func(cv ts.Node) bool {
 		c := &cv
 		localType(c)
+		for len(scopes) > 1 && c.StartByte() >= scopes[len(scopes)-1].end {
+			scopes = scopes[:len(scopes)-1]
+		}
+		in := scopes[len(scopes)-1]
 		if within(c, body) && pyImportNames(c, src, func(local, val string) {
-			if mod, name, ok := strings.Cut(val, ":"); ok {
-				b.res.ImportAliases = append(b.res.ImportAliases, ImportAlias{
-					Local: local, Imported: name, Spec: mod, Loc: line(c), InFunc: true,
-				})
-			}
-			if old, dup := mods[local]; dup && old != val {
+			b.pyInFuncAlias(local, val, line(c))
+			key := [2]string{in.fn, local}
+			if old, dup := mods[key]; dup && old != val {
 				val = ""
 			}
-			mods[local] = val
+			mods[key] = val
 		}) {
 			return true
 		}
 		if within(c, body) || within(c, params) {
 			pyBind(c, src, true, bound)
 		}
-		for len(scopes) > 1 && c.StartByte() >= scopes[len(scopes)-1].end {
-			scopes = scopes[:len(scopes)-1]
-		}
-		in := scopes[len(scopes)-1]
 		switch c.Kind() {
 		case "function_definition", "class_definition":
 			name, cbody := fieldText(c, "name", src), c.ChildByFieldName("body")
 			if c.StartByte() == fn.StartByte() || name == "" || cbody == nil {
 				return true
 			}
-			sc := pyScope{idutil.MakeID(in.id, name), in.fn, c.EndByte(), in.bodyLo, in.bodyHi}
+			sc := in
+			sc.id, sc.end = idutil.MakeID(in.id, name), c.EndByte()
 			if c.Kind() == "function_definition" {
-				sc.fn, sc.bodyLo, sc.bodyHi = sc.id, cbody.StartByte(), cbody.EndByte()
+				// ponytail: one more part keeps the def off the id of a
+				// module-level def or method `outer_name`; a def of that
+				// longer name still collides.
+				if b.seen[sc.id] && !made[sc.id] {
+					sc.id = idutil.MakeID(in.id, name, "nested")
+				}
+				sc.fn, sc.outer, sc.bodyLo, sc.bodyHi = sc.id, in.fn, cbody.StartByte(), cbody.EndByte()
+				sc.local = in.local || in.id != in.fn
 				if !b.seen[sc.id] {
+					made[sc.id] = true
 					b.addNode(sc.id, name+"()", line(c))
 					b.res.Edges = append(b.res.Edges, model.Edge{
 						Source: in.fn, Target: sc.id, Relation: model.RelContains,
@@ -519,8 +550,16 @@ func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
 			scopes = append(scopes, sc)
 			return true
 		}
-		if c.Kind() != "call" || c.StartByte() < in.bodyLo || c.EndByte() > in.bodyHi {
+		if c.Kind() != "call" {
 			return true
+		}
+		caller := in.fn
+		if c.StartByte() < in.bodyLo || c.EndByte() > in.bodyHi {
+			// A default or an annotation of a def runs in the function the
+			// def is made in; fn itself has none here.
+			if caller = in.outer; caller == "" {
+				return true
+			}
 		}
 		f := c.ChildByFieldName("function")
 		if f == nil {
@@ -528,25 +567,26 @@ func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
 		}
 		switch f.Kind() {
 		case "identifier":
-			sites = append(sites, site{caller: in.fn, callee: f.Utf8Text(src), loc: line(c)})
+			sites = append(sites, site{caller: caller, callee: f.Utf8Text(src), loc: line(c)})
 		case "attribute":
 			if a := f.ChildByFieldName("attribute"); a != nil {
-				sites = append(sites, site{in.fn, a.Utf8Text(src), recvText(f, a, src), line(c), true})
+				sites = append(sites, site{caller, a.Utf8Text(src), recvText(f, a, src), line(c), true, in.local})
 			}
 		}
 		return true
 	})
 	// imported is what name names by an import no other binding hides: one
-	// inside fn before one of the module.
-	imported := func(name string) (val string, inFn bool) {
-		val, inFn = mods[name]
-		if !inFn {
-			val = b.pyMods[name]
-		}
+	// inside the caller or a function around it before one of the module.
+	imported := func(caller, name string) (val string, inFn bool) {
 		if bound[name] {
 			return "", false
 		}
-		return val, inFn
+		for s, ok := caller, true; ok; s, ok = b.jsParent[s] {
+			if val, ok := mods[[2]string{s, name}]; ok {
+				return val, true
+			}
+		}
+		return b.pyMods[name], false
 	}
 sites:
 	for _, c := range sites {
@@ -560,15 +600,19 @@ sites:
 				}
 			}
 			b.call(c.caller, c.callee, c.loc)
-			if mod, _ = imported(c.callee); !strings.Contains(mod, ":") {
+			if mod, _ = imported(c.caller, c.callee); !strings.Contains(mod, ":") {
 				mod = ""
 			}
 		} else {
 			recv := c.recv
-			val, inFn := imported(recv)
+			// The self of a local class has no node to bind on.
+			if _, isSelf := selfRecv[recv]; isSelf && c.local {
+				continue
+			}
+			val, inFn := imported(c.caller, recv)
 			// Upstream gives a call on an external module to a top-level
-			// function, and to a module-level import, alone.
-			if mod = pyModuleOf(val); mod != "" && (inFn || c.caller != callerID) {
+			// function, and to a plain module-level import, alone.
+			if mod = pyModuleOf(val); mod != "" && (inFn || c.caller != callerID || strings.Contains(val, ":")) {
 				mod += ":"
 			}
 			if t := types[recv]; t != "" {
