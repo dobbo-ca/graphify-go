@@ -94,6 +94,21 @@ detect → extract → build → cluster → analyze → report → export
   core abstractions), `graph.json` (NetworkX node-link format), and the
   agent-consumable `graphml` / `dot` / `csv` exports.
 
+### Performance notes
+
+Two places spend CPU to keep peak memory down, both on purpose:
+
+- Parsers are pooled, and each one hands its subtree heap chunks back to a
+  pool shared by all parsers after every file. One huge file does not leave
+  its memory pinned in an idle parser; the cost is the hand-back on each parse.
+- From resolve to the end of the output writes the Go GC target is 50 instead
+  of 100. On a Kubernetes-sized tree that costs about 5 to 7 percent CPU for
+  about 20 percent lower peak memory. A lower `GOGC`, or `GOGC=off`, is left
+  as set.
+
+`graphify update` keeps a parse cache in `graphify-out/`. A cache written by
+another graphify version is dropped and rebuilt once, with a note on stderr.
+
 ## Use it in your own repo
 
 1. Add `graphify build` to CI on merge to `main` and commit `graphify-out/` —

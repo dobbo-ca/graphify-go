@@ -1,3 +1,13 @@
+## Unreleased
+
+- The first `graphify update` after the upgrade drops the parse cache and
+  parses every file again, once, with a note on stderr. `graph.json` and
+  `GRAPH_REPORT.md` do not change.
+- Pooled parsers share their subtree heap chunks: a little CPU on each parse
+  for a lower peak on trees with a few huge files.
+- The GC target is 50 from resolve to the end of the output writes: about 5 to
+  7 percent CPU for about 20 percent lower peak memory on a Kubernetes-sized
+  tree.
 
 ### 📚 Documentation
 
