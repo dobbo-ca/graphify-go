@@ -3,10 +3,11 @@ package extract
 import (
 	"strings"
 
-	ts "github.com/tree-sitter/go-tree-sitter"
-	tsgo "github.com/tree-sitter/tree-sitter-go/bindings/go"
+	tsgo "github.com/dobbo-ca/gositter/grammars/golang"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
+	"github.com/dobbo-ca/graphify-go/internal/model"
 )
 
 // extractGo pulls functions, methods, type declarations, imports, and call
@@ -47,7 +48,7 @@ func (b *builder) goFunc(n *ts.Node, src []byte, rets map[string]string) {
 	}
 	id := idutil.MakeID(b.stem, name)
 	b.def(id, name, name+"()", line(n))
-	b.goCalls(n.ChildByFieldName("body"), id, "", goLocalTypes(n, src, rets), src)
+	b.goCalls(n, id, "", src, rets)
 }
 
 func (b *builder) goMethod(n *ts.Node, src []byte, rets map[string]string) {
@@ -68,7 +69,7 @@ func (b *builder) goMethod(n *ts.Node, src []byte, rets map[string]string) {
 	if p := firstNamed(n.ChildByFieldName("receiver")); p != nil {
 		self = fieldText(p, "name", src)
 	}
-	b.goCalls(n.ChildByFieldName("body"), id, self, goLocalTypes(n, src, rets), src)
+	b.goCalls(n, id, self, src, rets)
 }
 
 // goReceiverType returns the bare type name of a method receiver, e.g. "Server"
@@ -79,7 +80,8 @@ func goReceiverType(n *ts.Node, src []byte) string {
 		return ""
 	}
 	var name string
-	walk(recv, func(c *ts.Node) bool {
+	walk(recv, func(cv ts.Node) bool {
+		c := &cv
 		if name != "" {
 			return false
 		}
@@ -107,7 +109,8 @@ func (b *builder) goTypes(n *ts.Node, src []byte) {
 }
 
 func (b *builder) goImports(n *ts.Node, src []byte) {
-	walk(n, func(c *ts.Node) bool {
+	walk(n, func(cv ts.Node) bool {
+		c := &cv
 		if c.Kind() == "import_spec" || (c.Kind() == "import_declaration" && c.ChildByFieldName("path") != nil) {
 			if path := c.ChildByFieldName("path"); path != nil {
 				b.imp(unquote(path.Utf8Text(src)), line(c))
@@ -117,16 +120,52 @@ func (b *builder) goImports(n *ts.Node, src []byte) {
 	})
 }
 
-// goLocalTypes maps the locals of function fn to their type, from a parameter
+// The kinds the goCalls walk acts on.
+var goCallKinds = tsgo.Language().KindMask("call_expression", "parameter_declaration", "var_spec",
+	"range_clause", "type_switch_statement", "short_var_declaration")
+
+// goCalls records each call site in the body of function fn, attributing it to
+// callerID. Both direct calls (`f()`) and method/selector calls (`x.f()`) are
+// recorded by the called name. self is the enclosing method's receiver name; a
+// call on it is recorded with the receiver "self". A call on a typed local is
+// recorded with its type as the receiver.
+//
+// The same walk maps the locals of fn to their type, from a parameter
 // or `var` (`x Foo`, `x *Foo`, `x pkg.Foo`), a composite literal (`x := Foo{}`,
 // `x := &Foo{}`) or a call to a function in rets (`x := newFoo()`). A local also
 // declared with anything else, range and type switch included, maps to "".
 // ponytail: one flat scope per function, and rets only knows this file, so
 // `x := pkg.New()` is untyped; that needs return types across files.
-func goLocalTypes(fn *ts.Node, src []byte, rets map[string]string) map[string]string {
+func (b *builder) goCalls(fn *ts.Node, callerID, self string, src []byte, rets map[string]string) {
+	// Calls count only inside the body, which is the last child of fn.
+	bodyStart := ^uint(0)
+	if body := fn.ChildByFieldName("body"); body != nil {
+		bodyStart = body.StartByte()
+	}
+	// The scope is flat, so a receiver is typed only once every local is seen.
+	type site struct {
+		callee, recv string
+		loc          model.Loc
+		member       bool
+	}
+	var sites []site
 	types := map[string]string{}
-	walk(fn, func(c *ts.Node) bool {
+	walkKinds(fn, goCallKinds, func(cv ts.Node) bool {
+		c := &cv
 		switch c.Kind() {
+		case "call_expression":
+			f := c.ChildByFieldName("function")
+			if f == nil || c.StartByte() < bodyStart {
+				return true
+			}
+			switch f.Kind() {
+			case "identifier":
+				sites = append(sites, site{callee: f.Utf8Text(src), loc: line(c)})
+			case "selector_expression":
+				if name := f.ChildByFieldName("field"); name != nil {
+					sites = append(sites, site{name.Utf8Text(src), recvText(f, name, src), line(c), true})
+				}
+			}
 		case "parameter_declaration", "var_spec":
 			typ := goTypeName(c.ChildByFieldName("type"), src)
 			for i := uint(0); i < c.NamedChildCount(); i++ {
@@ -172,7 +211,19 @@ func goLocalTypes(fn *ts.Node, src []byte, rets map[string]string) map[string]st
 		}
 		return true
 	})
-	return types
+	for _, c := range sites {
+		if !c.member {
+			b.call(callerID, c.callee, c.loc)
+			continue
+		}
+		recv := c.recv
+		if recv == self {
+			recv = "self"
+		} else if t := types[recv]; t != "" {
+			recv = t
+		}
+		b.callRecv(callerID, c.callee, recv, c.loc)
+	}
 }
 
 // goTypeName returns the name of a plain or pointer named type, else "". A
@@ -192,41 +243,6 @@ func goTypeName(t *ts.Node, src []byte) string {
 		return ""
 	}
 	return t.Utf8Text(src)
-}
-
-// goCalls walks a function body and records each call site, attributing it to
-// callerID. Both direct calls (`f()`) and method/selector calls (`x.f()`) are
-// recorded by the called name. self is the enclosing method's receiver name; a
-// call on it is recorded with the receiver "self". A call on a typed local is
-// recorded with its type as the receiver.
-func (b *builder) goCalls(body *ts.Node, callerID, self string, types map[string]string, src []byte) {
-	if body == nil {
-		return
-	}
-	walk(body, func(c *ts.Node) bool {
-		if c.Kind() != "call_expression" {
-			return true
-		}
-		fn := c.ChildByFieldName("function")
-		if fn == nil {
-			return true
-		}
-		switch fn.Kind() {
-		case "identifier":
-			b.call(callerID, fn.Utf8Text(src), line(c))
-		case "selector_expression":
-			if f := fn.ChildByFieldName("field"); f != nil {
-				recv := recvText(fn, f, src)
-				if recv == self {
-					recv = "self"
-				} else if t := types[recv]; t != "" {
-					recv = t
-				}
-				b.callRecv(callerID, f.Utf8Text(src), recv, line(c))
-			}
-		}
-		return true
-	})
 }
 
 func fieldText(n *ts.Node, field string, src []byte) string {

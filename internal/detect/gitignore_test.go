@@ -130,3 +130,38 @@ func TestCollectFilesGraphifyignore(t *testing.T) {
 		t.Errorf("collected %d files, want %d: %s", len(got), len(want), strings.Join(keys, ", "))
 	}
 }
+
+// The literal prefix and suffix checked before a rule's regexp must hold for
+// every path the regexp matches, or the shortcut would change the file list.
+func TestIgnoreRuleLiteralsNeverRejectAMatch(t *testing.T) {
+	globs := []string{
+		"logs", "*.log", "npm-debug.log*", "report.[0-9]*.[0-9]*.json", "a?c", "?x", "x?",
+		"/build", "/out/*.js", "docs/**/gen", "**/tmp", "src/**", "a/*/c", "*", "**", "a*b*c",
+		"node_modules/", "!keep.log", `\#lit`, "a.b+c", "é*ü", "*.pid.lock", ".pnp.*",
+	}
+	parts := []string{"", "a", "b", "c", "x", "logs", ".log", "npm-debug.log", "report.[0-9]", "1", ".json",
+		"build", "out", "/", ".js", "docs", "gen", "tmp", "src", "keep", "#lit", "a.b+c", "é", "ü", ".pid.lock", ".pnp.", "node_modules"}
+	var targets []string
+	for _, a := range parts {
+		for _, b := range parts {
+			for _, c := range parts {
+				targets = append(targets, a+b+c)
+			}
+		}
+	}
+	matched := 0
+	for _, r := range parseIgnore("", strings.Join(globs, "\n")).rules {
+		for _, tg := range targets {
+			if !r.re.MatchString(tg) {
+				continue
+			}
+			matched++
+			if !strings.HasPrefix(tg, r.prefix) || !strings.HasSuffix(tg, r.suffix) {
+				t.Fatalf("rule %v (prefix %q, suffix %q) matches %q but the literal check rejects it", r.re, r.prefix, r.suffix, tg)
+			}
+		}
+	}
+	if matched < 100 {
+		t.Fatalf("only %d matches: the test no longer exercises the check", matched)
+	}
+}

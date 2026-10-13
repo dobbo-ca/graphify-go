@@ -1,6 +1,7 @@
 package extract
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -22,35 +23,52 @@ import (
 // Purely additive — the call edge to the interface method stays, the call site
 // really does name the interface. Confidence is INFERRED: the target is forced
 // once there is a single implementer, but the source text never names it.
-func resolveCSharpDispatch(out *model.Extraction) {
+// It only reads nodes and edges and returns the edges it adds.
+func resolveCSharpDispatch(nodes [][]model.Node, edges [][]model.Edge) (made []model.Edge) {
+	// Both ends of every edge made here are C# nodes.
+	if !slices.ContainsFunc(nodes, func(p []model.Node) bool {
+		return slices.ContainsFunc(p, func(n model.Node) bool { return isCSharpNode(&n) })
+	}) {
+		return nil
+	}
+	// The last node of an id, kept only when it is a C# one: every use below
+	// asks for that.
 	node := map[string]*model.Node{}
-	for i := range out.Nodes {
-		node[out.Nodes[i].ID] = &out.Nodes[i]
+	for _, p := range nodes {
+		for i := range p {
+			if isCSharpNode(&p[i]) {
+				node[p[i].ID] = &p[i]
+			} else if len(node) > 0 {
+				delete(node, p[i].ID)
+			}
+		}
 	}
 
 	implementers := map[string]map[string]bool{} // interface id -> implementer ids
 	methods := map[string]map[string][]string{}  // owner id -> bare name -> method ids
-	for _, e := range out.Edges {
-		switch e.Relation {
-		case "implements":
-			if implementers[e.Target] == nil {
-				implementers[e.Target] = map[string]bool{}
-			}
-			implementers[e.Target][e.Source] = true
-		case "contains":
-			m := node[e.Target]
-			if m == nil || !isCSharpNode(m) {
-				continue
-			}
-			name := bareMethodName(m.Label)
-			if name == "" {
-				continue
-			}
-			if methods[e.Source] == nil {
-				methods[e.Source] = map[string][]string{}
-			}
-			if !contains(methods[e.Source][name], e.Target) {
-				methods[e.Source][name] = append(methods[e.Source][name], e.Target)
+	for _, p := range edges {
+		for _, e := range p {
+			switch e.Relation {
+			case model.RelImplements:
+				if implementers[e.Target] == nil {
+					implementers[e.Target] = map[string]bool{}
+				}
+				implementers[e.Target][e.Source] = true
+			case model.RelContains:
+				m := node[e.Target]
+				if m == nil || !isCSharpNode(m) {
+					continue
+				}
+				name := bareMethodName(m.Label)
+				if name == "" {
+					continue
+				}
+				if methods[e.Source] == nil {
+					methods[e.Source] = map[string][]string{}
+				}
+				if !contains(methods[e.Source][name], e.Target) {
+					methods[e.Source][name] = append(methods[e.Source][name], e.Target)
+				}
 			}
 		}
 	}
@@ -74,12 +92,13 @@ func resolveCSharpDispatch(out *model.Extraction) {
 				continue
 			}
 			impl := node[candidates[0]]
-			out.Edges = append(out.Edges, model.Edge{
-				Source: declared[0], Target: candidates[0], Relation: "dispatches_to",
-				Confidence: "INFERRED", SourceFile: impl.SourceFile, SourceLocation: impl.SourceLocation,
+			made = append(made, model.Edge{
+				Source: declared[0], Target: candidates[0], Relation: model.RelDispatchesTo,
+				Confidence: model.ConfInferred, SourceFile: model.FileOf(impl.SourceFile), SourceLocation: model.LocOf(impl.SourceLocation),
 			})
 		}
 	}
+	return made
 }
 
 func isCSharpNode(n *model.Node) bool {

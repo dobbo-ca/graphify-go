@@ -48,6 +48,40 @@ func NormalizeID(s string) string { return clean(s) }
 // left NormalizeID(MakeID(s)) != MakeID(s) for such inputs. The loop is bounded;
 // Unicode caseless folding converges in one or two steps.
 func clean(s string) string {
+	if id, ok := cleanASCII(s); ok {
+		return id
+	}
+	return cleanUnicode(s)
+}
+
+// cleanASCII is cleanUnicode for a string of ASCII only, where casefolding
+// lowercases A-Z, NFKC changes nothing, and the two regexps leave the runs
+// of [a-z0-9] joined by single underscores. Most ids are ASCII.
+func cleanASCII(s string) (string, bool) {
+	b := make([]byte, 0, len(s))
+	gap := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 0x80:
+			return "", false
+		case 'A' <= c && c <= 'Z':
+			c += 'a' - 'A'
+		case 'a' <= c && c <= 'z', '0' <= c && c <= '9':
+		default:
+			gap = true
+			continue
+		}
+		if gap && len(b) > 0 {
+			b = append(b, '_')
+		}
+		gap = false
+		b = append(b, c)
+	}
+	return string(b), true
+}
+
+func cleanUnicode(s string) string {
 	for i := 0; i < 6; i++ {
 		next := norm.NFKC.String(fold.String(s))
 		if next == s {

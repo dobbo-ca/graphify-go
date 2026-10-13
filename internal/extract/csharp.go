@@ -3,8 +3,8 @@ package extract
 import (
 	"unicode"
 
-	ts "github.com/tree-sitter/go-tree-sitter"
-	tscs "github.com/tree-sitter/tree-sitter-c-sharp/bindings/go"
+	tscs "github.com/dobbo-ca/gositter/grammars/csharp"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -90,8 +90,8 @@ func (b *builder) csType(n *ts.Node, src []byte, ifaces map[string]bool) {
 		mid := idutil.MakeID(b.stem, name, mname)
 		b.addNode(mid, name+"."+mname+"()", line(m))
 		b.res.Edges = append(b.res.Edges, model.Edge{
-			Source: typeID, Target: mid, Relation: "contains",
-			Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
+			Source: typeID, Target: mid, Relation: model.RelContains,
+			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
 		})
 		// Register under the bare method name so `x.Method()` call sites resolve.
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
@@ -113,6 +113,8 @@ func (b *builder) csUsing(n *ts.Node, src []byte) {
 	}
 }
 
+var csCallKinds = tscs.Language().KindMask("invocation_expression")
+
 // csCalls walks a method/function body and records each call site. Direct calls
 // (`f()`), member calls (`x.f()`), and qualified calls (`A.B.f()`) all record
 // the trailing invoked name.
@@ -120,10 +122,8 @@ func (b *builder) csCalls(body *ts.Node, callerID string, src []byte) {
 	if body == nil {
 		return
 	}
-	walk(body, func(c *ts.Node) bool {
-		if c.Kind() != "invocation_expression" {
-			return true
-		}
+	walkKinds(body, csCallKinds, func(cv ts.Node) bool {
+		c := &cv
 		fn := c.ChildByFieldName("function")
 		if fn == nil {
 			return true
@@ -149,15 +149,15 @@ func (b *builder) csCalls(body *ts.Node, callerID string, src []byte) {
 	})
 }
 
+var csInterfaceKinds = tscs.Language().KindMask("interface_declaration")
+
 // csInterfaceNames collects the interfaces declared anywhere in the file, so a
 // base can be classified as implements rather than inherits.
 func csInterfaceNames(root *ts.Node, src []byte) map[string]bool {
 	names := map[string]bool{}
-	walk(root, func(n *ts.Node) bool {
-		if n.Kind() == "interface_declaration" {
-			if name := fieldText(n, "name", src); name != "" {
-				names[name] = true
-			}
+	walkKinds(root, csInterfaceKinds, func(nv ts.Node) bool {
+		if name := fieldText(&nv, "name", src); name != "" {
+			names[name] = true
 		}
 		return true
 	})

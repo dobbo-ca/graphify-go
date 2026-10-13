@@ -88,8 +88,8 @@ edition = "2021"
 		t.Error("missing crate:app node with expected fields")
 	}
 	wantEdge := model.Edge{
-		Source: "crate:app", Target: "crate:core", Relation: "crate_depends_on",
-		Confidence: "EXTRACTED", Weight: 1.0, SourceFile: "app/Cargo.toml", SourceLocation: "L1",
+		Source: "crate:app", Target: "crate:core", Relation: model.RelCrateDependsOn,
+		Confidence: model.ConfExtracted, Weight: 1.0, SourceFile: model.FileOf("app/Cargo.toml"), SourceLocation: model.Line(1),
 	}
 	if !hasEdge(res, wantEdge) {
 		t.Errorf("missing internal edge %+v; got %+v", wantEdge, res.Edges)
@@ -198,8 +198,8 @@ edition = "2021"
 		t.Fatalf("virtual edges = %d, want 1", len(res.Edges))
 	}
 	if !hasEdge(res, model.Edge{
-		Source: "crate:alpha", Target: "crate:beta", Relation: "crate_depends_on",
-		Confidence: "EXTRACTED", Weight: 1.0, SourceFile: "crates/alpha/Cargo.toml", SourceLocation: "L1",
+		Source: "crate:alpha", Target: "crate:beta", Relation: model.RelCrateDependsOn,
+		Confidence: model.ConfExtracted, Weight: 1.0, SourceFile: model.FileOf("crates/alpha/Cargo.toml"), SourceLocation: model.Line(1),
 	}) {
 		t.Errorf("missing alpha->beta edge; got %+v", res.Edges)
 	}
@@ -232,8 +232,8 @@ root_pkg = { path = "../.." }
 		t.Fatalf("pkgRoot node ids = %v, want crate:root_pkg + crate:member", ids)
 	}
 	if !hasEdge(res, model.Edge{
-		Source: "crate:member", Target: "crate:root_pkg", Relation: "crate_depends_on",
-		Confidence: "EXTRACTED", Weight: 1.0, SourceFile: "crates/member/Cargo.toml", SourceLocation: "L1",
+		Source: "crate:member", Target: "crate:root_pkg", Relation: model.RelCrateDependsOn,
+		Confidence: model.ConfExtracted, Weight: 1.0, SourceFile: model.FileOf("crates/member/Cargo.toml"), SourceLocation: model.Line(1),
 	}) {
 		t.Errorf("missing member->root_pkg edge; got %+v", res.Edges)
 	}
@@ -270,14 +270,14 @@ edition = "2021"
 		t.Errorf("edges = %d, want %d", len(res.Edges), crateCount-1)
 	}
 	if !hasEdge(res, model.Edge{
-		Source: "crate:crate_000", Target: "crate:crate_001", Relation: "crate_depends_on",
-		Confidence: "EXTRACTED", Weight: 1.0, SourceFile: "crates/crate_000/Cargo.toml", SourceLocation: "L1",
+		Source: "crate:crate_000", Target: "crate:crate_001", Relation: model.RelCrateDependsOn,
+		Confidence: model.ConfExtracted, Weight: 1.0, SourceFile: model.FileOf("crates/crate_000/Cargo.toml"), SourceLocation: model.Line(1),
 	}) {
 		t.Error("missing head-of-chain edge crate_000->crate_001")
 	}
 	if !hasEdge(res, model.Edge{
-		Source: "crate:crate_198", Target: "crate:crate_199", Relation: "crate_depends_on",
-		Confidence: "EXTRACTED", Weight: 1.0, SourceFile: "crates/crate_198/Cargo.toml", SourceLocation: "L1",
+		Source: "crate:crate_198", Target: "crate:crate_199", Relation: model.RelCrateDependsOn,
+		Confidence: model.ConfExtracted, Weight: 1.0, SourceFile: model.FileOf("crates/crate_198/Cargo.toml"), SourceLocation: model.Line(1),
 	}) {
 		t.Error("missing tail-of-chain edge crate_198->crate_199")
 	}
@@ -318,8 +318,8 @@ abs = { path = %q }
 	}
 	for _, tgt := range []string{"crate:sym", "crate:abs"} {
 		if !hasEdge(res, model.Edge{
-			Source: "crate:app", Target: tgt, Relation: "crate_depends_on",
-			Confidence: "EXTRACTED", Weight: 1.0, SourceFile: "crates/app/Cargo.toml", SourceLocation: "L1",
+			Source: "crate:app", Target: tgt, Relation: model.RelCrateDependsOn,
+			Confidence: model.ConfExtracted, Weight: 1.0, SourceFile: model.FileOf("crates/app/Cargo.toml"), SourceLocation: model.Line(1),
 		}) {
 			t.Errorf("missing app->%s edge; got %+v", tgt, res.Edges)
 		}

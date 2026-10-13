@@ -64,7 +64,7 @@ func TestExtractMarkdown(t *testing.T) {
 
 	has := func(src, rel, tgt string) bool {
 		for _, e := range ext.Edges {
-			if e.Relation == rel && e.Source == src && e.Target == tgt {
+			if e.Relation.String() == rel && e.Source == src && e.Target == tgt {
 				return true
 			}
 		}
@@ -198,7 +198,7 @@ func TestExtractMarkdownHeadingsRefs(t *testing.T) {
 
 	hasContain := func(src, tgt string) bool {
 		for _, e := range r.Edges {
-			if e.Relation == "contains" && e.Source == src && e.Target == tgt {
+			if e.Relation == model.RelContains && e.Source == src && e.Target == tgt {
 				return true
 			}
 		}
@@ -229,7 +229,7 @@ func TestExtractMarkdownHeadingsRefs(t *testing.T) {
 	refs := 0
 	toOther := false
 	for _, e := range ext.Edges {
-		if e.Relation == "references" && e.Source == "notes" {
+		if e.Relation == model.RelReferences && e.Source == "notes" {
 			refs++
 			if e.Target == "other" {
 				toOther = true
@@ -262,7 +262,7 @@ func TestResolveBacktickCodeSymbol(t *testing.T) {
 
 	hasRef := func(src, tgt string) bool {
 		for _, e := range ext.Edges {
-			if e.Relation == "references" && e.Source == src && e.Target == tgt {
+			if e.Relation == model.RelReferences && e.Source == src && e.Target == tgt {
 				return true
 			}
 		}
@@ -280,7 +280,7 @@ func TestResolveBacktickCodeSymbol(t *testing.T) {
 	// (c) exactly one references edge: `true` (noise, no def) also drops.
 	refs := 0
 	for _, e := range ext.Edges {
-		if e.Relation == "references" && e.Source == "notes" {
+		if e.Relation == model.RelReferences && e.Source == "notes" {
 			refs++
 		}
 	}
@@ -299,7 +299,7 @@ func TestResolveQualifiedCodeSymbol(t *testing.T) {
 
 	code := Result{
 		Nodes: []model.Node{{ID: "WIDGET", Label: "Widget"}},
-		Edges: []model.Edge{{Source: "WIDGET", Target: "RENDER", Relation: "contains"}},
+		Edges: []model.Edge{{Source: "WIDGET", Target: "RENDER", Relation: model.RelContains}},
 		Defs: []Def{
 			{ID: "WIDGET", Name: "Widget", File: "pkg/widget.go"},
 			{ID: "RENDER", Name: "render", File: "pkg/widget.go"},
@@ -311,7 +311,7 @@ func TestResolveQualifiedCodeSymbol(t *testing.T) {
 
 	hasRef := func(tgt string) bool {
 		for _, e := range ext.Edges {
-			if e.Relation == "references" && e.Source == "notes" && e.Target == tgt {
+			if e.Relation == model.RelReferences && e.Source == "notes" && e.Target == tgt {
 				return true
 			}
 		}
@@ -330,7 +330,7 @@ func TestResolveQualifiedCodeSymbol(t *testing.T) {
 	// `other.Widget` must not bind either: the only references edges are the two above.
 	refs := 0
 	for _, e := range ext.Edges {
-		if e.Relation == "references" && e.Source == "notes" {
+		if e.Relation == model.RelReferences && e.Source == "notes" {
 			refs++
 		}
 	}
@@ -352,7 +352,7 @@ func TestMarkdownSpacedAndEscapedLinks(t *testing.T) {
 		ext := Resolve([]Result{r, note}, []string{"notes.md", "My Note.md"})
 		found := false
 		for _, e := range ext.Edges {
-			if e.Relation == "references" && e.Source == "notes" && e.Target == note.Nodes[0].ID {
+			if e.Relation == model.RelReferences && e.Source == "notes" && e.Target == note.Nodes[0].ID {
 				found = true
 			}
 		}

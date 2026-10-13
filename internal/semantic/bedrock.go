@@ -159,12 +159,12 @@ func parseConcepts(n Note, raw []byte) ([]model.Node, []model.Edge, error) {
 			seen[id] = true
 			nodes = append(nodes, model.Node{ID: id, Label: c.Name, FileType: ConceptType})
 		}
-		conf := "INFERRED"
+		conf := model.ConfInferred
 		if c.Score < ambiguousScore {
-			conf = "AMBIGUOUS"
+			conf = model.ConfAmbiguous
 		}
 		edges = append(edges, model.Edge{
-			Source: n.ID, Target: id, Relation: c.Relation,
+			Source: n.ID, Target: id, Relation: model.Rel(c.Relation),
 			Confidence: conf, ConfidenceScore: c.Score,
 		})
 	}

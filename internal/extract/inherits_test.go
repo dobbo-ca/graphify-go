@@ -17,7 +17,7 @@ func extractAll(t *testing.T, srcs map[string]string) (edges []struct{ Src, Rel,
 		label[n.ID] = n.Label
 	}
 	for _, e := range ext.Edges {
-		edges = append(edges, struct{ Src, Rel, Tgt string }{label[e.Source], e.Relation, label[e.Target]})
+		edges = append(edges, struct{ Src, Rel, Tgt string }{label[e.Source], e.Relation.String(), label[e.Target]})
 	}
 	return edges
 }

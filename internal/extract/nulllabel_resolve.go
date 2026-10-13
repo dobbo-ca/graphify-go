@@ -2,6 +2,7 @@ package extract
 
 import (
 	"maps"
+	"slices"
 	"strings"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
@@ -23,6 +24,10 @@ const maxChainDepth = 8
 // For multi-caller dirs, remote/registry hops, or anything unresolvable it
 // leaves the Stage B (partial) id untouched — never fabricating an exact id.
 func resolveNullLabels(results []Result, out *model.Extraction) {
+	// Without a null-label the indexes below serve nothing.
+	if !slices.ContainsFunc(results, func(r Result) bool { return len(r.NullLabels) > 0 }) {
+		return
+	}
 	// Index invocations by their module node id.
 	invByNode := map[string]ModInvoke{}
 	for _, r := range results {
@@ -49,7 +54,7 @@ func resolveNullLabels(results []Result, out *model.Extraction) {
 	}
 	callersByDir := map[string][]ModInvoke{}
 	for _, e := range out.Edges {
-		if e.Relation != "references" {
+		if e.Relation != model.RelReferences {
 			continue
 		}
 		dir, ok := dirLabel[e.Target]

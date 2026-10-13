@@ -35,7 +35,7 @@ func TestExtractJulia(t *testing.T) {
 
 	has := func(srcLabel, rel, tgtLabel string) bool {
 		for _, e := range ext.Edges {
-			if e.Relation == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
+			if e.Relation.String() == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
 				return true
 			}
 		}
@@ -58,7 +58,7 @@ func TestExtractJulia(t *testing.T) {
 	// `using LinearAlgebra` records an external import.
 	hasImport := func(spec string) bool {
 		for _, e := range ext.Edges {
-			if e.Relation == "imports" && id2label[e.Target] == spec {
+			if e.Relation.String() == "imports" && id2label[e.Target] == spec {
 				return true
 			}
 		}

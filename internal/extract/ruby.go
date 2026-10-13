@@ -1,8 +1,8 @@
 package extract
 
 import (
-	ts "github.com/tree-sitter/go-tree-sitter"
-	tsruby "github.com/tree-sitter/tree-sitter-ruby/bindings/go"
+	tsruby "github.com/dobbo-ca/gositter/grammars/ruby"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -27,10 +27,8 @@ func extractRuby(rel string, src []byte) Result {
 	defer done()
 	b := newBuilder(rel)
 	b.rubyMethods = map[string]bool{}
-	walk(root, func(n *ts.Node) bool {
-		if n.Kind() == "method" {
-			b.rubyMethods[fieldText(n, "name", src)] = true
-		}
+	walkKinds(root, rubyMethodKinds, func(nv ts.Node) bool {
+		b.rubyMethods[fieldText(&nv, "name", src)] = true
 		return true
 	})
 
@@ -91,8 +89,8 @@ func (b *builder) rubyType(n *ts.Node, src []byte) {
 			mid := idutil.MakeID(b.stem, name, mname)
 			b.addNode(mid, name+"."+mname+"()", line(m))
 			b.res.Edges = append(b.res.Edges, model.Edge{
-				Source: typeID, Target: mid, Relation: "contains",
-				Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
+				Source: typeID, Target: mid, Relation: model.RelContains,
+				Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
 			})
 			b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
 			b.rubyCalls(m.ChildByFieldName("body"), mid, src)
@@ -165,6 +163,15 @@ func rubyFirstStringArg(n *ts.Node, src []byte) string {
 	return ""
 }
 
+// The kinds of the three walks: methods of a file, then the locals and the
+// call sites of a body.
+var (
+	rubyMethodKinds = tsruby.Language().KindMask("method")
+	rubyLocalKinds  = tsruby.Language().KindMask("assignment", "operator_assignment", "left_assignment_list",
+		"block_parameters", "lambda_parameters", "exception_variable", "for")
+	rubyCallKinds = tsruby.Language().KindMask("call", "identifier")
+)
+
 // rubyCalls walks a method body and records each call site.
 func (b *builder) rubyCalls(body *ts.Node, callerID string, src []byte) {
 	if body == nil {
@@ -173,7 +180,8 @@ func (b *builder) rubyCalls(body *ts.Node, callerID string, src []byte) {
 	// Parameters and assigned locals shadow same-named methods.
 	locals := map[string]bool{}
 	if m := body.Parent(); m != nil {
-		walk(m.ChildByFieldName("parameters"), func(c *ts.Node) bool {
+		walk(m.ChildByFieldName("parameters"), func(cv ts.Node) bool {
+			c := &cv
 			if c.Kind() == "identifier" {
 				locals[c.Utf8Text(src)] = true
 			}
@@ -181,14 +189,16 @@ func (b *builder) rubyCalls(body *ts.Node, callerID string, src []byte) {
 		})
 	}
 	addIdents := func(n *ts.Node) {
-		walk(n, func(c *ts.Node) bool {
+		walk(n, func(cv ts.Node) bool {
+			c := &cv
 			if c.Kind() == "identifier" {
 				locals[c.Utf8Text(src)] = true
 			}
 			return true
 		})
 	}
-	walk(body, func(c *ts.Node) bool {
+	walkKinds(body, rubyLocalKinds, func(cv ts.Node) bool {
+		c := &cv
 		switch c.Kind() {
 		case "assignment", "operator_assignment":
 			if l := c.ChildByFieldName("left"); l != nil && l.Kind() == "identifier" {
@@ -201,7 +211,8 @@ func (b *builder) rubyCalls(body *ts.Node, callerID string, src []byte) {
 		}
 		return true
 	})
-	walk(body, func(c *ts.Node) bool {
+	walkKinds(body, rubyCallKinds, func(cv ts.Node) bool {
+		c := &cv
 		switch c.Kind() {
 		case "call":
 			b.rubyRecordCall(c, callerID, src)

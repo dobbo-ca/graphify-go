@@ -26,7 +26,7 @@ func gapEdges(t *testing.T, rel, code string) (map[string]bool, map[string]bool)
 	}
 	edges := map[string]bool{}
 	for _, e := range ext.Edges {
-		edges[id2label[e.Source]+" "+e.Relation+" "+id2label[e.Target]] = true
+		edges[id2label[e.Source]+" "+e.Relation.String()+" "+id2label[e.Target]] = true
 	}
 	return edges, nodes
 }
@@ -175,7 +175,7 @@ func TestGapAbstractCrossFileSingleImpl(t *testing.T) {
 		lbl[n.ID] = n.Label
 	}
 	for _, e := range ext.Edges {
-		if e.Relation == "calls" && lbl[e.Source] == "useIt()" && lbl[e.Target] == "Ci.size()" {
+		if e.Relation.String() == "calls" && lbl[e.Source] == "useIt()" && lbl[e.Target] == "Ci.size()" {
 			return
 		}
 	}

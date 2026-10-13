@@ -33,7 +33,7 @@ func TestExtractTerraform(t *testing.T) {
 
 	has := func(srcLabel, rel, tgtLabel string) bool {
 		for _, e := range ext.Edges {
-			if e.Relation == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
+			if e.Relation.String() == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
 				return true
 			}
 		}
@@ -130,7 +130,7 @@ module "vpc" {
 	}
 	has := func(srcLabel, rel, tgtLabel string) bool {
 		for _, e := range ext.Edges {
-			if e.Relation == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
+			if e.Relation.String() == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
 				return true
 			}
 		}
@@ -171,7 +171,7 @@ module "label" {
 	}
 	found := false
 	for _, e := range res.Edges {
-		if e.Relation == "inherits_context" &&
+		if e.Relation.String() == "inherits_context" &&
 			id2label[e.Source] == "module.label [null-label]" &&
 			id2label[e.Target] == "module.this [null-label]" {
 			found = true

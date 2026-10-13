@@ -96,7 +96,7 @@ resource "aws_s3_bucket" "b" {
 	}
 	linked := false
 	for _, e := range res.Edges {
-		if e.Relation == "references" && id2label[e.Source] == "aws_s3_bucket.b" && id2label[e.Target] == "module.this [null-label]" {
+		if e.Relation == model.RelReferences && id2label[e.Source] == "aws_s3_bucket.b" && id2label[e.Target] == "module.this [null-label]" {
 			linked = true
 		}
 	}

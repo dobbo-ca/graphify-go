@@ -14,9 +14,9 @@ func TestBuildDropsDanglingAndCrossLangCalls(t *testing.T) {
 			{ID: "c", Label: "c()", FileType: "code", SourceFile: "z.go"},
 		},
 		Edges: []model.Edge{
-			{Source: "a", Target: "c", Relation: "calls", Confidence: "INFERRED"},      // same family, kept
-			{Source: "a", Target: "b", Relation: "calls", Confidence: "INFERRED"},      // cross-language, dropped
-			{Source: "a", Target: "ghost", Relation: "calls", Confidence: "EXTRACTED"}, // dangling, dropped
+			{Source: "a", Target: "c", Relation: model.RelCalls, Confidence: model.ConfInferred},      // same family, kept
+			{Source: "a", Target: "b", Relation: model.RelCalls, Confidence: model.ConfInferred},      // cross-language, dropped
+			{Source: "a", Target: "ghost", Relation: model.RelCalls, Confidence: model.ConfExtracted}, // dangling, dropped
 		},
 	}
 	g := Build(ext)
@@ -44,11 +44,11 @@ func TestBuildDropsCrossLangImportsKeepsConcept(t *testing.T) {
 		},
 		Edges: []model.Edge{
 			// cross-language (ruby -> jsts), EXTRACTED: phantom, dropped
-			{Source: "worker", Target: "time_ts", Relation: "imports_from", Confidence: "EXTRACTED"},
+			{Source: "worker", Target: "time_ts", Relation: model.RelImportsFrom, Confidence: model.ConfExtracted},
 			// same family (jsts -> jsts): kept
-			{Source: "time_ts", Target: "util_ts", Relation: "imports", Confidence: "EXTRACTED"},
+			{Source: "time_ts", Target: "util_ts", Relation: model.RelImports, Confidence: model.ConfExtracted},
 			// concept (empty family) -> code: kept
-			{Source: "pkg", Target: "time_ts", Relation: "references", Confidence: "EXTRACTED"},
+			{Source: "pkg", Target: "time_ts", Relation: model.RelReferences, Confidence: model.ConfExtracted},
 		},
 	}
 	g := Build(ext)
@@ -70,8 +70,8 @@ func TestBuildKeepsBothDirections(t *testing.T) {
 			{ID: "b", Label: "b()", SourceFile: "x.go"},
 		},
 		Edges: []model.Edge{
-			{Source: "a", Target: "b", Relation: "calls", Confidence: "INFERRED"},
-			{Source: "b", Target: "a", Relation: "calls", Confidence: "INFERRED"},
+			{Source: "a", Target: "b", Relation: model.RelCalls, Confidence: model.ConfInferred},
+			{Source: "b", Target: "a", Relation: model.RelCalls, Confidence: model.ConfInferred},
 		},
 	}
 	if g := Build(ext); g.NumEdges() != 2 {

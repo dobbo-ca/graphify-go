@@ -2,6 +2,8 @@ package analyze
 
 import (
 	"fmt"
+	"math/rand"
+	"reflect"
 	"sort"
 	"testing"
 
@@ -23,7 +25,7 @@ func sampleGraph() *model.Graph {
 	}
 
 	contains := func(file, child string) {
-		g.AddEdge(model.Edge{Source: file, Target: child, Relation: "contains", Confidence: "EXTRACTED"})
+		g.AddEdge(model.Edge{Source: file, Target: child, Relation: model.RelContains, Confidence: model.ConfExtracted})
 	}
 	for _, id := range []string{"a1", "a2", "a3"} {
 		contains("fa", id)
@@ -33,7 +35,7 @@ func sampleGraph() *model.Graph {
 	}
 
 	calls := func(s, t, conf string) {
-		g.AddEdge(model.Edge{Source: s, Target: t, Relation: "calls", Confidence: conf})
+		g.AddEdge(model.Edge{Source: s, Target: t, Relation: model.RelCalls, Confidence: model.Conf(conf)})
 	}
 	calls("a1", "a2", "EXTRACTED")
 	calls("a1", "a3", "EXTRACTED")
@@ -42,8 +44,8 @@ func sampleGraph() *model.Graph {
 	calls("a1", "b1", "INFERRED") // cross-file: surprising
 
 	// File-level import cycle.
-	g.AddEdge(model.Edge{Source: "fa", Target: "fb", Relation: "imports_from", Confidence: "EXTRACTED"})
-	g.AddEdge(model.Edge{Source: "fb", Target: "fa", Relation: "imports_from", Confidence: "EXTRACTED"})
+	g.AddEdge(model.Edge{Source: "fa", Target: "fb", Relation: model.RelImportsFrom, Confidence: model.ConfExtracted})
+	g.AddEdge(model.Edge{Source: "fb", Target: "fa", Relation: model.RelImportsFrom, Confidence: model.ConfExtracted})
 	return g
 }
 
@@ -112,7 +114,7 @@ func TestImportCyclesNoneWhenAcyclic(t *testing.T) {
 	g := model.New()
 	g.AddNode(model.Node{ID: "fa", Label: "a.go", SourceFile: "pkg/a.go"})
 	g.AddNode(model.Node{ID: "fb", Label: "b.go", SourceFile: "pkg/b.go"})
-	g.AddEdge(model.Edge{Source: "fa", Target: "fb", Relation: "imports_from", Confidence: "EXTRACTED"})
+	g.AddEdge(model.Edge{Source: "fa", Target: "fb", Relation: model.RelImportsFrom, Confidence: model.ConfExtracted})
 	if cycles := ImportCycles(g, 5, 20); len(cycles) != 0 {
 		t.Errorf("expected no cycles in acyclic graph, got %v", cycles)
 	}
@@ -129,7 +131,7 @@ func semanticGraph() *model.Graph {
 	g.AddNode(model.Node{ID: "concept_appconfig", Label: "AppConfig", FileType: "semantic_concept"})
 	g.AddNode(model.Node{ID: "concept_flux", Label: "Flux", FileType: "semantic_concept"})
 	sem := func(s, t string) {
-		g.AddEdge(model.Edge{Source: s, Target: t, Relation: "cites", Confidence: "INFERRED", ConfidenceScore: 0.8})
+		g.AddEdge(model.Edge{Source: s, Target: t, Relation: model.RelCites, Confidence: model.ConfInferred, ConfidenceScore: 0.8})
 	}
 	sem("note_a", "concept_appconfig")
 	sem("note_b", "concept_appconfig")
@@ -172,8 +174,8 @@ func fileHubNoteGraph() *model.Graph {
 	g.AddNode(model.Node{ID: "na", Label: "a.md", FileType: "document", SourceFile: "learnings/a.md"})
 	g.AddNode(model.Node{ID: "nb", Label: "b.md", FileType: "document", SourceFile: "learnings/b.md"})
 	g.AddNode(model.Node{ID: "c1", Label: "Shared Concept", FileType: "semantic_concept"})
-	g.AddEdge(model.Edge{Source: "na", Target: "c1", Relation: "conceptually_related_to", Confidence: "INFERRED", ConfidenceScore: 0.9})
-	g.AddEdge(model.Edge{Source: "nb", Target: "c1", Relation: "conceptually_related_to", Confidence: "INFERRED", ConfidenceScore: 0.9})
+	g.AddEdge(model.Edge{Source: "na", Target: "c1", Relation: model.Rel("conceptually_related_to"), Confidence: model.ConfInferred, ConfidenceScore: 0.9})
+	g.AddEdge(model.Edge{Source: "nb", Target: "c1", Relation: model.Rel("conceptually_related_to"), Confidence: model.ConfInferred, ConfidenceScore: 0.9})
 	return g
 }
 
@@ -191,7 +193,7 @@ func TestGodNodesExcludeNoiseLabels(t *testing.T) {
 	// A mechanical hub out-degreeing every real entity.
 	g.AddNode(model.Node{ID: "dep", Label: "dependencies", SourceFile: "package.json"})
 	for _, id := range []string{"a1", "a2", "a3", "b1", "b2", "b3"} {
-		g.AddEdge(model.Edge{Source: "dep", Target: id, Relation: "calls", Confidence: "EXTRACTED"})
+		g.AddEdge(model.Edge{Source: "dep", Target: id, Relation: model.RelCalls, Confidence: model.ConfExtracted})
 	}
 	for _, n := range GodNodes(g, 10, 0) {
 		if n.Label == "dependencies" {
@@ -200,7 +202,7 @@ func TestGodNodesExcludeNoiseLabels(t *testing.T) {
 	}
 	// A JSON key that isn't generic noise still ranks.
 	g.AddNode(model.Node{ID: "sched", Label: "scheduler", SourceFile: "package.json"})
-	g.AddEdge(model.Edge{Source: "sched", Target: "a1", Relation: "calls", Confidence: "EXTRACTED"})
+	g.AddEdge(model.Edge{Source: "sched", Target: "a1", Relation: model.RelCalls, Confidence: model.ConfExtracted})
 	var found bool
 	for _, n := range GodNodes(g, 20, 0) {
 		if n.Label == "scheduler" {
@@ -219,7 +221,7 @@ func hubGraph() *model.Graph {
 	for i := 0; i < 40; i++ {
 		id := fmt.Sprintf("leaf%d", i)
 		g.AddNode(model.Node{ID: id, Label: id, SourceFile: fmt.Sprintf("l%d.go", i)})
-		g.AddEdge(model.Edge{Source: "hub", Target: id, Relation: "calls", Confidence: "EXTRACTED"})
+		g.AddEdge(model.Edge{Source: "hub", Target: id, Relation: model.RelCalls, Confidence: model.ConfExtracted})
 	}
 	for _, m := range []struct {
 		name string
@@ -227,7 +229,7 @@ func hubGraph() *model.Graph {
 	}{{"core", 6}, {"svc", 4}} {
 		g.AddNode(model.Node{ID: m.name, Label: m.name, SourceFile: m.name + ".go"})
 		for i := 0; i < m.deg; i++ {
-			g.AddEdge(model.Edge{Source: m.name, Target: fmt.Sprintf("leaf%d", i), Relation: "calls", Confidence: "EXTRACTED"})
+			g.AddEdge(model.Edge{Source: m.name, Target: fmt.Sprintf("leaf%d", i), Relation: model.RelCalls, Confidence: model.ConfExtracted})
 		}
 	}
 	return g
@@ -263,5 +265,66 @@ func TestGodNodesExcludeHubsPercentile(t *testing.T) {
 	// 100 excludes nothing: the threshold is the maximum degree.
 	if got := GodNodes(g, 3, 100); len(got) == 0 || got[0].Label != "Registry" {
 		t.Errorf("GodNodes(topN=3, pct=100) = %+v, want Registry first", got)
+	}
+}
+
+// godNodesBySort is GodNodes as it was: a stable sort of every node by degree.
+func godNodesBySort(g *model.Graph, topN, pct int) []GodNode {
+	ids := append([]string(nil), g.NodeIDs()...)
+	hubThreshold, hasThreshold := 0, false
+	if pct > 0 && len(ids) > 0 {
+		degrees := make([]int, len(ids))
+		for i, id := range ids {
+			degrees[i] = g.Degree(id)
+		}
+		sort.Ints(degrees)
+		idx := min(max(len(degrees)*pct/100-1, 0), len(degrees)-1)
+		hubThreshold, hasThreshold = degrees[idx], true
+	}
+	sort.SliceStable(ids, func(i, j int) bool { return g.Degree(ids[i]) > g.Degree(ids[j]) })
+	var out []GodNode
+	for _, id := range ids {
+		if hasThreshold && g.Degree(id) > hubThreshold {
+			continue
+		}
+		if isFileNode(g, id) || isConceptNode(g, id) || isJSONKeyNode(g, id) {
+			continue
+		}
+		out = append(out, GodNode{ID: id, Label: g.Nodes[id].Label, Degree: g.Degree(id)})
+		if len(out) >= topN {
+			break
+		}
+	}
+	return out
+}
+
+func TestGodNodesMatchesStableSort(t *testing.T) {
+	rng := rand.New(rand.NewSource(1))
+	for run := 0; run < 300; run++ {
+		g := model.New()
+		n := 1 + rng.Intn(60)
+		for i := 0; i < n; i++ {
+			node := model.Node{ID: fmt.Sprintf("n%02d", rng.Intn(1000)*100+i), Label: fmt.Sprintf("L%d", i), SourceFile: "a/x.go"}
+			switch rng.Intn(6) {
+			case 0:
+				node.Label = "x.go" // file hub
+			case 1:
+				node.SourceFile = "" // concept
+			case 2:
+				node.Label += "()"
+			}
+			g.AddNode(node)
+		}
+		ids := g.NodeIDs()
+		for i := rng.Intn(3 * n); i > 0; i-- {
+			g.AddEdge(model.Edge{Source: ids[rng.Intn(n)], Target: ids[rng.Intn(n)], Relation: model.RelCalls, Confidence: model.ConfExtracted})
+		}
+		for _, topN := range []int{0, 1, 3, 10, 100} {
+			for _, pct := range []int{0, 50, 90} {
+				if got, want := GodNodes(g, topN, pct), godNodesBySort(g, topN, pct); !reflect.DeepEqual(got, want) {
+					t.Fatalf("run %d topN=%d pct=%d:\n got %+v\nwant %+v", run, topN, pct, got, want)
+				}
+			}
+		}
 	}
 }

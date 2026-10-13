@@ -34,7 +34,8 @@ var mdCodeSpan = regexp.MustCompile("`([^`\n]+)`")
 // Target before corpus resolution. Target is a link/wikilink/reference-def
 // destination path, or a bare `symbol` name captured from an inline code span.
 type MDRef struct {
-	FromID, Target, File, Loc string
+	FromID, Target, File string
+	Loc                  model.Loc
 }
 
 // extractMarkdown turns one Markdown/OKF bundle file into a concept node plus a
@@ -50,6 +51,7 @@ type MDRef struct {
 // not mistaken for headings or references.
 func extractMarkdown(rel string, src []byte) Result {
 	rel = filepath.ToSlash(rel)
+	relF := model.FileOf(rel)
 	conceptID := idutil.MakeID(strings.TrimSuffix(rel, filepath.Ext(rel)))
 
 	s := string(src)
@@ -63,19 +65,21 @@ func extractMarkdown(rel string, src []byte) Result {
 		label = filepath.Base(rel)
 	}
 
+	// What a record keeps of the text is cloned: a slice of s would hold the
+	// whole file until the end of the build.
 	var res Result
 	res.Nodes = append(res.Nodes, model.Node{
-		ID: conceptID, Label: label, FileType: fileType,
-		SourceFile: rel, SourceLocation: "L1", ComputedName: computedMeta(fm),
+		ID: conceptID, Label: strings.Clone(label), FileType: strings.Clone(fileType),
+		SourceFile: rel, SourceLocation: "L1", ComputedName: strings.Clone(computedMeta(fm)),
 	})
 
 	// body is an exact suffix of s, so the count of newlines dropped with the
 	// frontmatter is the offset that keeps heading/reference lines file-absolute.
 	offset := strings.Count(s[:len(s)-len(body)], "\n")
 
-	addRef := func(target, loc string) {
+	addRef := func(target string, loc model.Loc) {
 		if target = strings.TrimSpace(target); target != "" {
-			res.MDRefs = append(res.MDRefs, MDRef{FromID: conceptID, Target: target, File: rel, Loc: loc})
+			res.MDRefs = append(res.MDRefs, MDRef{FromID: conceptID, Target: strings.Clone(target), File: rel, Loc: loc})
 		}
 	}
 
@@ -88,7 +92,7 @@ func extractMarkdown(rel string, src []byte) Result {
 	inCode := false
 
 	for i, lineText := range strings.Split(body, "\n") {
-		loc := "L" + itoa(offset+i+1)
+		loc := model.Line(offset + i + 1)
 		if strings.HasPrefix(strings.TrimSpace(lineText), "```") {
 			inCode = !inCode
 			continue
@@ -127,8 +131,8 @@ func extractMarkdown(rel string, src []byte) Result {
 		if !seen[hid] {
 			seen[hid] = true
 			res.Nodes = append(res.Nodes, model.Node{
-				ID: hid, Label: title, FileType: "heading",
-				SourceFile: rel, SourceLocation: loc,
+				ID: hid, Label: strings.Clone(title), FileType: "heading",
+				SourceFile: rel, SourceLocation: loc.String(),
 			})
 		}
 		// Pop headings at the same or a deeper level, then hang this heading off
@@ -141,8 +145,8 @@ func extractMarkdown(rel string, src []byte) Result {
 			parent = stack[len(stack)-1].id
 		}
 		res.Edges = append(res.Edges, model.Edge{
-			Source: parent, Target: hid, Relation: "contains",
-			Confidence: "EXTRACTED", SourceFile: rel, SourceLocation: loc,
+			Source: parent, Target: hid, Relation: model.RelContains,
+			Confidence: model.ConfExtracted, SourceFile: relF, SourceLocation: loc,
 		})
 		stack = append(stack, hlevel{level: level, id: hid})
 	}

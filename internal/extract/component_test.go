@@ -55,7 +55,7 @@ function greet(): string {
 	ext := Resolve([]Result{res}, []string{rel})
 	var importEdge bool
 	for _, e := range ext.Edges {
-		if e.Relation == "imports" && e.SourceFile == rel {
+		if e.Relation.String() == "imports" && e.SourceFile.String() == rel {
 			importEdge = true
 		}
 	}

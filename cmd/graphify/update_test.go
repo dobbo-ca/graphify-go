@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -48,8 +49,17 @@ func TestIncrementalUpdate(t *testing.T) {
 		t.Errorf("unchanged update: got %+v, want 0 reparsed / %d reused / 0 removed", stats, len(files))
 	}
 
+	cachePath := filepath.Join(root, "graphify-out", cache.FileName)
+	cacheBuilt, err := os.Stat(cachePath)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := cmdUpdate([]string{root}); err != nil {
 		t.Fatalf("update: %v", err)
+	}
+	// The cache already holds every entry, so the file is left as it is.
+	if fi, err := os.Stat(cachePath); err != nil || !os.SameFile(cacheBuilt, fi) {
+		t.Errorf("unchanged update replaced the cache file (err %v)", err)
 	}
 	updated, err := os.ReadFile(graphPath)
 	if err != nil {
@@ -74,6 +84,14 @@ func TestIncrementalUpdate(t *testing.T) {
 	changed, _ := os.ReadFile(graphPath)
 	if bytes.Equal(built, changed) {
 		t.Error("expected graph.json to change after editing a source file")
+	}
+	// The re-parsed file went into a new cache file.
+	if fi, err := os.Stat(cachePath); err != nil || os.SameFile(cacheBuilt, fi) {
+		t.Errorf("update after a change kept the old cache file (err %v)", err)
+	}
+	prev = cache.Load(cachePath, cache.Stamp(version))
+	if _, _, _, stats = assemble(root, files, prev, cache.StatIndex{}); stats.parsed != 0 {
+		t.Errorf("cache after a change: %d reparsed, want 0", stats.parsed)
 	}
 }
 
@@ -156,6 +174,15 @@ func TestRefusedShrinkAbortsAllOutputs(t *testing.T) {
 		return m
 	}
 	before := snapshot()
+	// The cache is encoded before the refusal is known; it must not be left behind.
+	names := func() string {
+		entries, err := os.ReadDir(outDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return fmt.Sprint(entries)
+	}
+	namesBefore := names()
 
 	// Simulate an update where b.go was skipped (failed to read/parse): its result
 	// is absent, so the graph shrinks and the lost node's source (b.go) lands in the
@@ -170,7 +197,7 @@ func TestRefusedShrinkAbortsAllOutputs(t *testing.T) {
 	newStat := cache.StatIndex{}
 
 	// force=false: the refusal must abort every write, leaving all four outputs byte-identical.
-	if _, _, err := writeOutputs(root, detect.WalkReport{Files: files}, results, newCache, newStat, semanticOpts{}, false, false); err != nil {
+	if _, _, err := writeOutputs(root, detect.WalkReport{Files: files}, results, newCache, newStat, semanticOpts{}, false, false, false); err != nil {
 		t.Fatalf("writeOutputs (refused shrink) returned error, want a nil-error warning: %v", err)
 	}
 	for name, b := range snapshot() {
@@ -178,9 +205,12 @@ func TestRefusedShrinkAbortsAllOutputs(t *testing.T) {
 			t.Errorf("refused shrink rewrote %s; every output must be left untouched", name)
 		}
 	}
+	if got := names(); got != namesBefore {
+		t.Errorf("refused shrink changed the directory listing:\n got %s\nwant %s", got, namesBefore)
+	}
 
 	// force=true: the same shrink is accepted and every output is rewritten.
-	if _, _, err := writeOutputs(root, detect.WalkReport{Files: files}, results, newCache, newStat, semanticOpts{}, true, false); err != nil {
+	if _, _, err := writeOutputs(root, detect.WalkReport{Files: files}, results, newCache, newStat, semanticOpts{}, true, false, false); err != nil {
 		t.Fatalf("writeOutputs (forced shrink): %v", err)
 	}
 	for name, b := range snapshot() {
@@ -258,5 +288,28 @@ func TestForceBypassesCache(t *testing.T) {
 	}
 	if got := graphNodeCount(t, graphPath); got != full {
 		t.Errorf("GRAPHIFY_FORCE=1 update: got %d nodes, want %d", got, full)
+	}
+}
+
+// A removed file re-parses nothing, but its entry must still leave the cache.
+func TestUpdateDropsRemovedFileFromCache(t *testing.T) {
+	root := t.TempDir()
+	for _, f := range []string{"a.go", "b.go"} {
+		if err := os.WriteFile(filepath.Join(root, f), []byte("package p\n\nfunc F"+f[:1]+"() {}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := cmdBuild([]string{root}); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if err := os.Remove(filepath.Join(root, "b.go")); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdUpdate([]string{root}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	c := cache.Load(filepath.Join(root, "graphify-out", cache.FileName), cache.Stamp(version))
+	if _, ok := c["b.go"]; ok || len(c) != 1 {
+		t.Errorf("cache after removing b.go holds %d entries, b.go present: %v", len(c), ok)
 	}
 }

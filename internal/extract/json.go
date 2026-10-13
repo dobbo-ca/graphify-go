@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	ts "github.com/tree-sitter/go-tree-sitter"
-	tsjson "github.com/tree-sitter/tree-sitter-json/bindings/go"
+	tsjson "github.com/dobbo-ca/gositter/grammars/json"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -77,6 +77,7 @@ func extractJSON(rel string, src []byte) Result {
 	}
 
 	fileID := idutil.MakeID(rel)
+	relF := model.FileOf(rel)
 	res := Result{Nodes: []model.Node{{
 		ID: fileID, Label: filepath.Base(rel), FileType: "code", SourceFile: rel, SourceLocation: "L1",
 	}}}
@@ -84,16 +85,16 @@ func extractJSON(rel string, src []byte) Result {
 	seenEdge := map[string]bool{}
 	stem := fileStem(rel)
 
-	addNode := func(id, label, loc, fileType string) {
+	addNode := func(id, label string, loc model.Loc, fileType string) {
 		if id == "" || seenNode[id] {
 			return
 		}
 		seenNode[id] = true
 		res.Nodes = append(res.Nodes, model.Node{
-			ID: id, Label: security.SanitizeLabel(label), FileType: fileType, SourceFile: rel, SourceLocation: loc,
+			ID: id, Label: security.SanitizeLabel(label), FileType: fileType, SourceFile: rel, SourceLocation: loc.String(),
 		})
 	}
-	addEdge := func(srcID, tgtID, relation, loc string) {
+	addEdge := func(srcID, tgtID, relation string, loc model.Loc) {
 		if srcID == "" || tgtID == "" || srcID == tgtID {
 			return
 		}
@@ -103,8 +104,8 @@ func extractJSON(rel string, src []byte) Result {
 		}
 		seenEdge[key] = true
 		res.Edges = append(res.Edges, model.Edge{
-			Source: srcID, Target: tgtID, Relation: relation,
-			Confidence: "EXTRACTED", SourceFile: rel, SourceLocation: loc,
+			Source: srcID, Target: tgtID, Relation: model.Rel(relation),
+			Confidence: model.ConfExtracted, SourceFile: relF, SourceLocation: loc,
 		})
 	}
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/dobbo-ca/graphify-go/internal/analyze"
 	"github.com/dobbo-ca/graphify-go/internal/cluster"
@@ -17,10 +18,39 @@ const minCommunitySize = 3
 
 // Generate builds the GRAPH_REPORT.md body.
 func Generate(g *model.Graph, communities map[int][]string, root, builtAtCommit string) string {
-	scores := cluster.Scores(g, communities)
-	gods := analyze.GodNodes(g, 10, 0)
-	surprises := analyze.Surprising(g, communities, 5)
+	// The analyses only read the graph, so they run side by side.
+	var (
+		scores    map[int]float64
+		gods      []analyze.GodNode
+		surprises []analyze.Surprise
+		wg        sync.WaitGroup
+	)
+	wg.Go(func() { scores = cluster.Scores(g, communities) })
+	wg.Go(func() { gods = analyze.GodNodes(g, 10, 0) })
+	wg.Go(func() { surprises = analyze.Surprising(g, communities, 5) })
+	// Real labels per community, read three times below.
+	labels := make(map[int][]string, len(communities))
+	wg.Go(func() {
+		for cid, nodes := range communities {
+			labels[cid] = realLabels(g, nodes)
+		}
+	})
+	var (
+		confidence string
+		ambiguous  []*model.Edge
+		isolated   []string
+	)
+	wg.Go(func() {
+		confidence = confidenceBreakdown(g)
+		for _, e := range g.Edges() {
+			if e.Confidence == model.ConfAmbiguous {
+				ambiguous = append(ambiguous, e)
+			}
+		}
+	})
+	wg.Go(func() { isolated = isolatedNodes(g) })
 	cycles := analyze.ImportCycles(g, 5, 20)
+	wg.Wait()
 
 	var b strings.Builder
 	w := func(format string, a ...any) { fmt.Fprintf(&b, format+"\n", a...) }
@@ -29,7 +59,7 @@ func Generate(g *model.Graph, communities map[int][]string, root, builtAtCommit 
 	w("")
 	w("## Summary")
 	w("- %d nodes · %d edges · %d communities", g.NumNodes(), g.NumEdges(), len(communities))
-	w("- %s", confidenceBreakdown(g))
+	w("- %s", confidence)
 	if builtAtCommit != "" {
 		w("")
 		w("## Graph Freshness")
@@ -74,12 +104,11 @@ func Generate(g *model.Graph, communities map[int][]string, root, builtAtCommit 
 	w("")
 	w("## Communities (%d total)", len(communities))
 	for _, cid := range sortedKeys(communities) {
-		nodes := communities[cid]
-		display := realLabels(g, nodes)
+		display := labels[cid]
 		if len(display) < minCommunitySize {
 			continue
 		}
-		suffix := ""
+		suffix, total := "", len(display)
 		if len(display) > 8 {
 			suffix = fmt.Sprintf(" (+%d more)", len(display)-8)
 			display = display[:8]
@@ -87,15 +116,9 @@ func Generate(g *model.Graph, communities map[int][]string, root, builtAtCommit 
 		w("")
 		w("### Community %d", cid)
 		w("Cohesion: %.2f", scores[cid])
-		w("Nodes (%d): %s%s", len(realLabels(g, nodes)), strings.Join(display, ", "), suffix)
+		w("Nodes (%d): %s%s", total, strings.Join(display, ", "), suffix)
 	}
 
-	var ambiguous []*model.Edge
-	for _, e := range g.Edges() {
-		if e.Confidence == "AMBIGUOUS" {
-			ambiguous = append(ambiguous, e)
-		}
-	}
 	if len(ambiguous) > 0 {
 		w("")
 		w("## Ambiguous Edges - Review These")
@@ -105,10 +128,9 @@ func Generate(g *model.Graph, communities map[int][]string, root, builtAtCommit 
 		}
 	}
 
-	isolated := isolatedNodes(g)
 	thin := 0
-	for _, nodes := range communities {
-		if n := len(realLabels(g, nodes)); n > 0 && n < minCommunitySize {
+	for _, real := range labels {
+		if n := len(real); n > 0 && n < minCommunitySize {
 			thin++
 		}
 	}
@@ -160,7 +182,7 @@ func isolatedNodes(g *model.Graph) []string {
 }
 
 func confidenceBreakdown(g *model.Graph) string {
-	counts := map[string]int{}
+	counts := map[model.Confidence]int{}
 	total := 0
 	for _, e := range g.Edges() {
 		counts[e.Confidence]++
@@ -169,9 +191,9 @@ func confidenceBreakdown(g *model.Graph) string {
 	if total == 0 {
 		total = 1
 	}
-	pct := func(k string) int { return counts[k] * 100 / total }
+	pct := func(k model.Confidence) int { return counts[k] * 100 / total }
 	return fmt.Sprintf("Extraction: %d%% EXTRACTED · %d%% INFERRED · %d%% AMBIGUOUS",
-		pct("EXTRACTED"), pct("INFERRED"), pct("AMBIGUOUS"))
+		pct(model.ConfExtracted), pct(model.ConfInferred), pct(model.ConfAmbiguous))
 }
 
 // realLabels returns the labels of nodes that are real entities (not file hubs

@@ -177,18 +177,18 @@ func sanitize(note Note, nodes []model.Node, edges []model.Edge) ([]model.Node, 
 	}
 	var outE []model.Edge
 	for _, e := range edges {
-		if !validRelations[e.Relation] {
+		if !validRelations[e.Relation.String()] {
 			continue
 		}
 		if e.Source != note.ID { // edges originate from the note being read
 			continue
 		}
-		if e.Confidence != "AMBIGUOUS" {
-			e.Confidence = "INFERRED"
+		if e.Confidence != model.ConfAmbiguous {
+			e.Confidence = model.ConfInferred
 		}
 		// Strip any source-file provenance a backend invented — these are
 		// model inferences, not file-located facts.
-		e.SourceFile, e.SourceLocation = "", ""
+		e.SourceFile, e.SourceLocation = 0, 0
 		outE = append(outE, e)
 	}
 	return outN, outE

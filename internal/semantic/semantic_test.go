@@ -48,7 +48,7 @@ func baseExtraction() model.Extraction {
 			{ID: "notes_other", Label: "Other note", FileType: "document", SourceFile: "learnings/other.md", SourceLocation: "L1"},
 		},
 		Edges: []model.Edge{
-			{Source: "notes_other", Target: "appconfig", Relation: "references", Confidence: "EXTRACTED"},
+			{Source: "notes_other", Target: "appconfig", Relation: model.RelReferences, Confidence: model.ConfExtracted},
 		},
 	}
 }
@@ -63,7 +63,7 @@ func TestEnrichIsAdditive(t *testing.T) {
 	base := baseExtraction()
 	be := &fakeBackend{result: func(n Note) ([]model.Node, []model.Edge) {
 		return []model.Node{{ID: "appconfig", Label: "AppConfig", FileType: "concept"}},
-			[]model.Edge{{Source: n.ID, Target: "appconfig", Relation: "conceptually_related_to", Confidence: "INFERRED", ConfidenceScore: 0.8}}
+			[]model.Edge{{Source: n.ID, Target: "appconfig", Relation: model.Rel("conceptually_related_to"), Confidence: model.ConfInferred, ConfidenceScore: 0.8}}
 	}}
 
 	out, _, err := Enrich(context.Background(), Config{Backend: be}, base, notes(), nil)
@@ -90,7 +90,7 @@ func TestEnrichIsAdditive(t *testing.T) {
 	// The new semantic edge must be present.
 	var sem int
 	for _, e := range out.Edges {
-		if e.Relation == "conceptually_related_to" {
+		if e.Relation == model.Rel("conceptually_related_to") {
 			sem++
 		}
 	}
@@ -127,7 +127,7 @@ func TestEnrichNeverDuplicatesAConceptNode(t *testing.T) {
 func TestEnrichCacheSkipsUnchangedNotes(t *testing.T) {
 	base := baseExtraction()
 	be := &fakeBackend{result: func(n Note) ([]model.Node, []model.Edge) {
-		return nil, []model.Edge{{Source: n.ID, Target: "appconfig", Relation: "cites", Confidence: "INFERRED"}}
+		return nil, []model.Edge{{Source: n.ID, Target: "appconfig", Relation: model.RelCites, Confidence: model.ConfInferred}}
 	}}
 
 	// First run: cold cache, backend is called once and a cache is returned.
@@ -150,7 +150,7 @@ func TestEnrichCacheSkipsUnchangedNotes(t *testing.T) {
 	// The cached edge must still appear in the output.
 	got := 0
 	for _, e := range out2.Edges {
-		if e.Relation == "cites" {
+		if e.Relation == model.RelCites {
 			got++
 		}
 	}
@@ -197,7 +197,7 @@ func TestEnrichDropsEdgesWithUnknownEndpoints(t *testing.T) {
 	be := &fakeBackend{result: func(n Note) ([]model.Node, []model.Edge) {
 		// Edge to a target that is neither a deterministic node nor an emitted
 		// concept node — must be dropped so it can't dangle.
-		return nil, []model.Edge{{Source: n.ID, Target: "ghost_node", Relation: "cites", Confidence: "INFERRED"}}
+		return nil, []model.Edge{{Source: n.ID, Target: "ghost_node", Relation: model.RelCites, Confidence: model.ConfInferred}}
 	}}
 	out, _, err := Enrich(context.Background(), Config{Backend: be}, base, notes(), nil)
 	if err != nil {
@@ -215,14 +215,14 @@ func TestEnrichForcesInferredConfidence(t *testing.T) {
 	be := &fakeBackend{result: func(n Note) ([]model.Node, []model.Edge) {
 		// A backend that wrongly claims EXTRACTED must be downgraded — semantic
 		// edges are never EXTRACTED.
-		return nil, []model.Edge{{Source: n.ID, Target: "appconfig", Relation: "cites", Confidence: "EXTRACTED"}}
+		return nil, []model.Edge{{Source: n.ID, Target: "appconfig", Relation: model.RelCites, Confidence: model.ConfExtracted}}
 	}}
 	out, _, err := Enrich(context.Background(), Config{Backend: be}, base, notes(), nil)
 	if err != nil {
 		t.Fatalf("Enrich: %v", err)
 	}
 	for _, e := range out.Edges {
-		if e.Relation == "cites" && e.Confidence == "EXTRACTED" {
+		if e.Relation == model.RelCites && e.Confidence == model.ConfExtracted {
 			t.Errorf("semantic edge kept EXTRACTED confidence; must be INFERRED or AMBIGUOUS")
 		}
 	}

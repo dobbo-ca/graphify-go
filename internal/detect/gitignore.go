@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // ignorer answers whether a path is excluded by the .gitignore (and
@@ -18,7 +19,7 @@ import (
 // .gitignore files is sufficient.
 type ignorer struct {
 	root  string
-	cache map[string]*ignoreFile // dir (slash-rel to root, "" = root) -> parsed ignore rules (nil = none)
+	cache sync.Map // dir (slash-rel to root, "" = root) -> *ignoreFile, parsed ignore rules (nil = none)
 }
 
 type ignoreFile struct {
@@ -31,10 +32,14 @@ type ignoreRule struct {
 	negate   bool
 	dirOnly  bool
 	anchored bool // match the full sub-path (has a slash) vs. just the basename
+
+	// Literal bytes every match starts with and, for a basename pattern, ends
+	// with: checked first, they spare most regexp runs.
+	prefix, suffix string
 }
 
 func newIgnorer(root string) *ignorer {
-	return &ignorer{root: root, cache: map[string]*ignoreFile{}}
+	return &ignorer{root: root}
 }
 
 // load returns the parsed ignore rules for the directory dir (slash-relative to
@@ -45,8 +50,8 @@ func newIgnorer(root string) *ignorer {
 // artifacts without touching .gitignore. A directory with neither file caches
 // as nil.
 func (g *ignorer) load(dir string) *ignoreFile {
-	if f, ok := g.cache[dir]; ok {
-		return f
+	if f, ok := g.cache.Load(dir); ok {
+		return f.(*ignoreFile)
 	}
 	var f *ignoreFile
 	// At the VCS root, $GIT_DIR/info/exclude patterns apply repo-wide at the
@@ -73,7 +78,7 @@ func (g *ignorer) load(dir string) *ignoreFile {
 			f.rules = append(f.rules, parsed.rules...)
 		}
 	}
-	g.cache[dir] = f
+	g.cache.Store(dir, f) // two walkers may both read it; same result
 	return f
 }
 
@@ -149,7 +154,7 @@ func (g *ignorer) ignored(rel string, isDir bool) bool {
 			if r.anchored {
 				target = sub
 			}
-			if r.re.MatchString(target) {
+			if strings.HasPrefix(target, r.prefix) && strings.HasSuffix(target, r.suffix) && r.re.MatchString(target) {
 				decision = !r.negate
 			}
 		}
@@ -195,6 +200,14 @@ func parseIgnore(base, data string) *ignoreFile {
 		trimmed := strings.TrimPrefix(line, "/")
 		r.anchored = leadingSlash || strings.Contains(trimmed, "/")
 		r.re = regexp.MustCompile("^" + globToRegex(trimmed, r.anchored) + "$")
+		// Only * and ? are wildcards to globToRegex.
+		r.prefix = trimmed
+		if i := strings.IndexAny(trimmed, "*?"); i >= 0 {
+			r.prefix = trimmed[:i]
+			if !r.anchored {
+				r.suffix = trimmed[strings.LastIndexAny(trimmed, "*?")+1:]
+			}
+		}
 		f.rules = append(f.rules, r)
 	}
 	return f

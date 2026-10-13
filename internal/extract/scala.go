@@ -1,8 +1,8 @@
 package extract
 
 import (
-	ts "github.com/tree-sitter/go-tree-sitter"
-	tsscala "github.com/tree-sitter/tree-sitter-scala/bindings/go"
+	tsscala "github.com/dobbo-ca/gositter/grammars/scala"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -80,8 +80,8 @@ func (b *builder) scalaType(n *ts.Node, src []byte) {
 		mid := idutil.MakeID(b.stem, name, mname)
 		b.addNode(mid, name+"."+mname+"()", line(m))
 		b.res.Edges = append(b.res.Edges, model.Edge{
-			Source: typeID, Target: mid, Relation: "contains",
-			Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
+			Source: typeID, Target: mid, Relation: model.RelContains,
+			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
 		})
 		// Register under the bare method name so `x.method()` call sites resolve.
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file, Abstract: m.Kind() == "function_declaration"})
@@ -118,6 +118,8 @@ func trimTrailingDot(s string) string {
 	return s
 }
 
+var scalaCallKinds = tsscala.Language().KindMask("call_expression")
+
 // scalaCalls walks a definition body and records each call site. Direct calls
 // (`f()`) record the identifier; field calls (`x.f()`) record the trailing
 // field name, mirroring the Python/Go extractors.
@@ -125,10 +127,8 @@ func (b *builder) scalaCalls(body *ts.Node, callerID string, src []byte) {
 	if body == nil {
 		return
 	}
-	walk(body, func(c *ts.Node) bool {
-		if c.Kind() != "call_expression" {
-			return true
-		}
+	walkKinds(body, scalaCallKinds, func(cv ts.Node) bool {
+		c := &cv
 		fn := c.ChildByFieldName("function")
 		if fn == nil {
 			return true

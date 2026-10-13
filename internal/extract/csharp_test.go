@@ -35,7 +35,7 @@ func TestExtractCSharp(t *testing.T) {
 
 	has := func(srcLabel, rel, tgtLabel string) bool {
 		for _, e := range ext.Edges {
-			if e.Relation == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
+			if e.Relation.String() == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
 				return true
 			}
 		}
@@ -57,7 +57,7 @@ func TestExtractCSharp(t *testing.T) {
 	// External import edge for System.Text.
 	rels := map[string]int{}
 	for _, e := range ext.Edges {
-		rels[e.Relation]++
+		rels[e.Relation.String()]++
 	}
 	if rels["imports"] == 0 {
 		t.Error("no external import edges (expected System.Text)")

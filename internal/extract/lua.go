@@ -1,8 +1,8 @@
 package extract
 
 import (
-	tslua "github.com/tree-sitter-grammars/tree-sitter-lua/bindings/go"
-	ts "github.com/tree-sitter/go-tree-sitter"
+	tslua "github.com/dobbo-ca/gositter/grammars/lua"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -75,8 +75,8 @@ func (b *builder) luaMethod(table, field, body, decl *ts.Node, src []byte) {
 	mid := idutil.MakeID(b.stem, typeName, mname)
 	b.addNode(mid, typeName+"."+mname+"()", line(decl))
 	b.res.Edges = append(b.res.Edges, model.Edge{
-		Source: idutil.MakeID(b.stem, typeName), Target: mid, Relation: "contains",
-		Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(decl),
+		Source: idutil.MakeID(b.stem, typeName), Target: mid, Relation: model.RelContains,
+		Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(decl),
 	})
 	// Register under the bare method name so `x.method()` call sites resolve.
 	b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
@@ -84,7 +84,7 @@ func (b *builder) luaMethod(table, field, body, decl *ts.Node, src []byte) {
 }
 
 // luaEnsureType registers a table name as a type definition if not already seen.
-func (b *builder) luaEnsureType(name, loc string) {
+func (b *builder) luaEnsureType(name string, loc model.Loc) {
 	id := idutil.MakeID(b.stem, name)
 	if b.seen[id] {
 		return
@@ -135,14 +135,14 @@ func luaSimpleName(n *ts.Node, src []byte) string {
 	return ""
 }
 
+var luaCallKinds = tslua.Language().KindMask("function_call")
+
 // luaTopCalls records require()/other call sites that sit directly in a
 // statement at chunk level (e.g. `local x = require "m"`), attributing them to
 // the file node so module-level requires are captured even outside a function.
 func (b *builder) luaTopCalls(n *ts.Node, src []byte) {
-	walk(n, func(c *ts.Node) bool {
-		if c.Kind() == "function_call" {
-			b.luaCall(c, b.fileID, src)
-		}
+	walkKinds(n, luaCallKinds, func(cv ts.Node) bool {
+		b.luaCall(&cv, b.fileID, src)
 		return true
 	})
 }
@@ -153,10 +153,8 @@ func (b *builder) luaCalls(body *ts.Node, callerID string, src []byte) {
 	if body == nil {
 		return
 	}
-	walk(body, func(c *ts.Node) bool {
-		if c.Kind() == "function_call" {
-			b.luaCall(c, callerID, src)
-		}
+	walkKinds(body, luaCallKinds, func(cv ts.Node) bool {
+		b.luaCall(&cv, callerID, src)
 		return true
 	})
 }
@@ -208,7 +206,8 @@ func luaRequireSpec(c *ts.Node, src []byte) string {
 		return ""
 	}
 	var spec string
-	walk(args, func(n *ts.Node) bool {
+	walk(args, func(nv ts.Node) bool {
+		n := &nv
 		if spec != "" {
 			return false
 		}

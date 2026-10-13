@@ -5,12 +5,18 @@ import (
 	"regexp"
 	"strings"
 
-	tshcl "github.com/tree-sitter-grammars/tree-sitter-hcl/bindings/go"
-	ts "github.com/tree-sitter/go-tree-sitter"
+	tshcl "github.com/dobbo-ca/gositter/grammars/hcl"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
 	"github.com/dobbo-ca/graphify-go/internal/security"
+)
+
+// The kinds of the reference walks.
+var (
+	tfAttrKinds = tshcl.Language().KindMask("attribute")
+	tfVarKinds  = tshcl.Language().KindMask("variable_expr")
 )
 
 // extractTerraform pulls Terraform/HCL blocks and the references between them.
@@ -28,6 +34,7 @@ func extractTerraform(rel string, src []byte) Result {
 
 	scope := dirScope(rel)
 	fileID := idutil.MakeID(rel)
+	relF := model.FileOf(rel)
 	res := Result{Nodes: []model.Node{{
 		ID: fileID, Label: filepath.Base(rel), FileType: "code", SourceFile: rel, SourceLocation: "L1",
 	}}}
@@ -35,44 +42,40 @@ func extractTerraform(rel string, src []byte) Result {
 
 	// defNode adds a block node (once) with an optional computed name, plus a
 	// contains edge from the file. def is the common case (no computed name).
-	defNode := func(addr, label, loc, computed string) string {
+	defNode := func(addr, label string, loc model.Loc, computed string) string {
 		id := idutil.MakeID(scope, addr)
 		if !seen[id] {
 			seen[id] = true
 			res.Nodes = append(res.Nodes, model.Node{
-				ID: id, Label: label, FileType: "code", SourceFile: rel, SourceLocation: loc, ComputedName: computed,
+				ID: id, Label: label, FileType: "code", SourceFile: rel, SourceLocation: loc.String(), ComputedName: computed,
 			})
 			res.Edges = append(res.Edges, model.Edge{
-				Source: fileID, Target: id, Relation: "contains",
-				Confidence: "EXTRACTED", SourceFile: rel, SourceLocation: loc,
+				Source: fileID, Target: id, Relation: model.RelContains,
+				Confidence: model.ConfExtracted, SourceFile: relF, SourceLocation: loc,
 			})
 		}
 		return id
 	}
-	def := func(addr, label, loc string) string { return defNode(addr, label, loc, "") }
+	def := func(addr, label string, loc model.Loc) string { return defNode(addr, label, loc, "") }
 	// refsFrom emits an edge from srcID to every address interpolated within node.
 	refsFrom := func(srcID string, node *ts.Node) {
-		walk(node, func(c *ts.Node) bool {
-			if c.Kind() != "attribute" {
-				return true
-			}
-			rel2 := "references"
+		walkKinds(node, tfAttrKinds, func(cv ts.Node) bool {
+			c := &cv
+			rel2 := model.RelReferences
 			switch tfChild(c, "identifier", src) {
 			case "depends_on":
-				rel2 = "depends_on"
+				rel2 = model.RelDependsOn
 			case "context":
-				rel2 = "inherits_context"
+				rel2 = model.Rel("inherits_context")
 			}
-			walk(c, func(v *ts.Node) bool {
-				if v.Kind() != "variable_expr" {
-					return true
-				}
+			walkKinds(c, tfVarKinds, func(vv ts.Node) bool {
+				v := &vv
 				if addr := tfRefAddress(v, src); addr != "" {
 					tgt := idutil.MakeID(scope, addr)
 					if tgt != srcID {
 						res.Edges = append(res.Edges, model.Edge{
 							Source: srcID, Target: tgt, Relation: rel2,
-							Confidence: "EXTRACTED", SourceFile: rel, SourceLocation: line(c),
+							Confidence: model.ConfExtracted, SourceFile: relF, SourceLocation: line(c),
 						})
 					}
 				}
@@ -418,7 +421,8 @@ func tfAttrString(body *ts.Node, key string, src []byte) string {
 			continue
 		}
 		var out string
-		walk(a, func(n *ts.Node) bool {
+		walk(a, func(nv ts.Node) bool {
+			n := &nv
 			if out != "" {
 				return false
 			}

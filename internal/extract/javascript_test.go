@@ -31,7 +31,7 @@ func TestExtractJSRationale(t *testing.T) {
 	// NOTE comment -> rationale node with a rationale_for edge to the file.
 	rationaleOK := false
 	for _, e := range res.Edges {
-		if e.Relation == "rationale_for" && e.Target == fileID &&
+		if e.Relation.String() == "rationale_for" && e.Target == fileID &&
 			ftype[e.Source] == "rationale" && strings.HasPrefix(label[e.Source], "NOTE: debounce") {
 			rationaleOK = true
 		}
@@ -48,7 +48,7 @@ func TestExtractJSRationale(t *testing.T) {
 	}
 	citesOK := false
 	for _, e := range res.Edges {
-		if e.Relation == "cites" && e.Source == fileID && e.Target == docRefID {
+		if e.Relation.String() == "cites" && e.Source == fileID && e.Target == docRefID {
 			citesOK = true
 		}
 	}

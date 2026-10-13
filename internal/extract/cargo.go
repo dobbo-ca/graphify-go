@@ -138,9 +138,9 @@ func IntrospectCargo(root string) (Result, error) {
 				}
 			}
 			res.Edges = append(res.Edges, model.Edge{
-				Source: c.id, Target: target.id, Relation: "crate_depends_on",
-				Confidence: "EXTRACTED", Weight: 1.0,
-				SourceFile: c.manifest, SourceLocation: "L1",
+				Source: c.id, Target: target.id, Relation: model.RelCrateDependsOn,
+				Confidence: model.ConfExtracted, Weight: 1.0,
+				SourceFile: model.FileOf(c.manifest), SourceLocation: model.Line(1),
 			})
 		}
 	}

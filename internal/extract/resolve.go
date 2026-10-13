@@ -5,7 +5,12 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"slices"
 	"strings"
+	"sync"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/langfamily"
@@ -20,36 +25,96 @@ var jsResolveExts = []string{".ts", ".mts", ".cts", ".tsx", ".js", ".jsx", ".mjs
 // and import edges that need a whole-corpus view: calls resolve to definitions
 // by name, and relative imports resolve to the file they point at.
 func Resolve(results []Result, files []string) model.Extraction {
+	return Join(ResolveParts(results, files))
+}
+
+// Join copies the parts of an extraction into one.
+func Join(nodes [][]model.Node, edges [][]model.Edge) model.Extraction {
+	nNodes, nEdges := 0, 0
+	for _, p := range nodes {
+		nNodes += len(p)
+	}
+	for _, p := range edges {
+		nEdges += len(p)
+	}
+	out := model.Extraction{Nodes: make([]model.Node, 0, nNodes), Edges: make([]model.Edge, 0, nEdges)}
+	for _, p := range nodes {
+		out.Nodes = append(out.Nodes, p...)
+	}
+	for _, p := range edges {
+		out.Edges = append(out.Edges, p...)
+	}
+	return out
+}
+
+// ResolveParts is Resolve without the copy into one slice: the nodes and edges
+// come back in parts, in the order Resolve joins them. The per-file parts are
+// the slices of results, so the caller must not write to them. One slice of a
+// whole corpus's edges is over 100 MB, and an allocation that size lands on
+// new memory however much of the heap is free.
+func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.Edge) {
+	var fc fileMemo // for the passes that run on this goroutine
 	corpus := make(map[string]bool, len(files))
 	for _, f := range files {
 		corpus[filepath.ToSlash(f)] = true
 	}
 
-	// Index definitions by name (global) and by file+name (local-first calls),
-	// and remember each definition's file for disambiguation.
-	global := map[string][]string{}
-	local := map[string][]string{} // file\x00name -> ids
-	idFile := map[string]string{}  // def id -> defining file
-	// Concrete-only indexes: a bodiless declaration must not make a call to
-	// its single implementation ambiguous.
-	localC := map[string][]string{}
-	globalC := map[string][]string{}
-	for _, r := range results {
-		for _, d := range r.Defs {
-			global[d.Name] = append(global[d.Name], d.ID)
-			key := d.File + "\x00" + d.Name
-			if !contains(local[key], d.ID) {
-				local[key] = append(local[key], d.ID)
-			}
-			idFile[d.ID] = d.File
-			if !d.Abstract {
-				globalC[d.Name] = append(globalC[d.Name], d.ID)
-				if !contains(localC[key], d.ID) {
-					localC[key] = append(localC[key], d.ID)
+	// The qualifier and owner indexes read the results alone, so they are built
+	// beside the indexes below.
+	var quals map[string]qualSet
+	var owner map[string]string
+	methods := map[string][]string{} // owner\x00name -> method ids
+	var defsDone sync.WaitGroup
+	defsDone.Go(func() { quals = defQualifiers(results) })
+	defsDone.Go(func() {
+		owner = defOwners(results)
+		for _, r := range results {
+			for _, d := range r.Defs {
+				if o := owner[d.ID]; o != "" && !contains(methods[o+"\x00"+d.Name], d.ID) {
+					methods[o+"\x00"+d.Name] = append(methods[o+"\x00"+d.Name], d.ID)
 				}
 			}
 		}
-	}
+	})
+
+	// Index definitions by name (global) and by file+name (local-first calls),
+	// and remember each definition's file for disambiguation.
+	global := map[string][]string{}
+	local := map[[2]string][]string{} // file, name -> ids
+	idFile := map[string]string{}     // def id -> defining file
+	// Concrete-only indexes: a bodiless declaration must not make a call to
+	// its single implementation ambiguous. Kept only for names that have such
+	// a declaration; for every other name they would repeat local and global,
+	// which is what a miss falls back to.
+	localC := map[[2]string][]string{}
+	globalC := map[string][]string{}
+	// Filled beside the import targets below, which do not read them.
+	defsDone.Go(func() {
+		abstract := map[string]bool{}
+		for _, r := range results {
+			for _, d := range r.Defs {
+				if d.Abstract {
+					abstract[d.Name] = true
+				}
+			}
+		}
+		for _, r := range results {
+			for _, d := range r.Defs {
+				global[d.Name] = append(global[d.Name], d.ID)
+				key := [2]string{d.File, d.Name}
+				if !contains(local[key], d.ID) {
+					local[key] = append(local[key], d.ID)
+				}
+				idFile[d.ID] = d.File
+				if !d.Abstract && abstract[d.Name] {
+					globalC[d.Name] = append(globalC[d.Name], d.ID)
+					if !contains(localC[key], d.ID) {
+						localC[key] = append(localC[key], d.ID)
+					}
+				}
+			}
+		}
+	})
 
 	// Go import path -> the files of that package, for every .go file under a
 	// go.mod in the corpus (the nearest one above the file names its module).
@@ -77,28 +142,134 @@ func Resolve(results []Result, files []string) model.Extraction {
 		}
 	}
 
-	// For each file, the corpus files it imports — used to pick the right target
-	// when a called name is defined in more than one file.
-	importedFiles := map[string]map[string]bool{}
-	external := map[string]bool{} // file\x00spec of an import outside the corpus
-	for _, r := range results {
-		for _, im := range r.Imps {
-			targets := importTargets(im, corpus, goPkgs, goMods)
-			external[im.File+"\x00"+im.Spec] = len(targets) == 0
-			for _, target := range targets {
-				if importedFiles[im.File] == nil {
-					importedFiles[im.File] = map[string]bool{}
+	// Imports: relative specifiers resolve to a corpus file (imports_from, used
+	// for cycle detection); bare specifiers become external dependency nodes.
+	// They depend on the targets alone, so they are made beside the targets,
+	// the indexes and the calls, a batch of files behind the loop below, and
+	// appended after the calls.
+	var impNodes []model.Node
+	// Held until the calls are bound, so only what the import itself does not
+	// say is kept: 32 bytes an import against an Edge's 120.
+	type impRec struct {
+		imp                *Imp // source, file and location
+		tgt                string
+		typeOnly, external bool
+	}
+	var impEdges [][]impRec // parts of impPart
+	type impBatch struct {
+		results []Result
+		targets [][]string // per import, in results order
+	}
+	const batchFiles = 256
+	batches := make(chan impBatch, len(results)/batchFiles+1) // never blocks the sender
+	var importsDone sync.WaitGroup
+	importsDone.Go(func() {
+		extSeen := map[string]bool{}
+		// A file can import from the same module twice (a type import plus a value
+		// import); only one imports_from edge survives dedupe, so TypeOnly must be
+		// the AND over every import of that target, not whichever parsed first.
+		// Keyed by the numbers of the source and target ids: the two strings
+		// are 32 bytes a key, and a Go corpus has an edge per call edge.
+		impEdge := map[uint64]uint32{}
+		srcNum, tgtNum := map[string]uint32{}, map[string]uint32{}
+		// A Go package is imported by many files; each target id is made once.
+		type tgtID struct {
+			id  string
+			num uint32
+		}
+		ids := map[string]tgtID{}
+		n := 0
+		add := func(e impRec) {
+			if n%impPart == 0 {
+				impEdges = append(impEdges, make([]impRec, 0, impPart))
+			}
+			impEdges[n/impPart] = append(impEdges[n/impPart], e)
+			n++
+		}
+		for b := range batches {
+			nextImp := 0
+			for _, r := range b.results {
+				for k := range r.Imps {
+					im := &r.Imps[k]
+					src, ok := srcNum[im.FileID]
+					if !ok {
+						src = uint32(len(srcNum))
+						srcNum[im.FileID] = src
+					}
+					targets := b.targets[nextImp]
+					nextImp++
+					for _, target := range targets {
+						t, ok := ids[target]
+						if !ok {
+							t.id = idutil.MakeID(target)
+							if t.num, ok = tgtNum[t.id]; !ok {
+								t.num = uint32(len(tgtNum))
+								tgtNum[t.id] = t.num
+							}
+							ids[target] = t
+						}
+						ekey := uint64(src)<<32 | uint64(t.num)
+						if i, ok := impEdge[ekey]; ok {
+							if !im.TypeOnly {
+								impEdges[i/impPart][i%impPart].typeOnly = false
+							}
+							continue
+						}
+						impEdge[ekey] = uint32(n)
+						add(impRec{imp: im, tgt: t.id, typeOnly: im.TypeOnly})
+					}
+					depID := idutil.MakeID(im.Spec)
+					// A bare `from . import x` has no module name to mint a node from.
+					if len(targets) > 0 || depID == "" {
+						continue
+					}
+					if !extSeen[depID] {
+						extSeen[depID] = true
+						impNodes = append(impNodes, model.Node{ID: depID, Label: im.Spec, FileType: "concept"})
+					}
+					add(impRec{imp: im, tgt: depID, external: true})
 				}
-				importedFiles[im.File][target] = true
 			}
 		}
-	}
+	})
 
-	var out model.Extraction
-	for _, r := range results {
-		out.Nodes = append(out.Nodes, r.Nodes...)
-		out.Edges = append(out.Edges, r.Edges...)
+	// For each file, the corpus files of each of its imports — used to pick the
+	// right target when a called name is defined in more than one file. The
+	// lists are the ones the imports resolved to; a set per file was 20 MB on
+	// a Go corpus, so importedSet makes it when a call needs it.
+	impTargets := map[string][][]string{}
+	external := map[[2]string]bool{} // file, spec of an import outside the corpus
+	goTargets := map[[2]string][]string{}
+	for lo := 0; lo < len(results); lo += batchFiles {
+		b := impBatch{results: results[lo:min(lo+batchFiles, len(results))]}
+		for _, r := range b.results {
+			for _, im := range r.Imps {
+				targets := importTargets(im, corpus, goPkgs, goMods, goTargets)
+				b.targets = append(b.targets, targets)
+				external[[2]string{im.File, im.Spec}] = len(targets) == 0
+				if len(targets) > 0 {
+					impTargets[im.File] = append(impTargets[im.File], targets)
+				}
+			}
+		}
+		batches <- b
 	}
+	close(batches)
+
+	// Holds only the import-guided edges until the calls are bound: the
+	// per-file records are copied in after that, once, so they are not a
+	// second live copy while the indexes above are.
+	var out model.Extraction
+
+	defsDone.Wait()
+
+	// Markdown links: resolve each [text](target) to the concept node of the
+	// markdown file it points at and emit a `references` edge. Directory
+	// structure (an index.md owning its siblings) yields `contains` edges.
+	// It reads the indexes alone, so it runs beside the calls.
+	var md model.Extraction
+	var mdDone sync.WaitGroup
+	mdDone.Go(func() { resolveMarkdown(results, files, corpus, quals, global, &md) })
 
 	// Python import-guided calls: explicit `from M import N [as L]` evidence
 	// resolves a call to the unique (module_stem, symbol) definition with
@@ -112,16 +283,17 @@ func Resolve(results []Result, files []string) model.Extraction {
 	// creating a stub node. Resolved ahead of the calls so a self/super call can
 	// walk the chain; the edges are appended after them.
 	var inherit []model.Edge
+	imported := importedSet{targets: impTargets}
 	supers := map[string][]string{} // type id -> resolved base type ids
 	openSuper := map[string]bool{}  // type id with a base outside the corpus
 	for _, r := range results {
 		for _, t := range r.TypeRefs {
 			tgt := ""
-			if ids := typeDefs(local[t.File+"\x00"+t.Name], t.Name, idFile); len(ids) == 1 {
+			if ids := typeDefs(local[[2]string{t.File, t.Name}], t.Name, idFile); len(ids) == 1 {
 				tgt = ids[0]
 			}
 			if tgt == "" {
-				tgt = disambiguate(typeDefs(global[t.Name], t.Name, idFile), t.File, idFile, importedFiles[t.File])
+				tgt = disambiguate(typeDefs(global[t.Name], t.Name, idFile), t.File, idFile, &imported)
 			}
 			if tgt == "" || tgt == t.FromID || langfamily.Cross(t.File, idFile[tgt]) {
 				if t.Relation == "inherits" {
@@ -133,20 +305,9 @@ func Resolve(results []Result, files []string) model.Extraction {
 				supers[t.FromID] = append(supers[t.FromID], tgt)
 			}
 			inherit = append(inherit, model.Edge{
-				Source: t.FromID, Target: tgt, Relation: t.Relation,
-				Confidence: "INFERRED", SourceFile: t.File, SourceLocation: t.Loc,
+				Source: t.FromID, Target: tgt, Relation: model.Rel(t.Relation),
+				Confidence: model.ConfInferred, SourceFile: fc.of(t.File), SourceLocation: t.Loc,
 			})
-		}
-	}
-
-	quals := defQualifiers(results)
-	owner := defOwners(results)
-	methods := map[string][]string{} // owner\x00name -> method ids
-	for _, r := range results {
-		for _, d := range r.Defs {
-			if o := owner[d.ID]; o != "" && !contains(methods[o+"\x00"+d.Name], d.ID) {
-				methods[o+"\x00"+d.Name] = append(methods[o+"\x00"+d.Name], d.ID)
-			}
 		}
 	}
 
@@ -155,107 +316,168 @@ func Resolve(results []Result, files []string) model.Extraction {
 	// package) rather than guessing. A member call binds on its receiver: self/this
 	// to a method of the caller's own type or its nearest ancestor, anything
 	// else only to a definition the receiver's last segment qualifies.
-	for _, r := range results {
-		for _, c := range r.Calls {
-			if resolved[c.CallerID+"\x00"+c.Callee+"\x00"+c.Loc] {
-				continue
+	// Each run of files binds against the indexes above, which no longer change,
+	// so the runs are bound side by side and their edges joined in file order.
+	bind := func(results []Result) [][]model.Edge {
+		// In parts of impPart: one slice a run grew by copies, and the outgrown
+		// ones were live with it at the collection that sets the peak. Only
+		// the first part grows, so a small corpus does not pay for a full one.
+		var edges [][]model.Edge
+		add := func(e model.Edge) {
+			n := len(edges)
+			if n == 0 {
+				edges = append(edges, nil)
+				n++
+			} else if len(edges[n-1]) == impPart {
+				edges = append(edges, make([]model.Edge, 0, impPart))
+				n++
 			}
-			tgt := ""
-			super, isSelf := selfRecv[c.Recv]
-			if ext := langRecv[c.Recv]; ext != "" && path.Ext(c.File) != ext {
-				isSelf = false
-			}
-			if isSelf {
-				tgt = selfTarget(owner[c.CallerID], c.Callee, super, methods, supers, openSuper)
-			} else {
-				here, all := local[c.File+"\x00"+c.Callee], global[c.Callee]
-				if len(globalC[c.Callee]) > 0 {
-					here, all = localC[c.File+"\x00"+c.Callee], globalC[c.Callee]
-				}
-				if c.Recv != "" {
-					q := recvTail.FindString(c.Recv)
-					ok := func(id string) bool { return q != "" && quals[id][q] }
-					here, all = keep(here, ok), keep(all, ok)
-				}
-				// Two types in one file can each own a method of the same name; a
-				// bare call then has no unambiguous local target, so fall through
-				// to disambiguate rather than guess.
-				if len(here) == 1 {
-					tgt = here[0]
-				}
-				if tgt == "" {
-					tgt = disambiguate(all, c.File, idFile, importedFiles[c.File])
-				}
-			}
-			// A call on an external module has no definition to bind, so it
-			// lands on the module's import node.
-			if tgt == "" && c.Module != "" && external[c.File+"\x00"+c.Module] {
-				out.Edges = append(out.Edges, model.Edge{
-					Source: c.CallerID, Target: idutil.MakeID(c.Module), Relation: "calls",
-					Confidence: "EXTRACTED", SourceFile: c.File, SourceLocation: c.Loc,
-				})
-				continue
-			}
-			if tgt == "" || tgt == c.CallerID {
-				continue
-			}
-			// Never bind a call to a definition in a different language family:
-			// the same short name (render, parse, Path) collides across languages,
-			// and a name match across a family boundary is a phantom edge, not a
-			// real call. Unknown families (non-code, unrecognized ext) stay
-			// permissive.
-			if langfamily.Cross(c.File, idFile[tgt]) {
-				continue
-			}
-			out.Edges = append(out.Edges, model.Edge{
-				Source: c.CallerID, Target: tgt, Relation: "calls",
-				Confidence: "INFERRED", SourceFile: c.File, SourceLocation: c.Loc,
-			})
+			edges[n-1] = append(edges[n-1], e)
 		}
-	}
-
-	out.Edges = append(out.Edges, inherit...)
-
-	// Imports: relative specifiers resolve to a corpus file (imports_from, used
-	// for cycle detection); bare specifiers become external dependency nodes.
-	extSeen := map[string]bool{}
-	// A file can import from the same module twice (a type import plus a value
-	// import); only one imports_from edge survives dedupe, so TypeOnly must be
-	// the AND over every import of that target, not whichever parsed first.
-	impEdge := map[string]int{}
-	for _, r := range results {
-		for _, im := range r.Imps {
-			targets := importTargets(im, corpus, goPkgs, goMods)
-			for _, target := range targets {
-				tgtID := idutil.MakeID(target)
-				if i, ok := impEdge[im.FileID+"\x00"+tgtID]; ok {
-					if !im.TypeOnly {
-						out.Edges[i].TypeOnly = false
-					}
+		imported := importedSet{targets: impTargets}
+		kept := map[string][]string{}      // callee\x00qualifier -> the definitions it qualifies
+		allQuals := map[string][]qualSet{} // callee -> quals of each id in its global list
+		for _, r := range results {
+			rf := model.FileOf(r.File)
+			for i, n := range r.Calls {
+				c := r.call(n)
+				if len(resolved) > 0 && resolved[callSite{c.CallerID, c.Callee, c.Loc}] {
 					continue
 				}
-				impEdge[im.FileID+"\x00"+tgtID] = len(out.Edges)
-				out.Edges = append(out.Edges, model.Edge{
-					Source: im.FileID, Target: tgtID, Relation: "imports_from",
-					Confidence: "EXTRACTED", SourceFile: im.File, SourceLocation: im.Loc,
-					TypeOnly: im.TypeOnly,
+				tgt := ""
+				super, isSelf := selfRecv[c.Recv]
+				if ext := langRecv[c.Recv]; ext != "" && path.Ext(r.File) != ext {
+					isSelf = false
+				}
+				if isSelf {
+					tgt = selfTarget(owner[c.CallerID], c.Callee, super, methods, supers, openSuper)
+				} else {
+					lkey := [2]string{r.File, c.Callee}
+					here, all := localC[lkey], globalC[c.Callee]
+					if len(all) == 0 {
+						here, all = local[lkey], global[c.Callee]
+					}
+					if c.Recv != "" {
+						q := recvTail(c.Recv)
+						ok := func(id string) bool { return q != "" && quals[id].has(q) }
+						here = keep(here, ok)
+						// all depends on the callee alone and can run to thousands
+						// of ids, so the filtered list is kept per qualifier, and
+						// each id's qualifier set is looked up once per callee.
+						key := c.Callee + "\x00" + q
+						ids, done := kept[key]
+						if !done {
+							qs, ok := allQuals[c.Callee]
+							if !ok {
+								qs = make([]qualSet, len(all))
+								for i, id := range all {
+									qs[i] = quals[id]
+								}
+								allQuals[c.Callee] = qs
+							}
+							if q != "" {
+								for i, id := range all {
+									if qs[i].has(q) {
+										ids = append(ids, id)
+									}
+								}
+							}
+							kept[key] = ids
+						}
+						all = ids
+					}
+					// Two types in one file can each own a method of the same name; a
+					// bare call then has no unambiguous local target, so fall through
+					// to disambiguate rather than guess.
+					if len(here) == 1 {
+						tgt = here[0]
+					}
+					if tgt == "" {
+						tgt = disambiguate(all, r.File, idFile, &imported)
+					}
+				}
+				// A call on an external module has no definition to bind, so it
+				// lands on the module's import node.
+				if tgt == "" && i < len(r.CallMods) && r.CallMods[i] != "" && external[[2]string{r.File, r.CallMods[i]}] {
+					add(model.Edge{
+						Source: c.CallerID, Target: idutil.MakeID(r.CallMods[i]), Relation: model.RelCalls,
+						Confidence: model.ConfExtracted, SourceFile: rf, SourceLocation: c.Loc,
+					})
+					continue
+				}
+				if tgt == "" || tgt == c.CallerID {
+					continue
+				}
+				// Never bind a call to a definition in a different language family:
+				// the same short name (render, parse, Path) collides across languages,
+				// and a name match across a family boundary is a phantom edge, not a
+				// real call. Unknown families (non-code, unrecognized ext) stay
+				// permissive.
+				if langfamily.Cross(r.File, idFile[tgt]) {
+					continue
+				}
+				add(model.Edge{
+					Source: c.CallerID, Target: tgt, Relation: model.RelCalls,
+					Confidence: model.ConfInferred, SourceFile: rf, SourceLocation: c.Loc,
 				})
 			}
-			depID := idutil.MakeID(im.Spec)
-			// A bare `from . import x` has no module name to mint a node from.
-			if len(targets) > 0 || depID == "" {
-				continue
-			}
-			if !extSeen[depID] {
-				extSeen[depID] = true
-				out.Nodes = append(out.Nodes, model.Node{ID: depID, Label: im.Spec, FileType: "concept"})
-			}
-			out.Edges = append(out.Edges, model.Edge{
-				Source: im.FileID, Target: depID, Relation: "imports",
-				Confidence: "EXTRACTED", SourceFile: im.File, SourceLocation: im.Loc,
-			})
+		}
+		return edges
+	}
+	nCalls := 0
+	for _, r := range results {
+		nCalls += len(r.Calls)
+	}
+	perRun := nCalls/runtime.GOMAXPROCS(0) + 1
+	var runs [][]Result
+	for lo, hi, n := 0, 0, 0; hi < len(results); hi++ {
+		if n += len(results[hi].Calls); n >= perRun || hi+1 == len(results) {
+			runs = append(runs, results[lo:hi+1])
+			lo, n = hi+1, 0
 		}
 	}
+	callEdges := make([][][]model.Edge, len(runs))
+	var callsDone sync.WaitGroup
+	for i, run := range runs {
+		callsDone.Go(func() { callEdges[i] = bind(run) })
+	}
+	callsDone.Wait()
+	importsDone.Wait()
+	nodes := make([][]model.Node, 0, len(results)+1)
+	nParts := len(impEdges)
+	for _, parts := range callEdges {
+		nParts += len(parts)
+	}
+	edges := make([][]model.Edge, 0, len(results)+nParts+6)
+	for _, r := range results {
+		nodes = append(nodes, r.Nodes)
+		edges = append(edges, r.Edges)
+	}
+	edges = append(edges, out.Edges) // import-guided
+	for _, parts := range callEdges {
+		edges = append(edges, parts...)
+	}
+	edges = append(edges, inherit)
+
+	// A Go corpus has as many import edges as all the rest, so they go in
+	// parts too.
+	for _, recs := range impEdges {
+		part := make([]model.Edge, 0, len(recs))
+		for _, e := range recs {
+			rel := model.RelImportsFrom
+			if e.external {
+				rel = model.RelImports
+			}
+			part = append(part, model.Edge{
+				Source: e.imp.FileID, Target: e.tgt, Relation: rel,
+				Confidence: model.ConfExtracted, SourceFile: fc.of(e.imp.File), SourceLocation: e.imp.Loc,
+				TypeOnly: e.typeOnly,
+			})
+		}
+		edges = append(edges, part)
+	}
+	// From here out holds what the passes below add.
+	out.Nodes, out.Edges = impNodes, nil
 
 	// Terraform module sources: a local source resolves to the target directory
 	// node (created once, with contains edges to that directory's files so the
@@ -279,14 +501,14 @@ func Resolve(results []Result, files []string) model.Extraction {
 						out.Nodes = append(out.Nodes, model.Node{ID: dirID, Label: target, FileType: "code", SourceFile: target, SourceLocation: "L1"})
 						for _, ff := range filesIn {
 							out.Edges = append(out.Edges, model.Edge{
-								Source: dirID, Target: idutil.MakeID(ff), Relation: "contains",
-								Confidence: "EXTRACTED", SourceFile: target,
+								Source: dirID, Target: idutil.MakeID(ff), Relation: model.RelContains,
+								Confidence: model.ConfExtracted, SourceFile: fc.of(target),
 							})
 						}
 					}
 					out.Edges = append(out.Edges, model.Edge{
-						Source: m.FromID, Target: dirID, Relation: "references",
-						Confidence: "EXTRACTED", SourceFile: m.File, SourceLocation: m.Loc,
+						Source: m.FromID, Target: dirID, Relation: model.RelReferences,
+						Confidence: model.ConfExtracted, SourceFile: fc.of(m.File), SourceLocation: m.Loc,
 					})
 					continue
 				}
@@ -299,26 +521,31 @@ func Resolve(results []Result, files []string) model.Extraction {
 				out.Nodes = append(out.Nodes, model.Node{ID: extID, Label: target, FileType: "concept"})
 			}
 			out.Edges = append(out.Edges, model.Edge{
-				Source: m.FromID, Target: extID, Relation: "references",
-				Confidence: "EXTRACTED", SourceFile: m.File, SourceLocation: m.Loc,
+				Source: m.FromID, Target: extID, Relation: model.RelReferences,
+				Confidence: model.ConfExtracted, SourceFile: fc.of(m.File), SourceLocation: m.Loc,
 			})
 		}
 	}
 
-	// Markdown links: resolve each [text](target) to the concept node of the
-	// markdown file it points at and emit a `references` edge. Directory
-	// structure (an index.md owning its siblings) yields `contains` edges.
-	resolveMarkdown(results, files, corpus, &out)
+	mdDone.Wait()
+	nodes, edges = append(nodes, out.Nodes), append(edges, out.Edges, md.Edges)
 
 	// Stage C: complete partial cloudposse null-label ids across local wrapper
 	// chains, using the module-source edges and invocation args captured above.
-	resolveNullLabels(results, &out)
+	// It writes to the nodes, so it gets a joined copy.
+	if slices.ContainsFunc(results, func(r Result) bool { return len(r.NullLabels) > 0 }) {
+		out = Join(nodes, edges)
+		resolveNullLabels(results, &out)
+		nodes, edges = [][]model.Node{out.Nodes}, [][]model.Edge{out.Edges}
+	}
 
 	// C# interface dispatch: join a single-implementer interface's method to the
 	// implementing method so directed walks do not stop at the interface.
-	resolveCSharpDispatch(&out)
-	return out
+	return nodes, append(edges, resolveCSharpDispatch(nodes, edges))
 }
+
+// impPart is how many import edges ResolveParts puts in one part.
+const impPart = 4096
 
 // mdExts are the markdown suffixes a link target may resolve to in the corpus.
 var mdExts = []string{".md", ".mdx", ".markdown"}
@@ -337,29 +564,22 @@ var mdCodeSep = regexp.MustCompile(`::|\.`)
 // index.md owns the other markdown concepts in that directory). Link targets are
 // resolved against the bundle root for a leading '/', otherwise relative to the
 // linking file's directory; http(s)/mailto/in-page (#anchor) targets are ignored.
-func resolveMarkdown(results []Result, files []string, corpus map[string]bool, out *model.Extraction) {
-	// Name -> code definition ids, for resolving a backtick `symbol` span that does
-	// not point at a markdown file. Defs are exactly the code definitions, so
-	// markdown concept/heading nodes never appear here; a name mapping to more than
-	// one definition is ambiguous and drops (no map iteration feeds this).
-	symDefs := map[string][]string{}
-	for _, r := range results {
-		for _, d := range r.Defs {
-			symDefs[d.Name] = append(symDefs[d.Name], d.ID)
-		}
-	}
-
-	// Tokens each definition may be qualified by, so `pkg.Widget` can resolve.
-	quals := defQualifiers(results)
-
+// quals holds the tokens each definition may be qualified by (defQualifiers), so
+// `pkg.Widget` can resolve. symDefs maps a name to its code definition ids, in
+// results order, for a backtick `symbol` span that does not point at a markdown
+// file. Defs are exactly the code definitions, so markdown concept/heading nodes
+// never appear there; a name mapping to more than one definition is ambiguous
+// and drops (no map iteration feeds this).
+func resolveMarkdown(results []Result, files []string, corpus map[string]bool, quals map[string]qualSet, symDefs map[string][]string, out *model.Extraction) {
+	var fc fileMemo
 	seenSym := map[string]bool{} // FromID\x00defID, to not emit a symbol edge twice
 	for _, r := range results {
 		for _, m := range r.MDRefs {
 			if tgt := resolveMDTarget(m.File, m.Target, corpus); tgt != "" {
 				out.Edges = append(out.Edges, model.Edge{
 					Source: m.FromID, Target: idutil.MakeID(strings.TrimSuffix(tgt, path.Ext(tgt))),
-					Relation: "references", Confidence: "EXTRACTED",
-					SourceFile: m.File, SourceLocation: m.Loc,
+					Relation: model.RelReferences, Confidence: model.ConfExtracted,
+					SourceFile: fc.of(m.File), SourceLocation: m.Loc,
 				})
 				continue
 			}
@@ -376,8 +596,8 @@ func resolveMarkdown(results []Result, files []string, corpus map[string]bool, o
 			}
 			seenSym[key] = true
 			out.Edges = append(out.Edges, model.Edge{
-				Source: m.FromID, Target: id, Relation: "references",
-				Confidence: "EXTRACTED", SourceFile: m.File, SourceLocation: m.Loc,
+				Source: m.FromID, Target: id, Relation: model.RelReferences,
+				Confidence: model.ConfExtracted, SourceFile: fc.of(m.File), SourceLocation: m.Loc,
 			})
 		}
 	}
@@ -402,7 +622,7 @@ func resolveMarkdown(results []Result, files []string, corpus map[string]bool, o
 		out.Edges = append(out.Edges, model.Edge{
 			Source:   idutil.MakeID(strings.TrimSuffix(idx, path.Ext(idx))),
 			Target:   idutil.MakeID(strings.TrimSuffix(sf, path.Ext(sf))),
-			Relation: "contains", Confidence: "EXTRACTED", SourceFile: idx,
+			Relation: model.RelContains, Confidence: model.ConfExtracted, SourceFile: fc.of(idx),
 		})
 	}
 }
@@ -412,7 +632,7 @@ func resolveMarkdown(results []Result, files []string, corpus map[string]bool, o
 // a method) and the segments of its source path. This is what lets `pkg.Widget`
 // bind to a Widget defined under pkg/ while `time.sleep` stays off a repo's own
 // sleep.
-func defQualifiers(results []Result) map[string]map[string]bool {
+func defQualifiers(results []Result) map[string]qualSet {
 	label := map[string]string{}
 	parent := map[string]string{} // contained id -> containing id
 	for _, r := range results {
@@ -420,33 +640,47 @@ func defQualifiers(results []Result) map[string]map[string]bool {
 			label[n.ID] = n.Label
 		}
 		for _, e := range r.Edges {
-			if e.Relation == "contains" {
+			if e.Relation == model.RelContains {
 				parent[e.Target] = e.Source
 			}
 		}
 	}
-	out := make(map[string]map[string]bool)
+	out := make(map[string]qualSet)
 	for _, r := range results {
+		var toks qualSet
+		file := ""
 		for _, d := range r.Defs {
-			toks := map[string]bool{}
-			for _, seg := range strings.Split(filepath.ToSlash(d.File), "/") {
-				toks[seg] = true
-				toks[strings.TrimSuffix(seg, path.Ext(seg))] = true
-			}
-			// Walk the containment chain, bounded so a cyclic edge can't hang.
-			for id, n := parent[d.ID], 0; id != "" && n < 16; id, n = parent[id], n+1 {
-				if l := label[id]; l != "" {
-					toks[l] = true
+			if toks.path == nil || d.File != file {
+				file, toks.path = d.File, map[string]bool{}
+				for _, seg := range strings.Split(filepath.ToSlash(d.File), "/") {
+					toks.path[seg] = true
+					toks.path[strings.TrimSuffix(seg, path.Ext(seg))] = true
 				}
 			}
-			if d.Owner != "" {
-				toks[d.Owner] = true
+			toks.own = nil
+			// Walk the containment chain, bounded so a cyclic edge can't hang.
+			for id, n := parent[d.ID], 0; id != "" && n < 16; id, n = parent[id], n+1 {
+				if l := label[id]; l != "" && !toks.has(l) {
+					toks.own = append(toks.own, l)
+				}
+			}
+			if d.Owner != "" && !toks.has(d.Owner) {
+				toks.own = append(toks.own, d.Owner)
 			}
 			out[d.ID] = toks
 		}
 	}
 	return out
 }
+
+// qualSet is the tokens one definition answers to: the path tokens, shared by
+// every definition of its file, and the labels and owner that are its own.
+type qualSet struct {
+	path map[string]bool
+	own  []string
+}
+
+func (s qualSet) has(q string) bool { return s.path[q] || contains(s.own, q) }
 
 // selfRecv lists the receivers that name the caller's own instance or type;
 // the value marks one that starts the lookup at the parent type.
@@ -459,9 +693,22 @@ var selfRecv = map[string]bool{
 // the one where it is a keyword.
 var langRecv = map[string]string{"static": ".php", "parent": ".php", "base": ".cs"}
 
-// recvTail matches the last identifier of a receiver (`a.b` -> `b`); a receiver
+// recvTail returns the last identifier of a receiver (`a.b` -> `b`); a receiver
 // ending in anything else (`f()`, `a[0]`) has none.
-var recvTail = regexp.MustCompile(`[\p{L}\p{N}_]+$`)
+func recvTail(s string) string {
+	i := len(s)
+	for i > 0 {
+		r, n := rune(s[i-1]), 1
+		if r >= utf8.RuneSelf {
+			r, n = utf8.DecodeLastRuneInString(s[:i])
+		}
+		if r != '_' && !unicode.IsLetter(r) && !unicode.IsNumber(r) {
+			break
+		}
+		i -= n
+	}
+	return s[i:]
+}
 
 // defOwners maps each method to the type that owns it: the node containing it,
 // or for a Go method its receiver type within the package directory. A
@@ -470,7 +717,7 @@ func defOwners(results []Result) map[string]string {
 	owner := map[string]string{}
 	for _, r := range results {
 		for _, e := range r.Edges {
-			if e.Relation == "contains" {
+			if e.Relation == model.RelContains {
 				owner[e.Target] = e.Source
 			}
 		}
@@ -544,7 +791,7 @@ func keep(ids []string, pred func(string) bool) []string {
 // zero/several definitions survive (drop-on-ambiguity). For a qualified span
 // (`pkg.Widget`, `Widget::render`) the last segment is the name and every
 // preceding segment must be a qualifier the candidate answers to.
-func uniqueCodeDef(sym string, index map[string][]string, quals map[string]map[string]bool) string {
+func uniqueCodeDef(sym string, index map[string][]string, quals map[string]qualSet) string {
 	if !mdCodeSymbol.MatchString(sym) {
 		return ""
 	}
@@ -554,7 +801,7 @@ func uniqueCodeDef(sym string, index map[string][]string, quals map[string]map[s
 	for _, id := range index[name] {
 		ok := true
 		for _, q := range prefix {
-			if !quals[id][q] {
+			if !quals[id].has(q) {
 				ok = false
 				break
 			}
@@ -632,26 +879,56 @@ func stemName(p string) string {
 	return strings.TrimSuffix(b, path.Ext(b))
 }
 
+// fileMemo gives the code of a path. Edges of one file come in runs, so the
+// last answer saves most lookups in the table.
+type fileMemo struct {
+	s string
+	f model.File
+}
+
+func (m *fileMemo) of(s string) model.File {
+	if s != m.s {
+		m.s, m.f = s, model.FileOf(s)
+	}
+	return m.f
+}
+
+// callSite identifies a call inside one corpus.
+type callSite struct {
+	caller, callee string
+	loc            model.Loc
+}
+
 // resolveImportGuided emits EXTRACTED calls edges for Python calls backed by
 // explicit `from M import N [as L]` evidence. It builds a (module_stem, symbol)
 // index from all definitions, then for each per-file alias resolves a matching
 // bare call to the unique definition. Member calls and self-edges are skipped.
-// It returns the set of call sites it resolved (keyed callerID\x00callee\x00loc)
-// so the generic name pass leaves them alone.
-func resolveImportGuided(results []Result, idFile map[string]string, out *model.Extraction) map[string]bool {
+// It returns the set of call sites it resolved so the generic name pass leaves
+// them alone.
+func resolveImportGuided(results []Result, idFile map[string]string, out *model.Extraction) map[callSite]bool {
 	// (module_stem, symbol) -> def ids, used only when an import names that symbol.
+	// Only a stem some import names is ever looked up.
+	want := map[string]bool{}
+	for _, r := range results {
+		for _, a := range r.ImportAliases {
+			want[a.ModuleStem] = true
+		}
+	}
 	index := map[string][]string{}
 	for _, r := range results {
+		if len(want) == 0 {
+			break
+		}
 		for _, d := range r.Defs {
 			stem := defStem(d.File)
-			if stem == "" {
+			if stem == "" || !want[stem] {
 				continue
 			}
 			index[stem+"\x00"+d.Name] = append(index[stem+"\x00"+d.Name], d.ID)
 		}
 	}
 
-	resolved := map[string]bool{}
+	resolved := map[callSite]bool{}
 	for _, r := range results {
 		if len(r.ImportAliases) == 0 {
 			continue
@@ -660,7 +937,9 @@ func resolveImportGuided(results []Result, idFile map[string]string, out *model.
 		for _, a := range r.ImportAliases {
 			aliases[a.Local] = a // last write wins, mirroring upstream alias dict
 		}
-		for _, c := range r.Calls {
+		rf := model.FileOf(r.File)
+		for _, n := range r.Calls {
+			c := r.call(n)
 			if c.Recv != "" {
 				continue
 			}
@@ -674,14 +953,14 @@ func resolveImportGuided(results []Result, idFile map[string]string, out *model.
 			}
 			// Same cross-family guard as the generic pass: import evidence still
 			// must not bind a call to a definition in a different language family.
-			if langfamily.Cross(c.File, idFile[ids[0]]) {
+			if langfamily.Cross(r.File, idFile[ids[0]]) {
 				continue
 			}
-			resolved[c.CallerID+"\x00"+c.Callee+"\x00"+c.Loc] = true
+			resolved[callSite{c.CallerID, c.Callee, c.Loc}] = true
 			out.Edges = append(out.Edges, model.Edge{
-				Source: c.CallerID, Target: ids[0], Relation: "calls",
-				Confidence: "EXTRACTED", ConfidenceScore: 1.0,
-				SourceFile: c.File, SourceLocation: c.Loc,
+				Source: c.CallerID, Target: ids[0], Relation: model.RelCalls,
+				Confidence: model.ConfExtracted, ConfidenceScore: 1.0,
+				SourceFile: rf, SourceLocation: c.Loc,
 			})
 		}
 	}
@@ -722,18 +1001,44 @@ func typeDefs(ids []string, name string, idFile map[string]string) []string {
 // unique definition in a file the caller imports, then a unique definition in
 // the caller's own directory (same package); otherwise it returns "" rather
 // than guess, leaving the call unresolved.
-func disambiguate(ids []string, callerFile string, idFile map[string]string, imported map[string]bool) string {
+func disambiguate(ids []string, callerFile string, idFile map[string]string, importedBy *importedSet) string {
 	switch len(ids) {
 	case 0:
 		return ""
 	case 1:
 		return ids[0]
 	}
+	imported := importedBy.of(callerFile)
 	if id := unique(ids, func(id string) bool { return imported[idFile[id]] }); id != "" {
 		return id
 	}
 	dir := path.Dir(filepath.ToSlash(callerFile))
 	return unique(ids, func(id string) bool { return path.Dir(idFile[id]) == dir })
+}
+
+// importedSet gives the set of corpus files a file imports, from the target
+// lists of its imports. It holds one set at a time: calls come file by file.
+type importedSet struct {
+	targets map[string][][]string
+	file    string
+	set     map[string]bool
+}
+
+func (s *importedSet) of(file string) map[string]bool {
+	if s.set != nil && file == s.file {
+		return s.set
+	}
+	if s.set == nil {
+		s.set = map[string]bool{}
+	}
+	clear(s.set)
+	for _, ts := range s.targets[file] {
+		for _, t := range ts {
+			s.set[t] = true
+		}
+	}
+	s.file = file
+	return s.set
 }
 
 // contains reports whether ids already holds id.
@@ -776,7 +1081,11 @@ func goModDir(goMods map[string]string, f string) string {
 // path specifier, for Python the module plus any imported name that is itself a
 // module (`from . import b`, `from pkg import submodule`), for Rust the module
 // each used name lives in, and for Go every non-test file of the imported package.
-func importTargets(im Imp, corpus map[string]bool, goPkgs map[string][]string, goMods map[string]string) []string {
+//
+// goTargets holds the file list of each Go package as one importing module
+// sees it. Every importer outside the package gets that same slice, so the
+// caller must not change what it is given.
+func importTargets(im Imp, corpus map[string]bool, goPkgs map[string][]string, goMods map[string]string, goTargets map[[2]string][]string) []string {
 	from := filepath.ToSlash(im.File)
 	var out []string
 	add := func(t string) {
@@ -798,11 +1107,24 @@ func importTargets(im Imp, corpus map[string]bool, goPkgs map[string][]string, g
 			add(resolveRustPath(from, im.Spec+"::"+name, corpus))
 		}
 	case ".go":
-		pkg := goPkgs[im.Spec]
-		// Two checkouts of one module: bind inside the importer's own.
 		own := goModDir(goMods, from)
-		if mine := keep(pkg, func(f string) bool { return goModDir(goMods, f) == own }); len(mine) > 0 {
-			pkg = mine
+		key := [2]string{im.Spec, own}
+		pkg, ok := goTargets[key]
+		if !ok {
+			all := goPkgs[im.Spec]
+			// Two checkouts of one module: bind inside the importer's own.
+			if mine := keep(all, func(f string) bool { return goModDir(goMods, f) == own }); len(mine) > 0 {
+				all = mine
+			}
+			for _, f := range all {
+				if f != "" && !contains(pkg, f) {
+					pkg = append(pkg, f)
+				}
+			}
+			goTargets[key] = pkg
+		}
+		if !contains(pkg, from) {
+			return pkg
 		}
 		for _, f := range pkg {
 			add(f)
@@ -934,14 +1256,18 @@ func resolveModulePath(base string, corpus map[string]bool) string {
 	if corpus[base] {
 		return base
 	}
+	// One reused buffer: a missed probe then allocates nothing.
+	buf := make([]byte, 0, len(base)+len("/index.d.ts"))
+	buf = append(buf, base...)
 	for _, ext := range jsResolveExts {
-		if corpus[base+ext] {
-			return base + ext
+		if buf = append(buf[:len(base)], ext...); corpus[string(buf)] {
+			return string(buf)
 		}
 	}
+	buf = append(buf[:len(base)], "/index"...)
 	for _, ext := range jsResolveExts {
-		if idx := base + "/index" + ext; corpus[idx] {
-			return idx
+		if buf = append(buf[:len(base)+len("/index")], ext...); corpus[string(buf)] {
+			return string(buf)
 		}
 	}
 	return ""

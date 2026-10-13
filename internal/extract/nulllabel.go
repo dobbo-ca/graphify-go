@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode"
 
-	ts "github.com/tree-sitter/go-tree-sitter"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 )
 
 // segState classifies a captured label segment.

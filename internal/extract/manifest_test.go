@@ -50,7 +50,7 @@ func assertPackageGraph(t *testing.T, root, module string, deps []string) {
 
 	edges := map[string]bool{}
 	for _, e := range res.Edges {
-		if e.Relation != "depends_on" {
+		if e.Relation != model.RelDependsOn {
 			t.Errorf("unexpected relation %q on edge %+v", e.Relation, e)
 		}
 		edges[e.Source+"->"+e.Target] = true

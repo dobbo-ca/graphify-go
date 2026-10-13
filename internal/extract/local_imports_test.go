@@ -18,8 +18,8 @@ func importEdges(srcs map[string]string, goMods map[string]string) []string {
 	sort.Strings(files)
 	var edges []string
 	for _, e := range Resolve(results, files).Edges {
-		if e.Relation == "imports" || e.Relation == "imports_from" {
-			edges = append(edges, e.Source+" "+e.Relation+" "+e.Target)
+		if e.Relation.String() == "imports" || e.Relation.String() == "imports_from" {
+			edges = append(edges, e.Source+" "+e.Relation.String()+" "+e.Target)
 		}
 	}
 	sort.Strings(edges)

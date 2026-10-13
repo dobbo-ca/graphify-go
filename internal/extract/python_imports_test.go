@@ -17,10 +17,10 @@ func pyResolve(srcs map[string]string) ([]string, map[string]bool) {
 	ext := Resolve(results, files)
 	var edges []string
 	for _, e := range ext.Edges {
-		if e.Relation != "imports" && e.Relation != "imports_from" {
+		if e.Relation.String() != "imports" && e.Relation.String() != "imports_from" {
 			continue
 		}
-		s := e.Source + " " + e.Relation + " " + e.Target
+		s := e.Source + " " + e.Relation.String() + " " + e.Target
 		if e.TypeOnly {
 			s += " type"
 		}

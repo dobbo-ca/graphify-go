@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -166,7 +167,9 @@ func main() {
 		fmt.Printf("graphify %s (commit %s, built %s)\n", version, commit, date)
 		return
 	case "build":
+		stop := startProf()
 		err = cmdBuild(os.Args[2:])
+		stop()
 	case "update":
 		err = cmdUpdate(os.Args[2:])
 	case "watch":
@@ -242,42 +245,64 @@ func assemble(root string, files []string, prev cache.Cache, prevStat cache.Stat
 	if workers < 1 {
 		workers = 1
 	}
+	// Cold build only: an update parses few files and already stats each.
+	var big []int
+	if prev == nil {
+		big = largeFirst(root, files)
+	}
+	isBig := make([]bool, len(files))
+	bigIdx := make(chan int, len(big))
+	for _, i := range big {
+		isBig[i] = true
+		bigIdx <- i
+	}
+	close(bigIdx)
 	idx := make(chan int)
 	var wg sync.WaitGroup
 	for w := 0; w < workers; w++ {
+		// One worker takes the large files, one at a time, while the rest
+		// start on the others; side by side their parsers would add up.
+		lanes := [2]chan int{idx, bigIdx}
+		if w == 0 {
+			lanes = [2]chan int{bigIdx, idx}
+		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for i := range idx {
-				key := filepath.ToSlash(files[i])
-				ps, psOK := prevStat[key]
-				h, statEntry, src, ok := cache.HashFile(filepath.Join(root, files[i]), ps, psOK)
-				if !ok {
-					fmt.Fprintf(os.Stderr, "  warning: skipped %s\n", files[i])
-					continue
-				}
-				if e, ok := prev[key]; ok && e.Hash == h {
-					slots[i] = slot{entry: e, stat: statEntry, ok: true, reused: true}
-					continue
-				}
-				// Not a cache hit, so we must parse. If the stat fastpath skipped
-				// the read (src == nil), read now — the cached result is absent or
-				// stale and the bytes are needed to re-parse.
-				if src == nil {
-					b, err := os.ReadFile(filepath.Join(root, files[i]))
-					if err != nil {
-						fmt.Fprintf(os.Stderr, "  warning: skipped %s (%v)\n", files[i], err)
+			for _, lane := range lanes {
+				for i := range lane {
+					key := filepath.ToSlash(files[i])
+					ps, psOK := prevStat[key]
+					h, statEntry, src, ok := cache.HashFile(filepath.Join(root, files[i]), ps, psOK)
+					if !ok {
+						fmt.Fprintf(os.Stderr, "  warning: skipped %s\n", files[i])
 						continue
 					}
-					src = b
+					if e, ok := prev[key]; ok && e.Hash == h {
+						slots[i] = slot{entry: e, stat: statEntry, ok: true, reused: true}
+						continue
+					}
+					// Not a cache hit, so we must parse. If the stat fastpath skipped
+					// the read (src == nil), read now — the cached result is absent or
+					// stale and the bytes are needed to re-parse.
+					if src == nil {
+						b, err := os.ReadFile(filepath.Join(root, files[i]))
+						if err != nil {
+							fmt.Fprintf(os.Stderr, "  warning: skipped %s (%v)\n", files[i], err)
+							continue
+						}
+						src = b
+					}
+					res := extract.FileFromBytes(files[i], src)
+					slots[i] = slot{entry: cache.Entry{Hash: h, Result: res}, stat: statEntry, ok: true}
 				}
-				res := extract.FileFromBytes(files[i], src)
-				slots[i] = slot{entry: cache.Entry{Hash: h, Result: res}, stat: statEntry, ok: true}
 			}
 		}()
 	}
 	for i := range files {
-		idx <- i
+		if !isBig[i] {
+			idx <- i
+		}
 	}
 	close(idx)
 	wg.Wait()
@@ -312,22 +337,97 @@ func assemble(root string, files []string, prev cache.Cache, prevStat cache.Stat
 	return results, newCache, newStat, stats
 }
 
+// bigFile is the size from which a file is parsed ahead of the rest.
+const bigFile = 256 << 10
+
+// largeFirst returns the indexes of the files of bigFile bytes or more,
+// largest first. A parser holds about 30 times its source while it runs, so a
+// giant file parsed late stacks that on every result made before it and sets
+// the heap goal for the rest of the phase; parsed first, it is gone by then.
+func largeFirst(root string, files []string) []int {
+	sizes := make([]int64, len(files))
+	const workers = 4 // as cache.HashFile: more only adds time in the kernel
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			for i := w; i < len(files); i += workers {
+				if fi, err := os.Stat(filepath.Join(root, files[i])); err == nil {
+					sizes[i] = fi.Size()
+				}
+			}
+		}(w)
+	}
+	wg.Wait()
+	var big []int
+	for i, n := range sizes {
+		if n >= bigFile {
+			big = append(big, i)
+		}
+	}
+	sort.SliceStable(big, func(a, b int) bool { return sizes[big[a]] > sizes[big[b]] })
+	return big
+}
+
 // writeOutputs resolves the per-file results into a graph and writes graph.json,
 // GRAPH_REPORT.md, and the incremental cache and stat sidecar under
 // <root>/graphify-out. When sem.enabled, an additive LLM enrichment pass runs
 // between resolve and graph-build so communities reflect concepts; it never
-// alters the deterministic core.
-func writeOutputs(root string, walk detect.WalkReport, results []extract.Result, newCache cache.Cache, newStat cache.StatIndex, sem semanticOpts, force, noCluster bool) (*model.Graph, map[int][]string, error) {
+// alters the deterministic core. keepCache says the cache file on disk already
+// holds newCache, so it is not written again.
+func writeOutputs(root string, walk detect.WalkReport, results []extract.Result, newCache cache.Cache, newStat cache.StatIndex, sem semanticOpts, force, noCluster, keepCache bool) (*model.Graph, map[int][]string, error) {
 	files := walk.Files
-	ext := extract.Resolve(results, files)
+	outDir := outDirFor(root)
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		return nil, nil, err
+	}
+	cachePath := filepath.Join(outDir, cache.FileName)
+	pending := cachePath + ".pending"
+	saved := make(chan error, 1)
+	dropCache := func() {
+		<-saved
+		os.Remove(pending)
+	}
+	// Taken now: the cache encode below empties newCache.
+	skipped := skippedFiles(files, newCache)
+	// From Resolve on the heap peaks and mostly one goroutine works, so
+	// collect sooner: idle CPUs do the marking. A lower GOGC, or off, stays
+	// as set.
+	gc := debug.SetGCPercent(50)
+	if gc < 50 {
+		debug.SetGCPercent(gc)
+	}
+	defer debug.SetGCPercent(gc)
+	nodes, edges := extract.ResolveParts(results, files)
+	// The cache is encoded beside build and cluster, not beside Resolve: what
+	// the encoder allocates during a GC mark counts as live, and Resolve is
+	// where the heap peaks. Each result is freed once it is written. The file
+	// is only moved into place after graph.json and the report are written; a
+	// run that writes nothing drops it.
+	if keepCache {
+		clear(newCache)
+		saved <- nil
+	} else {
+		go func() { saved <- cache.SaveDrain(pending, cache.Stamp(version), newCache) }()
+	}
+	// The anti-shrink guard needs the graph.json on disk: read it beside the
+	// build, not after it.
+	force = force || envForce()
+	graphPath := filepath.Join(outDir, "graph.json")
+	var guard *export.ShrinkGuard
+	if !force {
+		guard = export.ReadShrinkGuard(graphPath)
+	}
 	if sem.enabled {
-		var err error
-		ext, err = enrich(root, ext, sem)
+		ext, err := enrich(root, extract.Join(nodes, edges), sem)
 		if err != nil {
+			dropCache()
 			return nil, nil, err
 		}
+		nodes, edges = [][]model.Node{ext.Nodes}, [][]model.Edge{ext.Edges}
 	}
-	g := graph.Build(ext)
+	g := graph.BuildParts(nodes, edges)
 	g.Unclassified = walk.SkippedExts
 	// --no-cluster writes the raw extraction: skip Louvain community detection so
 	// every node lands with no community assignment (mirrors upstream update
@@ -338,10 +438,6 @@ func writeOutputs(root string, walk detect.WalkReport, results []extract.Result,
 	}
 	commit := gitHead(root)
 
-	outDir := outDirFor(root)
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		return nil, nil, err
-	}
 	// Anti-shrink guard: allow the write when the graph grew, or when every node
 	// that would be lost belongs to a source that was rebuilt/deleted this run;
 	// refuse (and keep the larger graph.json) only when a lost node's source file
@@ -350,15 +446,18 @@ func writeOutputs(root string, walk detect.WalkReport, results []extract.Result,
 	// shrink carve-out the crude ToJSON node-count guard lacks (mirrors upstream
 	// watch._check_shrink); on approval ToJSON runs with force=true so it does not
 	// re-apply the crude guard and refuse a legitimate refactor.
-	force = force || envForce()
-	graphPath := filepath.Join(outDir, "graph.json")
 	// Run the anti-shrink guard FIRST, before writing any output. On a refused
 	// shrink (and no --force) every output is aborted so graphify-out stays
 	// consistent: keeping the old graph.json while rewriting GRAPH_REPORT.md, the
 	// cache, and the stat sidecar from the rejected smaller graph would leave the
 	// report/cache describing a graph that graph.json does not match (mirrors
 	// upstream watch, where a refused _check_shrink returns before any write).
-	if err := export.CheckShrink(graphPath, g, skippedFiles(files, newCache), root, force); err != nil {
+	var err error
+	if guard != nil {
+		err = guard.Check(g, skipped, root)
+	}
+	if err != nil {
+		dropCache()
 		// A shrink/unverifiable refusal is a fail-safe, not a build failure:
 		// warn and leave graphify-out untouched rather than crashing the build.
 		if errors.Is(err, export.ErrGraphShrink) || errors.Is(err, export.ErrGraphUnverifiable) {
@@ -370,14 +469,22 @@ func writeOutputs(root string, walk detect.WalkReport, results []extract.Result,
 	// Shrink allowed (growth, a legitimate carve-out, or force set): write every
 	// output. ToJSON runs with force=true so it does not re-apply its own crude
 	// node-count guard and refuse a legitimate refactor CheckShrink already OK'd.
-	if err := export.ToJSON(g, communities, graphPath, commit, true); err != nil {
-		return nil, nil, err
+	// The report only reads the graph, so it is produced while graph.json is
+	// encoded.
+	md := make(chan string, 1)
+	go func() { md <- report.Generate(g, communities, root, commit) }()
+	err = export.ToJSON(g, communities, graphPath, commit, true)
+	if err == nil {
+		err = fsutil.WriteFileAtomic(filepath.Join(outDir, "GRAPH_REPORT.md"), []byte(<-md), 0o644)
 	}
-	md := report.Generate(g, communities, root, commit)
-	if err := fsutil.WriteFileAtomic(filepath.Join(outDir, "GRAPH_REPORT.md"), []byte(md), 0o644); err != nil {
-		return nil, nil, err
+	if serr := <-saved; err == nil {
+		err = serr
 	}
-	if err := cache.Save(filepath.Join(outDir, cache.FileName), cache.Stamp(version), newCache); err != nil {
+	if err == nil && !keepCache {
+		err = os.Rename(pending, cachePath)
+	}
+	if err != nil {
+		os.Remove(pending)
 		return nil, nil, err
 	}
 	if err := cache.SaveStat(filepath.Join(outDir, cache.StatFileName), cache.Stamp(version), newStat); err != nil {
@@ -451,6 +558,7 @@ func cmdBuild(args []string) error {
 	if len(files) == 0 {
 		return fmt.Errorf("no supported source files found under %s", root)
 	}
+	manifests := startManifests(root, opts.noManifests)
 	results, newCache, newStat, _ := assemble(root, files, nil, nil)
 	if opts.cargo {
 		results, err = withCargo(root, results)
@@ -458,13 +566,11 @@ func cmdBuild(args []string) error {
 			return err
 		}
 	}
-	if !opts.noManifests {
-		results, err = withManifests(root, results)
-		if err != nil {
-			return err
-		}
+	results, err = manifests(results)
+	if err != nil {
+		return err
 	}
-	g, communities, err := writeOutputs(root, rep, results, newCache, newStat, opts.semanticOpts(), opts.force, opts.noCluster)
+	g, communities, err := writeOutputs(root, rep, results, newCache, newStat, opts.semanticOpts(), opts.force, opts.noCluster, false)
 	if err != nil {
 		return err
 	}
@@ -550,17 +656,31 @@ func withCargo(root string, results []extract.Result) ([]extract.Result, error) 
 	return append(results, res), nil
 }
 
-// withManifests runs the deterministic package-manifest pass (pyproject.toml,
-// go.mod, pom.xml) and appends its package nodes/depends_on edges to the per-file
-// results. It runs by default (mirroring upstream manifest_ingest) because it is
-// cheap and deterministic; --no-manifests disables it. It never errors on a
-// malformed manifest — only on a walk failure — so it cannot break a build.
-func withManifests(root string, results []extract.Result) ([]extract.Result, error) {
-	res, err := extract.IntrospectManifests(root)
-	if err != nil {
-		return nil, err
+// startManifests starts the deterministic package-manifest pass (pyproject.toml,
+// go.mod, pom.xml) and returns a func that appends its package nodes/depends_on
+// edges to the per-file results. It runs by default (mirroring upstream
+// manifest_ingest) because it is cheap and deterministic; --no-manifests (skip)
+// disables it. It never errors on a malformed manifest — only on a walk failure
+// — so it cannot break a build. The pass only reads the tree, so it walks while
+// the caller parses.
+func startManifests(root string, skip bool) func([]extract.Result) ([]extract.Result, error) {
+	if skip {
+		return func(results []extract.Result) ([]extract.Result, error) { return results, nil }
 	}
-	return append(results, res), nil
+	var res extract.Result
+	var err error
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		res, err = extract.IntrospectManifests(root)
+	}()
+	return func(results []extract.Result) ([]extract.Result, error) {
+		<-done
+		if err != nil {
+			return nil, err
+		}
+		return append(results, res), nil
+	}
 }
 
 // updateRoot maps cmdUpdate's target to the tree it really scans, so watch can
@@ -596,6 +716,8 @@ func cmdUpdate(args []string) error {
 	opts, _ := parseBuildOpts(args)
 	root, cargo, noManifests, force, noCluster := opts.root, opts.cargo, opts.noManifests, opts.force, opts.noCluster
 	root = updateRoot(root, opts.rootSet)
+	// Started here so the walk and the cache load hide it.
+	manifests := startManifests(root, noManifests)
 	rep, err := detect.CollectFilesReport(root)
 	if err != nil {
 		return err
@@ -605,7 +727,14 @@ func cmdUpdate(args []string) error {
 	if len(files) == 0 {
 		return fmt.Errorf("no supported source files found under %s", root)
 	}
+	// Nearly all the load allocates stays live, so collect less often during
+	// it. A GOGC set by the user stays as set.
+	gc := debug.SetGCPercent(400)
+	if gc != 100 {
+		debug.SetGCPercent(gc)
+	}
 	prev := cache.Load(filepath.Join(outDirFor(root), cache.FileName), cache.Stamp(version))
+	debug.SetGCPercent(gc)
 	prevStat := cache.LoadStat(filepath.Join(outDirFor(root), cache.StatFileName), cache.Stamp(version))
 	// --force / GRAPHIFY_FORCE means a full re-scan, matching upstream: drop the
 	// caches so every file is re-read and re-parsed. Without this the flag only
@@ -621,13 +750,14 @@ func cmdUpdate(args []string) error {
 			return err
 		}
 	}
-	if !noManifests {
-		results, err = withManifests(root, results)
-		if err != nil {
-			return err
-		}
+	results, err = manifests(results)
+	if err != nil {
+		return err
 	}
-	g, communities, err := writeOutputs(root, rep, results, newCache, newStat, semanticOpts{}, force, noCluster)
+	// Nothing parsed and nothing dropped: every entry came from the cache file
+	// and the file has no other, so encoding it again would write the same.
+	keepCache := prev != nil && stats.parsed == 0 && stats.dropped == 0
+	g, communities, err := writeOutputs(root, rep, results, newCache, newStat, semanticOpts{}, force, noCluster, keepCache)
 	if err != nil {
 		return err
 	}

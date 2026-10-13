@@ -25,7 +25,7 @@ func jsonNodes(res Result) (labels map[string]bool, id2label map[string]string) 
 // matched by its computed ID, not a node label.
 func jsonHasEdge(res Result, id2label map[string]string, srcLabel, rel, tgtID string) bool {
 	for _, e := range res.Edges {
-		if e.Relation == rel && id2label[e.Source] == srcLabel && e.Target == tgtID {
+		if e.Relation.String() == rel && id2label[e.Source] == srcLabel && e.Target == tgtID {
 			return true
 		}
 	}
@@ -108,7 +108,7 @@ func TestExtractJSONExtendsTargetSurvivesBuild(t *testing.T) {
 	fileID := idutil.MakeID("tsconfig.json")
 	var survived bool
 	for _, e := range g.Edges() {
-		if e.Relation == "extends" && e.Source == fileID && e.Target == refID {
+		if e.Relation == model.Rel("extends") && e.Source == fileID && e.Target == refID {
 			survived = true
 		}
 	}

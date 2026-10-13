@@ -24,8 +24,8 @@ func callConfidence(ext model.Extraction, srcLabel, tgtLabel string) (string, bo
 		id2label[n.ID] = n.Label
 	}
 	for _, e := range ext.Edges {
-		if e.Relation == "calls" && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
-			return e.Confidence, true
+		if e.Relation == model.RelCalls && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
+			return e.Confidence.String(), true
 		}
 	}
 	return "", false
@@ -35,7 +35,7 @@ func callConfidence(ext model.Extraction, srcLabel, tgtLabel string) (string, bo
 func countCalls(ext model.Extraction) int {
 	n := 0
 	for _, e := range ext.Edges {
-		if e.Relation == "calls" {
+		if e.Relation == model.RelCalls {
 			n++
 		}
 	}
@@ -89,7 +89,7 @@ func TestImportGuidedSkipsSelfEdge(t *testing.T) {
 		"main.py": "from main import run\n\n\ndef run():\n    return run()\n",
 	})
 	for _, e := range ext.Edges {
-		if e.Relation == "calls" && e.Source == e.Target {
+		if e.Relation == model.RelCalls && e.Source == e.Target {
 			t.Errorf("unexpected self calls edge %s->%s", e.Source, e.Target)
 		}
 	}

@@ -1,8 +1,8 @@
 package extract
 
 import (
-	tskotlin "github.com/tree-sitter-grammars/tree-sitter-kotlin/bindings/go"
-	ts "github.com/tree-sitter/go-tree-sitter"
+	tskotlin "github.com/dobbo-ca/gositter/grammars/kotlin"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -80,8 +80,8 @@ func (b *builder) ktMember(ownerID, ownerName string, m *ts.Node, src []byte) {
 	mid := idutil.MakeID(ownerID, mname)
 	b.addNode(mid, ownerName+"."+mname+"()", line(m))
 	b.res.Edges = append(b.res.Edges, model.Edge{
-		Source: ownerID, Target: mid, Relation: "contains",
-		Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
+		Source: ownerID, Target: mid, Relation: model.RelContains,
+		Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
 	})
 	b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
 	b.ktCalls(ktBody(m), mid, src)
@@ -98,8 +98,8 @@ func (b *builder) ktEnumEntry(typeID string, n *ts.Node, src []byte) {
 	cid := idutil.MakeID(typeID, cname)
 	b.addNode(cid, cname, line(n))
 	b.res.Edges = append(b.res.Edges, model.Edge{
-		Source: typeID, Target: cid, Relation: "case_of",
-		Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(n),
+		Source: typeID, Target: cid, Relation: model.RelCaseOf,
+		Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(n),
 	})
 	for i := uint(0); i < n.ChildCount(); i++ {
 		body := n.Child(i)
@@ -150,6 +150,8 @@ func ktBody(fn *ts.Node) *ts.Node {
 	return nil
 }
 
+var ktCallKinds = tskotlin.Language().KindMask("call_expression")
+
 // ktCalls walks a function body and records each call site. Direct calls (`f()`)
 // record the identifier; navigation calls (`x.f()`) record the trailing member
 // name.
@@ -157,10 +159,8 @@ func (b *builder) ktCalls(body *ts.Node, callerID string, src []byte) {
 	if body == nil {
 		return
 	}
-	walk(body, func(c *ts.Node) bool {
-		if c.Kind() != "call_expression" {
-			return true
-		}
+	walkKinds(body, ktCallKinds, func(cv ts.Node) bool {
+		c := &cv
 		callee := c.Child(0)
 		if callee == nil {
 			return true

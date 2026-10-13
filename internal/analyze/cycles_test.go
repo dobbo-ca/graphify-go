@@ -17,7 +17,7 @@ import (
 func importCyclesOracle(g *model.Graph, maxLen, topN int) []Cycle {
 	adj := map[string][]string{}
 	for _, e := range g.Edges() {
-		if e.Relation != "imports_from" || e.TypeOnly {
+		if e.Relation != model.RelImportsFrom || e.TypeOnly {
 			continue
 		}
 		uf, vf := g.Nodes[e.Source].SourceFile, g.Nodes[e.Target].SourceFile
@@ -85,7 +85,7 @@ func importGraph(edges ...string) *model.Graph {
 		a, b, _ := strings.Cut(e, ">")
 		g.AddNode(model.Node{ID: a, SourceFile: a})
 		g.AddNode(model.Node{ID: b, SourceFile: b})
-		g.AddEdge(model.Edge{Source: a, Target: b, Relation: "imports_from"})
+		g.AddEdge(model.Edge{Source: a, Target: b, Relation: model.RelImportsFrom})
 	}
 	return g
 }
@@ -145,7 +145,7 @@ func TestImportCyclesMatchesOracle(t *testing.T) {
 		// Density cycles from sparse up to several edges per ordered pair.
 		for i, m := 0, r.Intn(n*(1+trial%12)); i < m; i++ {
 			g.AddEdge(model.Edge{Source: fmt.Sprint("n", r.Intn(n)), Target: fmt.Sprint("n", r.Intn(n)),
-				Relation: []string{"imports_from", "imports_from", "calls"}[r.Intn(3)], TypeOnly: r.Intn(8) == 0})
+				Relation: model.Rel([]string{"imports_from", "imports_from", "calls"}[r.Intn(3)]), TypeOnly: r.Intn(8) == 0})
 		}
 		maxLen, topN := 1+r.Intn(6), 1+r.Intn(4)
 		want, got := importCyclesOracle(g, maxLen, topN), ImportCycles(g, maxLen, topN)
@@ -178,7 +178,7 @@ func TestImportCyclesDenseAcyclicIsFast(t *testing.T) {
 	for l := 1; l < layers; l++ {
 		for i := 0; i < width; i++ {
 			for j := 0; j < width; j++ {
-				g.AddEdge(model.Edge{Source: id(l, i), Target: id(l-1, j), Relation: "imports_from"})
+				g.AddEdge(model.Edge{Source: id(l, i), Target: id(l-1, j), Relation: model.RelImportsFrom})
 			}
 		}
 	}

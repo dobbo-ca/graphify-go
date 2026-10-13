@@ -1,11 +1,12 @@
 package extract
 
 import (
+	"bytes"
 	"regexp"
 	"strings"
 
-	ts "github.com/tree-sitter/go-tree-sitter"
-	tscpp "github.com/tree-sitter/tree-sitter-cpp/bindings/go"
+	tscpp "github.com/dobbo-ca/gositter/grammars/cpp"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -26,7 +27,8 @@ func extractCpp(rel string, src []byte) Result {
 	return b.res
 }
 
-var cppExportMacroRe = regexp.MustCompile(`\b(?:class|struct)\s+((?:[A-Z][A-Z0-9_]*\s+)+)([A-Za-z_]\w*(?:\s+final)?\s*)([:{])`)
+// Anchored: it runs only where a keyword starts, not over the whole file.
+var cppExportMacroRe = regexp.MustCompile(`^(?:class|struct)\s+((?:[A-Z][A-Z0-9_]*\s+)+)([A-Za-z_]\w*(?:\s+final)?\s*)([:{])`)
 
 // blankCppExportMacros overwrites the ALL-CAPS macros between `class`/`struct`
 // and the type name (`class Q_CORE_EXPORT Widget`) with spaces: the grammar
@@ -34,7 +36,37 @@ var cppExportMacroRe = regexp.MustCompile(`\b(?:class|struct)\s+((?:[A-Z][A-Z0-9
 // are kept so offsets and line numbers hold.
 func blankCppExportMacros(src []byte) []byte {
 	var out []byte
-	for _, m := range cppExportMacroRe.FindAllSubmatchIndex(src, -1) {
+	next := func(kw string, from int) int {
+		if i := bytes.Index(src[from:], []byte(kw)); i >= 0 {
+			return from + i
+		}
+		return len(src)
+	}
+	ci, si := next("class", 0), next("struct", 0)
+	for pos := 0; ; {
+		if ci < pos {
+			ci = next("class", pos)
+		}
+		if si < pos {
+			si = next("struct", pos)
+		}
+		p := min(ci, si)
+		if p == len(src) {
+			break
+		}
+		pos = p + 1
+		// The \b the unanchored pattern began with.
+		if p > 0 && (src[p-1] == '_' || src[p-1]|0x20 >= 'a' && src[p-1]|0x20 <= 'z' || src[p-1] >= '0' && src[p-1] <= '9') {
+			continue
+		}
+		m := cppExportMacroRe.FindSubmatchIndex(src[p:])
+		if m == nil {
+			continue
+		}
+		for i := range m {
+			m[i] += p
+		}
+		pos = m[1]
 		// `for (class API v : items)` is a variable, not a type.
 		if strings.HasSuffix(strings.TrimSpace(string(src[:m[0]])), "(") {
 			continue
@@ -100,8 +132,8 @@ func (b *builder) cppFunc(n *ts.Node, src []byte) {
 		mid := idutil.MakeID(b.stem, scope, name)
 		b.addNode(mid, scope+"."+name+"()", line(n))
 		b.res.Edges = append(b.res.Edges, model.Edge{
-			Source: idutil.MakeID(b.stem, scope), Target: mid, Relation: "contains",
-			Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(n),
+			Source: idutil.MakeID(b.stem, scope), Target: mid, Relation: model.RelContains,
+			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(n),
 		})
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: name, File: b.file})
 		b.cppCalls(n.ChildByFieldName("body"), mid, src)
@@ -149,8 +181,8 @@ func (b *builder) cppType(n *ts.Node, src []byte) {
 		mid := idutil.MakeID(b.stem, name, mname)
 		b.addNode(mid, name+"."+mname+"()", line(m))
 		b.res.Edges = append(b.res.Edges, model.Edge{
-			Source: typeID, Target: mid, Relation: "contains",
-			Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
+			Source: typeID, Target: mid, Relation: model.RelContains,
+			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
 		})
 		// Register under the bare method name so `x.method()` sites resolve.
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
@@ -224,6 +256,8 @@ func cppNameText(n *ts.Node, src []byte) string {
 	return n.Utf8Text(src)
 }
 
+var cppCallKinds = tscpp.Language().KindMask("call_expression")
+
 // cppCalls walks a function body and records each call site. Direct calls
 // (`f()`), member calls (`x.f()` / `p->f()`), and scoped calls (`N::f()`) all
 // record the trailing called name.
@@ -231,10 +265,8 @@ func (b *builder) cppCalls(body *ts.Node, callerID string, src []byte) {
 	if body == nil {
 		return
 	}
-	walk(body, func(c *ts.Node) bool {
-		if c.Kind() != "call_expression" {
-			return true
-		}
+	walkKinds(body, cppCallKinds, func(cv ts.Node) bool {
+		c := &cv
 		fn := c.ChildByFieldName("function")
 		if fn == nil {
 			return true

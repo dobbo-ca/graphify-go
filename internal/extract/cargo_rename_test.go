@@ -35,8 +35,8 @@ version = "0.1.0"
 		t.Fatalf("IntrospectCargo: %v", err)
 	}
 	wantEdge := model.Edge{
-		Source: "crate:app", Target: "crate:internal-storage", Relation: "crate_depends_on",
-		Confidence: "EXTRACTED", Weight: 1.0, SourceFile: "app/Cargo.toml", SourceLocation: "L1",
+		Source: "crate:app", Target: "crate:internal-storage", Relation: model.RelCrateDependsOn,
+		Confidence: model.ConfExtracted, Weight: 1.0, SourceFile: model.FileOf("app/Cargo.toml"), SourceLocation: model.Line(1),
 	}
 	if !hasEdge(res, wantEdge) {
 		t.Errorf("rename not honored: missing edge %+v; got %+v", wantEdge, res.Edges)
@@ -101,8 +101,8 @@ version = "0.1.0"
 		t.Fatalf("IntrospectCargo: %v", err)
 	}
 	want := model.Edge{
-		Source: "crate:app", Target: "crate:real", Relation: "crate_depends_on",
-		Confidence: "EXTRACTED", Weight: 1.0, SourceFile: "app/Cargo.toml", SourceLocation: "L1",
+		Source: "crate:app", Target: "crate:real", Relation: model.RelCrateDependsOn,
+		Confidence: model.ConfExtracted, Weight: 1.0, SourceFile: model.FileOf("app/Cargo.toml"), SourceLocation: model.Line(1),
 	}
 	if !hasEdge(res, want) || len(res.Edges) != 1 {
 		t.Errorf("want only %+v, got %+v", want, res.Edges)

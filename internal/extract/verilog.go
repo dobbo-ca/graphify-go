@@ -3,8 +3,8 @@ package extract
 import (
 	"strings"
 
-	ts "github.com/tree-sitter/go-tree-sitter"
-	tsverilog "github.com/tree-sitter/tree-sitter-verilog/bindings/go"
+	tsverilog "github.com/dobbo-ca/gositter/grammars/verilog"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -112,8 +112,8 @@ func (b *builder) verilogMethod(cm *ts.Node, typeName, classID string, src []byt
 		mid := idutil.MakeID(b.stem, typeName, mname)
 		b.addNode(mid, typeName+"."+mname+"()", line(sub))
 		b.res.Edges = append(b.res.Edges, model.Edge{
-			Source: classID, Target: mid, Relation: "contains",
-			Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(sub),
+			Source: classID, Target: mid, Relation: model.RelContains,
+			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(sub),
 		})
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
 		b.verilogCalls(sub, mid, src)
@@ -146,6 +146,8 @@ func (b *builder) verilogInclude(n *ts.Node, src []byte) {
 	}
 }
 
+var verilogCallKinds = tsverilog.Language().KindMask("tf_call", "method_call")
+
 // verilogCalls walks a declaration body and records each user call site. Direct
 // task/function calls (`f(...)`) come from tf_call; method calls (`x.f(...)`)
 // come from method_call. System tasks (`$display`) are skipped as builtins.
@@ -153,7 +155,8 @@ func (b *builder) verilogCalls(body *ts.Node, callerID string, src []byte) {
 	if body == nil {
 		return
 	}
-	walk(body, func(c *ts.Node) bool {
+	walkKinds(body, verilogCallKinds, func(cv ts.Node) bool {
+		c := &cv
 		switch c.Kind() {
 		case "tf_call":
 			if name := firstChildIdent(c, src); name != "" {
@@ -187,7 +190,8 @@ func headerName(n *ts.Node, src []byte) string {
 // leading return-type identifier.
 func subroutineName(n *ts.Node, src []byte) string {
 	var name string
-	walk(n, func(c *ts.Node) bool {
+	walk(n, func(cv ts.Node) bool {
+		c := &cv
 		if name != "" {
 			return false
 		}
@@ -204,7 +208,8 @@ func subroutineName(n *ts.Node, src []byte) string {
 // whose kind is wrapperKind (e.g. package_identifier, class_identifier).
 func firstIdentIn(n *ts.Node, wrapperKind string, src []byte) string {
 	var name string
-	walk(n, func(c *ts.Node) bool {
+	walk(n, func(cv ts.Node) bool {
+		c := &cv
 		if name != "" {
 			return false
 		}
@@ -223,7 +228,8 @@ func firstSimpleIdent(n *ts.Node, src []byte) string {
 		return ""
 	}
 	var name string
-	walk(n, func(c *ts.Node) bool {
+	walk(n, func(cv ts.Node) bool {
+		c := &cv
 		if name != "" {
 			return false
 		}

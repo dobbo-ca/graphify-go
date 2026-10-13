@@ -1,20 +1,31 @@
 package extract
 
 import (
+	"bytes"
+	"github.com/dobbo-ca/gositter"
+	tsjs "github.com/dobbo-ca/gositter/grammars/javascript"
+	tstsx "github.com/dobbo-ca/gositter/grammars/tsx"
+	tsts "github.com/dobbo-ca/gositter/grammars/typescript"
 	"regexp"
 	"strings"
-	"unsafe"
 
-	ts "github.com/tree-sitter/go-tree-sitter"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
 
+// The call walk's kind, named before any parse; extractJS asks for its bit.
+func init() {
+	for _, l := range []*gositter.Language{tsjs.Language(), tsts.Language(), tstsx.Language()} {
+		l.KindMask("call_expression")
+	}
+}
+
 // extractJS pulls functions, classes (+ methods), interfaces, type aliases,
 // enums, imports, and call edges out of a JS/TS/TSX file. The same walker
 // serves all three because TypeScript's grammar is a superset of JavaScript's.
-func extractJS(rel string, src []byte, langPtr unsafe.Pointer) Result {
+func extractJS(rel string, src []byte, langPtr *gositter.Language) Result {
 	root, done := parseRoot(src, langPtr)
 	defer done()
 	b := newBuilder(rel)
@@ -22,8 +33,19 @@ func extractJS(rel string, src []byte, langPtr unsafe.Pointer) Result {
 	for i := uint(0); i < root.ChildCount(); i++ {
 		b.jsStatement(root.Child(i), src)
 	}
-	walk(root, func(c *ts.Node) bool {
+	// One walk serves the import calls and every body jsCalls registered. The
+	// bodies are disjoint and in source order, as the walk is, so next only
+	// moves forward and the calls come out in the order per-body walks gave.
+	next := 0
+	walkKinds(root, langPtr.KindMask("call_expression"), func(cv ts.Node) bool {
+		c := &cv
 		b.jsCallImport(c, src)
+		for next < len(b.jsBodies) && c.StartByte() >= b.jsBodies[next].end {
+			next++
+		}
+		if next < len(b.jsBodies) && c.StartByte() >= b.jsBodies[next].start {
+			b.jsCall(c, b.jsBodies[next].callerID, src)
+		}
 		return true
 	})
 	b.jsRationale(src)
@@ -101,7 +123,7 @@ func (b *builder) jsFunc(n *ts.Node, src []byte) {
 	}
 	id := idutil.MakeID(b.stem, name)
 	b.def(id, name, name+"()", line(n))
-	b.jsCalls(n.ChildByFieldName("body"), id, src)
+	b.jsCalls(n.ChildByFieldName("body"), id)
 }
 
 func (b *builder) jsClass(n *ts.Node, src []byte) {
@@ -128,11 +150,11 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 		mid := idutil.MakeID(b.stem, name, mname)
 		b.addNode(mid, name+"."+mname+"()", line(m))
 		b.res.Edges = append(b.res.Edges, model.Edge{
-			Source: classID, Target: mid, Relation: "contains",
-			Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
+			Source: classID, Target: mid, Relation: model.RelContains,
+			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
 		})
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file, Abstract: m.Kind() == "abstract_method_signature"})
-		b.jsCalls(m.ChildByFieldName("body"), mid, src)
+		b.jsCalls(m.ChildByFieldName("body"), mid)
 	}
 }
 
@@ -162,7 +184,7 @@ func (b *builder) jsVarFuncs(n *ts.Node, src []byte) {
 		}
 		id := idutil.MakeID(b.stem, name)
 		b.def(id, name, name+"()", line(d))
-		b.jsCalls(val.ChildByFieldName("body"), id, src)
+		b.jsCalls(val.ChildByFieldName("body"), id)
 	}
 }
 
@@ -189,31 +211,38 @@ func (b *builder) jsMemberAssign(n *ts.Node, src []byte) {
 	}
 	id := idutil.MakeID(b.stem, name)
 	b.def(id, name, name+"()", line(n))
-	b.jsCalls(r.ChildByFieldName("body"), id, src)
+	b.jsCalls(r.ChildByFieldName("body"), id)
 }
 
-func (b *builder) jsCalls(body *ts.Node, callerID string, src []byte) {
+// jsBody is a function body whose calls belong to callerID.
+type jsBody struct {
+	start, end uint
+	callerID   string
+}
+
+// jsCalls registers a function body; extractJS records its call sites in the
+// one walk it makes over the file.
+func (b *builder) jsCalls(body *ts.Node, callerID string) {
 	if body == nil {
 		return
 	}
-	walk(body, func(c *ts.Node) bool {
-		if c.Kind() != "call_expression" {
-			return true
+	b.jsBodies = append(b.jsBodies, jsBody{body.StartByte(), body.EndByte(), callerID})
+}
+
+// jsCall records the call site c, a call_expression, for callerID.
+func (b *builder) jsCall(c *ts.Node, callerID string, src []byte) {
+	fn := c.ChildByFieldName("function")
+	if fn == nil {
+		return
+	}
+	switch fn.Kind() {
+	case "identifier":
+		b.call(callerID, fn.Utf8Text(src), line(c))
+	case "member_expression":
+		if p := fn.ChildByFieldName("property"); p != nil {
+			b.callRecv(callerID, p.Utf8Text(src), recvText(fn, p, src), line(c))
 		}
-		fn := c.ChildByFieldName("function")
-		if fn == nil {
-			return true
-		}
-		switch fn.Kind() {
-		case "identifier":
-			b.call(callerID, fn.Utf8Text(src), line(c))
-		case "member_expression":
-			if p := fn.ChildByFieldName("property"); p != nil {
-				b.callRecv(callerID, p.Utf8Text(src), recvText(fn, p, src), line(c))
-			}
-		}
-		return true
-	})
+	}
 }
 
 // jsRationalePrefixes are the leading comment tokens that mark an explanatory
@@ -244,21 +273,46 @@ var (
 // "doc_ref" nodes (cites edge from the file). No LLM is involved.
 func (b *builder) jsRationale(src []byte) {
 	seenDocRefs := map[string]bool{}
-	for i, lineText := range strings.Split(string(src), "\n") {
-		lineNum := i + 1
-		stripped := strings.TrimSpace(lineText)
-		for _, p := range jsRationalePrefixes {
-			if strings.HasPrefix(stripped, p) {
-				b.addRationale(strings.TrimLeft(stripped, "/* "), lineNum, b.fileID)
-				break
+	for lineNum := 1; ; lineNum++ {
+		line, rest, more := bytes.Cut(src, []byte("\n"))
+		// Every prefix and comment marker starts with / or * after the indent.
+		if t := bytes.TrimSpace(line); len(t) > 0 && (t[0] == '/' || t[0] == '*') {
+			lineText, stripped := string(line), string(t)
+			for _, p := range jsRationalePrefixes {
+				if strings.HasPrefix(stripped, p) {
+					b.addRationale(strings.TrimLeft(stripped, "/* "), lineNum, b.fileID)
+					break
+				}
+			}
+			if mayCiteDoc(stripped) && jsCommentLineRe.MatchString(lineText) {
+				for _, m := range jsDocRefRe.FindAllStringSubmatch(stripped, -1) {
+					b.addDocRef(m[1], lineNum, seenDocRefs)
+				}
 			}
 		}
-		if jsCommentLineRe.MatchString(lineText) {
-			for _, m := range jsDocRefRe.FindAllStringSubmatch(stripped, -1) {
-				b.addDocRef(m[1], lineNum, seenDocRefs)
+		if !more {
+			return
+		}
+		src = rest
+	}
+}
+
+// mayCiteDoc reports whether s holds "adr" or "rfc" in any case, as every
+// jsDocRefRe match does.
+func mayCiteDoc(s string) bool {
+	for i := 1; i+1 < len(s); i++ {
+		switch s[i] | 0x20 {
+		case 'd':
+			if s[i-1]|0x20 == 'a' && s[i+1]|0x20 == 'r' {
+				return true
+			}
+		case 'f':
+			if s[i-1]|0x20 == 'r' && s[i+1]|0x20 == 'c' {
+				return true
 			}
 		}
 	}
+	return false
 }
 
 // addDocRef records a "doc_ref" node for a normalized ADR/RFC reference and a
@@ -280,17 +334,17 @@ func (b *builder) addDocRef(token string, lineNum int, seenDocRefs map[string]bo
 	}
 	seenDocRefs[label] = true
 	rid := idutil.MakeID("docref", label)
-	loc := "L" + itoa(lineNum)
+	loc := model.Line(lineNum)
 	if !b.seen[rid] {
 		b.seen[rid] = true
 		b.res.Nodes = append(b.res.Nodes, model.Node{
 			ID: rid, Label: label, FileType: "doc_ref",
-			SourceFile: b.file, SourceLocation: loc,
+			SourceFile: b.file, SourceLocation: loc.String(),
 		})
 	}
 	b.res.Edges = append(b.res.Edges, model.Edge{
-		Source: b.fileID, Target: rid, Relation: "cites",
-		Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: loc,
+		Source: b.fileID, Target: rid, Relation: model.RelCites,
+		Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: loc,
 	})
 }
 
