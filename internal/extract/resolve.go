@@ -291,35 +291,35 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	openSuper := map[string]bool{}  // type id with a base outside the corpus
 	jm := newJSMods(results, corpus, local, idFile)
 	jsAlias := jm.aliases()
-	var fns map[string]bool // ids of function nodes, made for the first reference
-	isType := func(id string) bool {
-		if fns == nil {
-			fns = map[string]bool{}
+	// Every node id, true for a function; made for the first reference.
+	var nodeFn map[string]bool
+	node := func(id string) (fn, ok bool) {
+		if nodeFn == nil {
+			nodeFn = map[string]bool{}
 			for _, r := range results {
 				for _, n := range r.Nodes {
-					if strings.HasSuffix(n.Label, ")") {
-						fns[n.ID] = true
-					}
+					nodeFn[n.ID] = strings.HasSuffix(n.Label, ")")
 				}
 			}
 		}
-		return !fns[id] && !value[id]
+		fn, ok = nodeFn[id]
+		return
+	}
+	isType := func(id string) bool {
+		fn, _ := node(id)
+		return !fn && !value[id]
 	}
 	stubSeen := map[string]bool{}
 	var stubs []model.Node
-	fileIDs := make(map[string]bool, len(results))
-	for _, r := range results {
-		fileIDs[idutil.MakeID(r.File)] = true
-	}
 	for _, r := range results {
 		js := len(r.TypeRefs) > 0 && jsLike(r.File)
 		var bound map[string]string
 		if js {
 			bound = jm.bound(&r)
 		}
-		var alias map[string]string // local name -> the name its import gave it
+		var alias map[string]string // local name -> the name its last import has
 		for _, a := range r.ImportAliases {
-			if len(r.TypeRefs) > 0 && a.Local != a.Imported {
+			if len(r.TypeRefs) > 0 {
 				if alias == nil {
 					alias = map[string]string{}
 				}
@@ -328,9 +328,10 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		}
 		for _, t := range r.TypeRefs {
 			ref := t.Relation == "references"
-			name := t.Name
-			if a := alias[name]; a != "" && len(local[[2]string{t.File, name}]) == 0 {
-				name = a
+			// `from m import Real as R`: R names Real of another file.
+			name, aliased := t.Name, false
+			if a := alias[name]; a != "" && a != name && len(local[[2]string{t.File, name}]) == 0 {
+				name, aliased = a, true
 			}
 			// A supertype or a type position names a type; a decorator can
 			// name a function.
@@ -339,12 +340,15 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				if ref && !t.Deco {
 					ids = keep(ids, isType)
 				}
+				if aliased {
+					ids = keep(ids, func(id string) bool { return idFile[id] != t.File })
+				}
 				return ids
 			}
 			tgt := ""
 			if js {
 				tgt = jm.supertype(t, &r, bound)
-			} else if ids := cands(local[[2]string{t.File, name}]); len(ids) == 1 {
+			} else if ids := cands(local[[2]string{t.File, name}]); len(ids) == 1 && !aliased {
 				tgt = ids[0]
 			}
 			if tgt == "" && !js {
@@ -358,10 +362,9 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					continue
 				}
 				// The stub id is the id a definition of Name in this file
-				// has; a definition there that differs in case owns it, and
-				// so does a file whose id it folds onto.
+				// has; a node that already has that id owns it.
 				tgt = idutil.MakeID(t.File, t.Name)
-				if _, def := idFile[tgt]; def || fileIDs[tgt] {
+				if _, taken := node(tgt); taken {
 					continue
 				}
 				if !stubSeen[tgt] {
