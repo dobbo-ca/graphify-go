@@ -50,10 +50,10 @@ func TestExtractJSONPackageManifest(t *testing.T) {
 			t.Errorf("missing node %q", want)
 		}
 	}
-	if !jsonHasEdge(res, id2label, "package.json", "contains", idutil.MakeID("package", "dependencies")) {
+	if !jsonHasEdge(res, id2label, "package.json", "contains", idutil.MakeID("package.json", "dependencies")) {
 		t.Error("expected package.json --contains--> dependencies")
 	}
-	if !jsonHasEdge(res, id2label, "dependencies", "contains", idutil.MakeID("package", "dependencies", "left-pad")) {
+	if !jsonHasEdge(res, id2label, "dependencies", "contains", idutil.MakeID("package.json", "dependencies", "left-pad")) {
 		t.Error("expected dependencies --contains--> left-pad")
 	}
 	if !jsonHasEdge(res, id2label, "left-pad", "imports", idutil.MakeID("left-pad")) {
@@ -74,7 +74,7 @@ func TestExtractJSONTsconfigExtendsAndRef(t *testing.T) {
 	if !jsonHasEdge(res, id2label, "tsconfig.json", "extends", idutil.MakeID("ref", "./base.json")) {
 		t.Error("expected tsconfig.json --extends--> ./base.json ref")
 	}
-	if !jsonHasEdge(res, id2label, "tsconfig.json", "contains", idutil.MakeID("tsconfig", "compilerOptions")) {
+	if !jsonHasEdge(res, id2label, "tsconfig.json", "contains", idutil.MakeID("tsconfig.json", "compilerOptions")) {
 		t.Error("expected tsconfig.json --contains--> compilerOptions")
 	}
 }

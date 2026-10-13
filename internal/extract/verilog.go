@@ -6,7 +6,6 @@ import (
 	tsverilog "github.com/dobbo-ca/gositter/grammars/verilog"
 	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
-	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
 
@@ -56,7 +55,7 @@ func (b *builder) verilogModule(n *ts.Node, src []byte) {
 	if name == "" {
 		return
 	}
-	id := idutil.MakeID(b.stem, name)
+	id := b.id(name)
 	b.def(id, name, name, line(n))
 	b.verilogCalls(n, id, src)
 }
@@ -69,7 +68,7 @@ func (b *builder) verilogPackage(n *ts.Node, src []byte) {
 	if name == "" {
 		return
 	}
-	b.def(idutil.MakeID(b.stem, name), name, name, line(n))
+	b.def(b.id(name), name, name, line(n))
 	b.verilogItems(n, src)
 }
 
@@ -80,7 +79,7 @@ func (b *builder) verilogClass(n *ts.Node, src []byte) {
 	if name == "" {
 		return
 	}
-	classID := idutil.MakeID(b.stem, name)
+	classID := b.id(name)
 	b.def(classID, name, name, line(n))
 
 	for i := uint(0); i < n.ChildCount(); i++ {
@@ -109,7 +108,7 @@ func (b *builder) verilogMethod(cm *ts.Node, typeName, classID string, src []byt
 		if mname == "" {
 			continue
 		}
-		mid := idutil.MakeID(b.stem, typeName, mname)
+		mid := b.id(typeName, mname)
 		b.addNode(mid, typeName+"."+mname+"()", line(sub))
 		b.res.Edges = append(b.res.Edges, model.Edge{
 			Source: classID, Target: mid, Relation: model.RelContains,
@@ -127,7 +126,7 @@ func (b *builder) verilogSubroutine(n *ts.Node, src []byte) {
 	if name == "" {
 		return
 	}
-	id := idutil.MakeID(b.stem, name)
+	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
 	b.verilogCalls(n, id, src)
 }

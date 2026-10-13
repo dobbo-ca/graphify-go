@@ -396,6 +396,14 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 						tgt = disambiguate(all, r.File, idFile, &imported)
 					}
 				}
+				// Never bind a call to a definition in a different language family:
+				// the same short name (render, parse, Path) collides across languages,
+				// and a name match across a family boundary is a phantom edge, not a
+				// real call. Unknown families (non-code, unrecognized ext) stay
+				// permissive.
+				if tgt != "" && langfamily.Cross(r.File, idFile[tgt]) {
+					tgt = ""
+				}
 				// A call on an external module has no definition to bind, so it
 				// lands on the module's import node.
 				if tgt == "" && i < len(r.CallMods) && r.CallMods[i] != "" && external[[2]string{r.File, r.CallMods[i]}] {
@@ -406,14 +414,6 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					continue
 				}
 				if tgt == "" || tgt == c.CallerID {
-					continue
-				}
-				// Never bind a call to a definition in a different language family:
-				// the same short name (render, parse, Path) collides across languages,
-				// and a name match across a family boundary is a phantom edge, not a
-				// real call. Unknown families (non-code, unrecognized ext) stay
-				// permissive.
-				if langfamily.Cross(r.File, idFile[tgt]) {
 					continue
 				}
 				add(model.Edge{
@@ -448,7 +448,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	for _, parts := range callEdges {
 		nParts += len(parts)
 	}
-	edges := make([][]model.Edge, 0, len(results)+nParts+6)
+	edges := make([][]model.Edge, 0, len(results)+nParts+7)
 	for _, r := range results {
 		nodes = append(nodes, r.Nodes)
 		edges = append(edges, r.Edges)
@@ -458,6 +458,27 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		edges = append(edges, parts...)
 	}
 	edges = append(edges, inherit)
+	// A method whose type is in the sibling file of the same stem.
+	var owned []model.Edge
+	for _, r := range results {
+		inSibling := map[string]string{} // method id -> type id
+		for _, d := range r.Defs {
+			if o := owner[d.ID]; d.Owner != "" && !strings.Contains(o, "\x00") {
+				inSibling[d.ID] = o
+			}
+		}
+		if len(inSibling) == 0 {
+			continue
+		}
+		for _, e := range r.Edges {
+			// the file's contains edge gives the location
+			if o := inSibling[e.Target]; o != "" && e.Relation == model.RelContains {
+				e.Source = o
+				owned = append(owned, e)
+			}
+		}
+	}
+	edges = append(edges, owned)
 
 	// A Go corpus has as many import edges as all the rest, so they go in
 	// parts too.
@@ -715,6 +736,24 @@ func recvTail(s string) string {
 // definition contained only by its file has no owner.
 func defOwners(results []Result) map[string]string {
 	owner := map[string]string{}
+	// path without extension, type name -> top-level types of that name, for
+	// the owner names only: foo.cpp finds its class in foo.h.
+	sibling := map[[2]string][]Def{}
+	for _, r := range results {
+		for _, d := range r.Defs {
+			if d.Owner != "" {
+				sibling[[2]string{noExt(d.File), d.Owner}] = nil
+			}
+		}
+	}
+	for _, r := range results {
+		for _, d := range r.Defs {
+			k := [2]string{noExt(d.File), d.Name}
+			if _, ok := sibling[k]; ok && d.ID == idutil.MakeID(d.File, d.Name) {
+				sibling[k] = append(sibling[k], d)
+			}
+		}
+	}
 	for _, r := range results {
 		for _, e := range r.Edges {
 			if e.Relation == model.RelContains {
@@ -724,6 +763,16 @@ func defOwners(results []Result) map[string]string {
 		for _, d := range r.Defs {
 			if d.Owner != "" {
 				owner[d.ID] = path.Dir(filepath.ToSlash(d.File)) + "\x00" + d.Owner
+				var in []string
+				for _, s := range sibling[[2]string{noExt(d.File), d.Owner}] {
+					// a forward declaration repeats the id
+					if fam := langfamily.Of(d.File); s.File != d.File && fam != "" && fam == langfamily.Of(s.File) && !contains(in, s.ID) {
+						in = append(in, s.ID)
+					}
+				}
+				if len(in) == 1 {
+					owner[d.ID] = in[0]
+				}
 			} else if owner[d.ID] == idutil.MakeID(d.File) {
 				delete(owner, d.ID)
 			}
@@ -731,6 +780,8 @@ func defOwners(results []Result) map[string]string {
 	}
 	return owner
 }
+
+func noExt(file string) string { return strings.TrimSuffix(file, path.Ext(file)) }
 
 // selfTarget binds a self/this call made from a method of type cls: the method
 // of that name on cls, else on the nearest ancestor reached over resolved
@@ -984,12 +1035,12 @@ func isLocalSource(s string) bool {
 // it. A supertype reference can only bind to a type, and a Java constructor is
 // registered under its class's name (`A.A()`), which would otherwise make every
 // `class B extends A` lookup ambiguous and silently drop the edge. A top-level
-// type's id is MakeID(fileStem(file), name) while a member's is nested under its
+// type's id is MakeID(file, name) while a member's is nested under its
 // owner, so the id shape separates the two.
 func typeDefs(ids []string, name string, idFile map[string]string) []string {
 	var out []string
 	for _, id := range ids {
-		if idutil.MakeID(fileStem(idFile[id]), name) == id {
+		if idutil.MakeID(idFile[id], name) == id {
 			out = append(out, id)
 		}
 	}

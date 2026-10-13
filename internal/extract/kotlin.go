@@ -36,7 +36,7 @@ func (b *builder) ktFunc(n *ts.Node, src []byte) {
 	if name == "" {
 		return
 	}
-	id := idutil.MakeID(b.stem, name)
+	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
 	b.ktCalls(ktBody(n), id, src)
 }
@@ -49,7 +49,7 @@ func (b *builder) ktType(n *ts.Node, src []byte) {
 	if name == "" {
 		return
 	}
-	typeID := idutil.MakeID(b.stem, name)
+	typeID := b.id(name)
 	b.def(typeID, name, name, line(n))
 
 	for i := uint(0); i < n.ChildCount(); i++ {

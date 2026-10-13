@@ -289,17 +289,6 @@ func parseRoot(src []byte, langPtr *gositter.Language) (*ts.Node, func()) {
 	return ts.Parse(src, langPtr)
 }
 
-// fileStem qualifies a file's stem with its parent directory name so identically
-// named files in different directories get distinct node IDs (mirrors Python
-// _file_stem). Top-level files collapse to a bare stem.
-func fileStem(rel string) string {
-	base := strings.TrimSuffix(filepath.Base(rel), filepath.Ext(rel))
-	if dir := filepath.Base(filepath.Dir(rel)); dir != "." && dir != "/" && dir != "" {
-		return dir + "." + base
-	}
-	return base
-}
-
 func line(n *ts.Node) model.Loc {
 	return model.Line(int(n.StartPosition().Row) + 1)
 }
@@ -323,7 +312,7 @@ type builder struct {
 	file   string
 	src    model.File // file, as edges hold it
 	fileID string
-	stem   string
+	stem   string // id prefix of the symbols: the file path
 	res    Result
 	seen   map[string]bool
 	pyMods map[string]string // local name -> plainly imported module
@@ -335,7 +324,7 @@ type builder struct {
 
 func newBuilder(rel string) *builder {
 	fileID := idutil.MakeID(rel)
-	b := &builder{file: rel, src: model.FileOf(rel), fileID: fileID, stem: fileStem(rel), seen: map[string]bool{}}
+	b := &builder{file: rel, src: model.FileOf(rel), fileID: fileID, stem: rel, seen: map[string]bool{}}
 	b.res.File = rel
 	b.addNode(fileID, filepath.Base(rel), model.Line(1))
 	return b
@@ -349,6 +338,17 @@ func (b *builder) addNode(id, label string, loc model.Loc) {
 	b.res.Nodes = append(b.res.Nodes, model.Node{
 		ID: id, Label: label, FileType: "code", SourceFile: b.file, SourceLocation: loc.String(),
 	})
+}
+
+// id is the id of a symbol of this file. A name that is all punctuation
+// (`_`, `__`) must not take the id of the file.
+func (b *builder) id(parts ...string) string {
+	id := idutil.MakeID(append([]string{b.stem}, parts...)...)
+	if id == b.fileID {
+		// ponytail: every such name in a file shares one node, as before
+		return b.id("blank")
+	}
+	return id
 }
 
 func (b *builder) contains(childID string, loc model.Loc) {
@@ -464,7 +464,7 @@ func (b *builder) impRel(spec string, loc model.Loc) {
 // so repeated captures on one line collapse to a single node, and the label is
 // the first 80 runes with embedded newlines flattened to spaces.
 func (b *builder) addRationale(text string, lineNum int, parentID string) {
-	rid := idutil.MakeID(b.stem, "rationale", itoa(lineNum))
+	rid := b.id("rationale", itoa(lineNum))
 	loc := model.Line(lineNum)
 	if !b.seen[rid] {
 		b.seen[rid] = true

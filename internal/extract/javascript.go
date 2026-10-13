@@ -121,7 +121,7 @@ func (b *builder) jsFunc(n *ts.Node, src []byte) {
 	if degenerateName(name) {
 		return
 	}
-	id := idutil.MakeID(b.stem, name)
+	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
 	b.jsCalls(n.ChildByFieldName("body"), id)
 }
@@ -131,7 +131,7 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 	if degenerateName(name) {
 		return
 	}
-	classID := idutil.MakeID(b.stem, name)
+	classID := b.id(name)
 	b.def(classID, name, name, line(n))
 
 	body := n.ChildByFieldName("body")
@@ -147,7 +147,7 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 		if degenerateName(mname) {
 			continue
 		}
-		mid := idutil.MakeID(b.stem, name, mname)
+		mid := b.id(name, mname)
 		b.addNode(mid, name+"."+mname+"()", line(m))
 		b.res.Edges = append(b.res.Edges, model.Edge{
 			Source: classID, Target: mid, Relation: model.RelContains,
@@ -163,7 +163,7 @@ func (b *builder) jsNamedType(n *ts.Node, src []byte) {
 	if degenerateName(name) {
 		return
 	}
-	b.def(idutil.MakeID(b.stem, name), name, name, line(n))
+	b.def(b.id(name), name, name, line(n))
 }
 
 // jsVarFuncs captures `const foo = () => {}` and `const foo = function() {}`,
@@ -182,7 +182,7 @@ func (b *builder) jsVarFuncs(n *ts.Node, src []byte) {
 		if degenerateName(name) {
 			continue
 		}
-		id := idutil.MakeID(b.stem, name)
+		id := b.id(name)
 		b.def(id, name, name+"()", line(d))
 		b.jsCalls(val.ChildByFieldName("body"), id)
 	}
@@ -209,7 +209,7 @@ func (b *builder) jsMemberAssign(n *ts.Node, src []byte) {
 	if degenerateName(name) {
 		return
 	}
-	id := idutil.MakeID(b.stem, name)
+	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
 	b.jsCalls(r.ChildByFieldName("body"), id)
 }

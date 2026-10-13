@@ -480,6 +480,8 @@ Simplicity: Reuse the detect file list instead of a second filesystem walk, so i
 
 ### [synth] p4 `skip` `core-cli`: Skip enum-member, macro and annotation node coverage
 
+**REVERSED 2026-10-13.** The owner decided to match upstream in what it captures, so these node kinds are now in scope: see epic `graphify-go-vi5` (vi5.4, vi5.8, vi5.9). The text below is the record of the earlier decision.
+
 WHAT: upstream added structural node kinds for languages go extracts: enum members with `case_of` edges for Rust (#3938), Zig (#3940, #4050, #4025), C++ (#3939, #4052), Scala 3 (#3937), PHP (#4026), Julia `@enum` and macros (#3841); Rust `macro_rules!` definitions (#4028); PHP closures as nodes (#3461); Kotlin annotations, primary-constructor properties and class-literal references (#3848, #3965); Scala val/var, type-alias and context-bound references (#4036-#4038, #4085); Go interface method requirement nodes (#3672); C++ in-class method declarations (#3963). go emits none (checked for Rust enum variants, macro_rules and C++ enumerators).
 
 WHY SKIPPED: they grow the node count without adding a calls or imports edge, so explain/path/affected do not improve, and go has no type-reference edges for the variants to be referenced by. An agent finds an enum variant by grep in one step.

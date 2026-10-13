@@ -69,7 +69,7 @@ func TestExtractPythonRationale(t *testing.T) {
 	res := FileFromBytes("svc/app.py", src)
 
 	fileID := idutil.MakeID("svc/app.py")
-	funcID := idutil.MakeID("svc.app", "boot")
+	funcID := idutil.MakeID("svc/app.py", "boot")
 
 	label := map[string]string{}
 	ftype := map[string]string{}
