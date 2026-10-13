@@ -51,6 +51,9 @@ func fillJSON(v reflect.Value, n *int) {
 }
 
 func TestResultAppendJSONMatchesMarshal(t *testing.T) {
+	for _, f := range []string{"a.go", "b.go", "c.go"} { // codes 1 to 3 must exist
+		model.FileOf(f)
+	}
 	var full Result
 	n := 0
 	fillJSON(reflect.ValueOf(&full).Elem(), &n)
