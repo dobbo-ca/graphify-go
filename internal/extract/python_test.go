@@ -137,7 +137,7 @@ func TestPythonExternalModuleCalls(t *testing.T) {
 	c := func(src, tgt string) [3]string { return [3]string{src, "calls", tgt} }
 	wantEdges(t, map[string]string{
 		"a.py": "import os\nimport json\nimport numpy as np\nclass A:\n    json: dict\n    def go(self, x: np.ndarray):\n        os.getcwd()\n        return json.dumps({})\ndef f():\n    return np.array([])\n",
-	}, [][3]string{c("A.go()", "os"), c("A.go()", "json"), c("f()", "numpy")})
+	}, [][3]string{c("f()", "numpy")}, c("A.go()", "os"), c("A.go()", "json"))
 
 	// An import that resolves to a corpus file never falls back to the module.
 	wantEdges(t, map[string]string{
@@ -174,6 +174,35 @@ func TestPythonExternalModuleCalls(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			wantEdges(t, map[string]string{"a.py": "import os\n" + body}, nil, c("f()", "os"), c("f()", "other"))
+		})
+	}
+
+	// Upstream gives no such edge in a file that can rebind a module by name:
+	// one with a global or nonlocal statement, or with one of these identifiers.
+	for name, body := range map[string]string{
+		"method":      "class A:\n    def f(self):\n        os.getcwd()\n",
+		"setattr":     "def f(monkeypatch):\n    monkeypatch.setattr(x, 'a', 1)\n    os.getcwd()\n",
+		"delattr":     "def g(monkeypatch):\n    monkeypatch.delattr(x, 'a')\ndef f():\n    os.getcwd()\n",
+		"exec":        "def f():\n    exec('1', {})\n    os.getcwd()\n",
+		"eval":        "X = eval('1')\ndef f():\n    os.getcwd()\n",
+		"globals":     "def f():\n    os.getcwd()\n    return globals()\n",
+		"locals":      "def f():\n    os.getcwd()\n    return locals()\n",
+		"vars":        "def f(vars):\n    os.getcwd()\n",
+		"global x":    "def g():\n    global n\n    n = 1\ndef f():\n    os.getcwd()\n",
+		"nonlocal x":  "def g():\n    n = 0\n    def h():\n        nonlocal n\n        n = 1\ndef f():\n    os.getcwd()\n",
+		"def of name": "def eval(x): pass\ndef f():\n    os.getcwd()\n",
+	} {
+		t.Run("gate "+name, func(t *testing.T) {
+			wantEdges(t, map[string]string{"a.py": "import os\n" + body}, nil, c("f()", "os"), c("A.f()", "os"))
+		})
+	}
+	for name, body := range map[string]string{
+		"string":       "def f():\n    os.getcwd()\n    return 'setattr eval global x'\n",
+		"comment":      "def f():\n    # global setattr\n    os.getcwd()\n",
+		"longer names": "def f(my_eval, setattrs, globals_, nonlocal_x):\n    os.getcwd()\n",
+	} {
+		t.Run("no gate "+name, func(t *testing.T) {
+			wantEdges(t, map[string]string{"a.py": "import os\n" + body}, [][3]string{c("f()", "os")})
 		})
 	}
 }

@@ -27,8 +27,9 @@ func extractPython(rel string, src []byte) Result {
 	for i := uint(0); i < root.ChildCount(); i++ {
 		b.pyStatement(root.Child(i), src)
 	}
+	dyn := pyDynamic(root, src)
 	for i := range b.pyBodies {
-		b.pyCalls(&b.pyBodies[i].fn, b.pyBodies[i].id, src)
+		b.pyCalls(&b.pyBodies[i].fn, b.pyBodies[i].id, !dyn && !b.pyBodies[i].method, src)
 	}
 	b.pyRationale(root, src)
 	return b.res
@@ -80,7 +81,7 @@ func (b *builder) pyFunc(n *ts.Node, src []byte) {
 	}
 	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
-	b.pyBodies = append(b.pyBodies, pyBody{*n, id})
+	b.pyBodies = append(b.pyBodies, pyBody{*n, id, false})
 }
 
 func (b *builder) pyClass(n *ts.Node, src []byte) {
@@ -119,7 +120,7 @@ func (b *builder) pyClass(n *ts.Node, src []byte) {
 			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
 		})
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
-		b.pyBodies = append(b.pyBodies, pyBody{*m, mid})
+		b.pyBodies = append(b.pyBodies, pyBody{*m, mid, true})
 	}
 }
 
@@ -362,6 +363,7 @@ var (
 	pyCallKinds = pyBindKinds | tspy.Language().KindMask("typed_parameter", "typed_default_parameter",
 		"as_pattern_target", "call")
 	pyDefKinds = tspy.Language().KindMask("function_definition", "class_definition")
+	pyDynKinds = tspy.Language().KindMask("global_statement", "nonlocal_statement", "identifier")
 )
 
 // pyBinds adds the names bound under n to bound. Unless deep, the body of a
@@ -455,8 +457,27 @@ type pyScope struct {
 // pyBody is a function whose calls pyCalls records once the file's own
 // definitions have their ids.
 type pyBody struct {
-	fn ts.Node
-	id string
+	fn     ts.Node
+	id     string
+	method bool
+}
+
+// pyDynNames are the identifiers upstream takes as a way to rebind a module
+// name without an assignment (_python_receiver_shadow_checker).
+var pyDynNames = map[string]bool{
+	"exec": true, "eval": true, "globals": true, "locals": true, "vars": true, "setattr": true, "delattr": true,
+}
+
+// pyDynamic reports whether the file has a global or nonlocal statement or an
+// identifier of pyDynNames, anywhere. Upstream then gives no call the node of
+// an external module.
+func pyDynamic(root *ts.Node, src []byte) bool {
+	found := false
+	walkKinds(root, pyDynKinds, func(c ts.Node) bool {
+		found = found || c.Kind() != "identifier" || pyDynNames[c.Utf8Text(src)]
+		return !found
+	})
+	return found
 }
 
 // pyInFuncAlias records the name a from-import inside a function or class
@@ -474,10 +495,12 @@ func (b *builder) pyInFuncAlias(local, val string, loc model.Loc) {
 // attribute name, with the receiver's class in place of a typed local. One walk
 // of fn collects the local types, the bound names and the call sites. A def
 // inside fn is a node the function around it contains, and the caller of the
-// calls in its own body.
+// calls in its own body. ext is false when no call of fn can name an external
+// module: upstream gives that edge to a function of the file alone, and to no
+// function of a file pyDynamic holds for.
 // ponytail: the types and bound names are one flat scope for fn and the defs
 // inside it; add scopes if a repo shows wrong edges.
-func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
+func (b *builder) pyCalls(fn *ts.Node, callerID string, ext bool, src []byte) {
 	body := fn.ChildByFieldName("body")
 	if body == nil {
 		return
@@ -635,7 +658,7 @@ sites:
 			val, inFn := imported(c.caller, recv)
 			// Upstream gives a call on an external module to a top-level
 			// function, and to a plain module-level import, alone.
-			if mod = val; mod != "" && (inFn || c.caller != callerID || strings.Contains(val, ":")) {
+			if mod = val; mod != "" && (!ext || inFn || c.caller != callerID || strings.Contains(val, ":")) {
 				mod += ":"
 			}
 			if t := types[recv]; t != "" {
