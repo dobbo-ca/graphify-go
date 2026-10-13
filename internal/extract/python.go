@@ -3,6 +3,7 @@ package extract
 import (
 	"bytes"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -204,6 +205,22 @@ func pyModuleStem(mod *ts.Node, src []byte) string {
 		return text[i+1:]
 	}
 	return text
+}
+
+// pyBuiltins are the functions and types of the Python builtins module. A bare
+// call of one names the builtin unless its file defines or imports the name.
+// exit and quit are those of the site module.
+var pyBuiltins = map[string]bool{}
+
+func init() {
+	for _, n := range strings.Fields(`abs aiter all anext any ascii bin bool breakpoint bytearray bytes
+		callable chr classmethod compile complex delattr dict dir divmod enumerate eval exec filter
+		float format frozenset getattr globals hasattr hash help hex id input int isinstance
+		issubclass iter len list locals map max memoryview min next object oct open ord pow print
+		property range repr reversed round set setattr slice sorted staticmethod str sum super tuple
+		type vars zip __import__ exit quit`) {
+		pyBuiltins[n] = true
+	}
 }
 
 // pyClassName matches a bare capitalized name, the only annotation or callee
@@ -593,8 +610,14 @@ sites:
 					continue sites
 				}
 			}
-			b.call(c.caller, c.callee, c.loc)
 			val, inFn := imported(c.caller, c.callee)
+			// A builtin names nothing of another file unless an import or a
+			// def of this file has its name. A star import can bind any name.
+			if val == "" && pyBuiltins[c.callee] && b.pyMods != nil && !b.seen[b.id(c.callee)] &&
+				!slices.ContainsFunc(b.res.ImportAliases, func(a ImportAlias) bool { return a.Local == c.callee }) {
+				continue
+			}
+			b.call(c.caller, c.callee, c.loc)
 			if mod = val; !strings.Contains(val, ":") {
 				mod = ""
 			}

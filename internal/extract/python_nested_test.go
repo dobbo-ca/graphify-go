@@ -452,3 +452,79 @@ def calc(): pass
 		})
 	}
 }
+
+// A bare call of a Python builtin names the builtin unless the file defines
+// or imports the name.
+func TestPythonBuiltinCalls(t *testing.T) {
+	cases := []struct {
+		name string
+		srcs map[string]string
+		want []string
+	}{
+		{"a method of another file", map[string]string{
+			"models.py": "class Cookies:\n    def set(self, name): pass\n",
+			"a.py":      "def f():\n    return set()\n",
+		}, nil},
+		{"a function of another file", map[string]string{
+			"b.py": "def len(x): pass\n",
+			"a.py": "def f():\n    return len([])\n",
+		}, nil},
+		{"a function of a file the caller imports", map[string]string{
+			"b.py": "def open(p): pass\n",
+			"a.py": "import b\ndef f():\n    return open('x')\n",
+		}, nil},
+		{"a method of the same file", map[string]string{
+			"a.py": "class Cookies:\n    def set(self, name): pass\ndef f():\n    return set()\n",
+		}, nil},
+		{"a function of the same file", map[string]string{
+			"a.py": "def len(x): pass\ndef f():\n    return len([])\n",
+		}, []string{"f() -calls-> len()"}},
+		{"an import of the name", map[string]string{
+			"b.py": "def open(p): pass\n",
+			"a.py": "from b import open\ndef f():\n    return open('x')\n",
+		}, []string{"f() -calls-> open()"}},
+		{"an import of the name under an alias", map[string]string{
+			"b.py": "def unpack(p): pass\n",
+			"a.py": "from b import unpack as list\ndef f():\n    return list('x')\n",
+		}, []string{"f() -calls-> unpack()"}},
+		{"an import of the name inside the function", map[string]string{
+			"b.py": "def open(p): pass\n",
+			"a.py": "def f():\n    from b import open\n    return open('x')\n",
+		}, []string{"f() -calls-> open()"}},
+		{"an import of the name that a star import gives the module", map[string]string{
+			"c.py": "def open(p): pass\n",
+			"b.py": "from c import *\n",
+			"a.py": "from b import open\ndef f():\n    return open('x')\n",
+		}, []string{"f() -calls-> open()"}},
+		{"an import of the name under try", map[string]string{
+			"b.py": "def open(p): pass\n",
+			"a.py": "try:\n    from b import open\nexcept ImportError:\n    pass\ndef f():\n    return open('x')\n",
+		}, []string{"f() -calls-> open()"}},
+		{"a star import can bind the name", map[string]string{
+			"b.py": "def open(p): pass\n",
+			"a.py": "from b import *\ndef f():\n    return open('x')\n",
+		}, []string{"f() -calls-> open()"}},
+		{"a class of the same file", map[string]string{
+			"a.py": "class set: pass\ndef f():\n    return set()\n",
+		}, []string{"f() -calls-> set"}},
+		{"exit of the site module", map[string]string{
+			"b.py": "class App:\n    def exit(self): pass\n",
+			"a.py": "def f():\n    exit(1)\n",
+		}, nil},
+		{"a member call keeps its receiver rule", map[string]string{
+			"b.py": "def open(p): pass\n",
+			"a.py": "import b\ndef f():\n    return b.open('x')\n",
+		}, []string{"f() -calls-> open()"}},
+		{"another name still binds by the unique-name rule", map[string]string{
+			"b.py": "def helper(p): pass\n",
+			"a.py": "def f():\n    return helper('x')\n",
+		}, []string{"f() -calls-> helper()"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := pyEdges(c.srcs, model.RelCalls); !slices.Equal(got, c.want) {
+				t.Errorf("edges:\n got %q\nwant %q", got, c.want)
+			}
+		})
+	}
+}
