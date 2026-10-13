@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dobbo-ca/graphify-go/internal/cache"
@@ -311,5 +313,62 @@ func TestUpdateDropsRemovedFileFromCache(t *testing.T) {
 	c := cache.Load(filepath.Join(root, "graphify-out", cache.FileName), cache.Stamp(version))
 	if _, ok := c["b.go"]; ok || len(c) != 1 {
 		t.Errorf("cache after removing b.go holds %d entries, b.go present: %v", len(c), ok)
+	}
+}
+
+// A cache stamped by another version is rebuilt once, and update says so on
+// stderr only.
+func TestUpdateSaysStaleCacheIsRebuilt(t *testing.T) {
+	root := t.TempDir()
+	for _, f := range []string{"a.go", "b.go"} {
+		if err := os.WriteFile(filepath.Join(root, f), []byte("package p\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := cmdBuild([]string{root}); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	cachePath := filepath.Join(root, "graphify-out", cache.FileName)
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := bytes.Replace(data, []byte(cache.Stamp(version)), []byte(version+"-s13"), 1)
+	if bytes.Equal(old, data) {
+		t.Fatal("stamp not found in the cache file")
+	}
+	if err := os.WriteFile(cachePath, old, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	update := func() (stdout, stderr string) {
+		t.Helper()
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		saved := os.Stderr
+		os.Stderr = w
+		stdout = captureStdout(t, func() {
+			if err := cmdUpdate([]string{root}); err != nil {
+				t.Errorf("update: %v", err)
+			}
+		})
+		os.Stderr = saved
+		w.Close()
+		b, _ := io.ReadAll(r)
+		return stdout, string(b)
+	}
+	const notice = "rebuilding it once"
+	stdout, stderr := update()
+	if n := strings.Count(stderr, notice); n != 1 {
+		t.Errorf("stale cache: notice on stderr %d times, want 1:\n%s", n, stderr)
+	}
+	if strings.Contains(stdout, notice) || !strings.Contains(stdout, "(2 reparsed, 0 reused") {
+		t.Errorf("stale cache: stdout = %q, want a full reparse and no notice", stdout)
+	}
+	stdout, stderr = update()
+	if strings.Contains(stderr, notice) || !strings.Contains(stdout, "(0 reparsed, 2 reused") {
+		t.Errorf("second update: stdout = %q, stderr = %q, want all reused and no notice", stdout, stderr)
 	}
 }

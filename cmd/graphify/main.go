@@ -735,6 +735,9 @@ func cmdUpdate(args []string) error {
 	}
 	prev := cache.Load(filepath.Join(outDirFor(root), cache.FileName), cache.Stamp(version))
 	debug.SetGCPercent(gc)
+	if cache.Stale(filepath.Join(outDirFor(root), cache.FileName), cache.Stamp(version)) {
+		fmt.Fprintln(os.Stderr, "[graphify] note: the cache was written by another graphify version or with other settings; rebuilding it once.")
+	}
 	prevStat := cache.LoadStat(filepath.Join(outDirFor(root), cache.StatFileName), cache.Stamp(version))
 	// --force / GRAPHIFY_FORCE means a full re-scan, matching upstream: drop the
 	// caches so every file is re-read and re-parsed. Without this the flag only
