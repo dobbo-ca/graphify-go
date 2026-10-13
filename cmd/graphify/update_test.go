@@ -373,30 +373,63 @@ func TestUpdateSaysStaleCacheIsRebuilt(t *testing.T) {
 	}
 }
 
-// TestReportTitleMatchesBetweenBuildAndUpdate checks that a bare `update`
-// titles the report like a bare `build` when the root is the cwd.
+// TestReportTitleMatchesBetweenBuildAndUpdate checks that `update` titles the
+// report like `build` does for the same root argument.
 func TestReportTitleMatchesBetweenBuildAndUpdate(t *testing.T) {
 	dir, _ := filepath.EvalSymlinks(t.TempDir())
+	if err := os.Mkdir(filepath.Join(dir, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package p\n\nfunc A() {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GRAPHIFY_OUT", "")
-	t.Chdir(dir)
-	title := func() string {
-		b, err := os.ReadFile(filepath.Join(dir, "graphify-out", "GRAPH_REPORT.md"))
-		if err != nil {
-			t.Fatal(err)
+	link := filepath.Join(filepath.Dir(dir), "link")
+	if err := os.Symlink(dir, link); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(link) })
+	for _, tc := range []struct {
+		name, cwd string
+		args      []string
+	}{
+		{"bare", dir, nil},
+		{"dot", dir, []string{"."}},
+		{"dot slash", dir, []string{"./"}},
+		{"unclean", dir, []string{"sub/.."}},
+		{"abs", dir, []string{dir}},
+		{"parent", filepath.Join(dir, "sub"), []string{".."}},
+		{"bare in symlinked cwd", link, nil},
+		{"dot in symlinked cwd", link, []string{"."}},
+	} {
+		for _, env := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/GRAPHIFY_OUT=%v", tc.name, env), func(t *testing.T) {
+				out := filepath.Join(dir, "graphify-out")
+				os.RemoveAll(out)
+				if env {
+					out = filepath.Join(t.TempDir(), "out")
+					t.Setenv("GRAPHIFY_OUT", out)
+				} else {
+					t.Setenv("GRAPHIFY_OUT", "")
+				}
+				t.Chdir(tc.cwd)
+				title := func() string {
+					b, err := os.ReadFile(filepath.Join(out, "GRAPH_REPORT.md"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					return strings.SplitN(string(b), "\n", 2)[0]
+				}
+				if err := cmdBuild(tc.args); err != nil {
+					t.Fatal(err)
+				}
+				built := title()
+				if err := cmdUpdate(tc.args); err != nil {
+					t.Fatal(err)
+				}
+				if got := title(); got != built {
+					t.Errorf("update title %q, build title %q", got, built)
+				}
+			})
 		}
-		return strings.SplitN(string(b), "\n", 2)[0]
-	}
-	if err := cmdBuild(nil); err != nil {
-		t.Fatal(err)
-	}
-	built := title()
-	if err := cmdUpdate(nil); err != nil {
-		t.Fatal(err)
-	}
-	if got := title(); got != built {
-		t.Errorf("update title %q, build title %q", got, built)
 	}
 }

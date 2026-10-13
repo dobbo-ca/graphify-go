@@ -746,7 +746,7 @@ func updateRoot(root string, rootSet bool) string {
 		// not a new one rooted at the cwd.
 		sr := scanRoot()
 		// Build titles the cwd ".", so update does too.
-		if wd, err := os.Getwd(); err == nil && sr == wd {
+		if wd, err := os.Getwd(); err == nil && filepath.Clean(sr) == wd {
 			return "."
 		}
 		return sr
@@ -761,6 +761,10 @@ func updateRoot(root string, rootSet bool) string {
 		}
 		if abs, err := filepath.Abs(root); err == nil {
 			if rel, err := filepath.Rel(sr, abs); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				// The scan root itself keeps the title build gave it.
+				if rel == "." {
+					return root
+				}
 				return sr
 			}
 		}
