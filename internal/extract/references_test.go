@@ -652,3 +652,204 @@ pub fn d(f: &dyn Fn(Early) -> Late, g: Box<dyn Tr<Item = Late>>, c: fn(M) -> N) 
 		}
 	}
 }
+
+// Not copied from upstream: a stub for a type parameter, a type position
+// bound to a function, an enum constant or a nested type, the head of a
+// qualified Kotlin type.
+func TestCSharpReferences(t *testing.T) {
+	nodes, edges := resolveSrc(t, [][2]string{
+		{"b.cs", "public class Uniq {}\npublic class MyAttr {}\npublic class Late {}\npublic static class Util { public static void Helper() {} }\npublic enum Color { Red }\npublic class Inner {}\n"},
+		{"a.cs", `public interface IFoo { Early Get(Late l); }
+public class Early {}
+public class Base<T> {}
+public class Foo<T> : Base<T1>, IFoo, IMiss, MissingBase {
+    public Early f1;
+    public List<Uniq> f2;
+    public int f3;
+    public T f5;
+    public Ext.Lib.Qual f6;
+    public Nullable<Dup> f8;
+    public (Early a, Pe b) f10;
+    public Helper f11;
+    public Color f12;
+    public Prop1 P { get; set; }
+    public Inner nn;
+    [MyAttr] public Mk1 Make<U>(Mk2 a, U u, int i, ref Mk3 r, Mk4[] arr, List<T> lt) { return null; }
+    [Obsolete] [Ext.Attr] public void Run(Func<Mk5, Mk6> fn) {}
+    public Foo(Ctor1 c) {}
+    public event Evt1 E1;
+    public void Loc() { Local1 x = null; }
+    public class Inner { public Uniq iu; }
+}
+public record Rec(Rp1 a, List<Rp2> b);
+public class Dc(Pc1 a) : Base<Pc2> { }
+`},
+	})
+	for _, w := range [][3]string{
+		{"a.cs:Foo", "inherits", ":MissingBase"},
+		{"a.cs:Foo", "implements", ":IMiss"},
+		{"a.cs:Foo", "implements", "a.cs:IFoo"},
+		{"a.cs:Foo", "references", ":T1"},
+		{"a.cs:Foo", "references", "a.cs:Early"},
+		{"a.cs:Foo", "references", "b.cs:Uniq"},
+		{"a.cs:Foo", "references", ":List"},
+		{"a.cs:Foo", "references", ":Qual"},
+		{"a.cs:Foo", "references", ":Nullable"},
+		{"a.cs:Foo", "references", ":Dup"},
+		{"a.cs:Foo", "references", ":Pe"},
+		{"a.cs:Foo", "references", ":Helper"},
+		{"a.cs:Foo", "references", "b.cs:Color"},
+		{"a.cs:Foo", "references", ":Prop1"},
+		{"a.cs:Foo.Make()", "references", ":Mk1"},
+		{"a.cs:Foo.Make()", "references", ":Mk2"},
+		{"a.cs:Foo.Make()", "references", ":Mk3"},
+		{"a.cs:Foo.Make()", "references", ":Mk4"},
+		{"a.cs:Foo.Make()", "references", ":List"},
+		{"a.cs:Foo.Make()", "references", "b.cs:MyAttr"},
+		{"a.cs:Foo.Run()", "references", ":Obsolete"},
+		{"a.cs:Foo.Run()", "references", ":Attr"},
+		{"a.cs:Foo.Run()", "references", ":Func"},
+		{"a.cs:Foo.Run()", "references", ":Mk5"},
+		{"a.cs:Foo.Run()", "references", ":Mk6"},
+		{"a.cs:IFoo.Get()", "references", "a.cs:Early"},
+		{"a.cs:IFoo.Get()", "references", "b.cs:Late"},
+		{"a.cs:Rec", "references", ":Rp1"},
+		{"a.cs:Rec", "references", ":Rp2"},
+		{"a.cs:Dc", "references", ":Pc1"},
+		{"a.cs:Dc", "references", ":Pc2"},
+	} {
+		if !edges[w] {
+			t.Errorf("missing edge %v", w)
+		}
+	}
+	for _, e := range [][3]string{
+		{"a.cs:Foo", "references", "b.cs:Inner"},
+		{"a.cs:Foo", "references", ":Ctor1"},
+		{"a.cs:Foo", "references", ":Evt1"},
+		{"a.cs:Foo", "references", ":Local1"},
+		{"a.cs:Foo.Make()", "references", ":U"},
+		{"a.cs:Foo.Make()", "references", ":T"},
+		{"a.cs:Foo", "references", "b.cs:Util.Helper()"},
+	} {
+		if edges[e] {
+			t.Errorf("unexpected edge %v", e)
+		}
+	}
+	for _, label := range []string{"T", "U", "int", "Ctor1", "Evt1", "Local1"} {
+		if nodes[[2]string{"", label}] {
+			t.Errorf("unexpected stub %q", label)
+		}
+	}
+}
+
+func TestKotlinReferences(t *testing.T) {
+	nodes, edges := resolveSrc(t, [][2]string{
+		{"b.kt", "class Uniq\nannotation class Anno\nfun helper() {}\nenum class Color { RED }\nclass Nest1\n"},
+		{"a.kt", `class Early
+class Foo<T>(val pa: Early, var pb: Pb1?, pc: Pc1, @Anno val pd: List<Pd1>) : MissingBase(), IMiss, Early, Other<Gx> by Dl {
+    val f1: Early = Early()
+    val f2: Uniq? = null
+    val f3: Map<String, Dup>
+    val f5: T
+    val f6: com.other.Qual
+    val f7: (Fn1) -> Fn2
+    val f8: helper
+    val f9: Color
+    val f11: Array<Arr1>
+    val f12 = Inf1()
+    @Anno val f13: Ann1 = x
+    val f20: Map.Entry<K1x, V1>
+    val nn: Nest1
+    fun <U> make(a: Mk1, b: U, c: Int, d: List<Mk2>, e: Mk3?, f: (Mk4) -> Mk5, g: T): Mk6 { return x }
+    @Anno @Ext.Q fun run(): Unit {}
+    @Target(Cls1::class) fun lit() {}
+    fun Ex1.recv(vararg v: Va1) {}
+    class Nest1
+    inner class Inn {
+        val ii: Late1
+    }
+    companion object {
+        val cc: Cmp1
+    }
+}
+interface Iface : Early, Other2 {
+    val p: Ip1
+    fun m(x: Ip2): Ip3
+}
+object O : Early() {
+    val o: Ob1 = x
+}
+class Ex : Exception()
+enum class E1(val v: En1) : Early { A(x) { fun a(q: En2) {} }, B }
+fun top(a: Tp1, b: Early): Tp2 {}
+fun <V> gen(v: V): V = v
+val topProp: Tp3 = x
+`},
+	})
+	for _, w := range [][3]string{
+		{"a.kt:Foo", "inherits", ":MissingBase"},
+		{"a.kt:Foo", "implements", ":IMiss"},
+		{"a.kt:Foo", "implements", "a.kt:Early"},
+		{"a.kt:Foo", "implements", ":Other"},
+		{"a.kt:Foo", "references", ":Gx"},
+		{"a.kt:Foo", "references", "a.kt:Early"},
+		{"a.kt:Foo", "references", ":Pb1"},
+		{"a.kt:Foo", "references", ":Pd1"},
+		{"a.kt:Foo", "references", "b.kt:Anno"},
+		{"a.kt:Foo", "references", "b.kt:Uniq"},
+		{"a.kt:Foo", "references", ":Dup"},
+		{"a.kt:Foo", "references", ":Qual"},
+		{"a.kt:Foo", "references", ":Entry"},
+		{"a.kt:Foo", "references", ":K1x"},
+		{"a.kt:Foo", "references", ":Arr1"},
+		{"a.kt:Foo", "references", "b.kt:Color"},
+		{"a.kt:Foo", "references", ":Ann1"},
+		{"a.kt:Foo", "references", ":Cmp1"},
+		{"a.kt:Foo.make()", "references", ":Mk1"},
+		{"a.kt:Foo.make()", "references", ":Mk2"},
+		{"a.kt:Foo.make()", "references", ":Mk3"},
+		{"a.kt:Foo.make()", "references", ":Mk6"},
+		{"a.kt:Foo.run()", "references", "b.kt:Anno"},
+		{"a.kt:Foo.run()", "references", ":Q"},
+		{"a.kt:Foo.lit()", "references", ":Target"},
+		{"a.kt:Foo.recv()", "references", ":Va1"},
+		{"a.kt:Iface", "implements", "a.kt:Early"},
+		{"a.kt:Iface", "implements", ":Other2"},
+		{"a.kt:Iface", "references", ":Ip1"},
+		{"a.kt:Iface.m()", "references", ":Ip2"},
+		{"a.kt:Iface.m()", "references", ":Ip3"},
+		{"a.kt:O", "inherits", "a.kt:Early"},
+		{"a.kt:O", "references", ":Ob1"},
+		{"a.kt:Ex", "inherits", ":Exception"},
+		{"a.kt:E1", "references", ":En1"},
+		{"a.kt:E1", "implements", "a.kt:Early"},
+		{"a.kt:A.a()", "references", ":En2"},
+		{"a.kt:top()", "references", ":Tp1"},
+		{"a.kt:top()", "references", "a.kt:Early"},
+		{"a.kt:top()", "references", ":Tp2"},
+	} {
+		if !edges[w] {
+			t.Errorf("missing edge %v", w)
+		}
+	}
+	for _, e := range [][3]string{
+		{"a.kt:Foo", "references", "b.kt:helper()"},
+		{"a.kt:Foo", "references", "b.kt:Nest1"},
+		{"a.kt:Foo", "references", ":Pc1"},
+		{"a.kt:Foo", "references", ":Fn1"},
+		{"a.kt:Foo", "references", ":Inf1"},
+		{"a.kt:Foo", "references", ":Late1"},
+		{"a.kt:Foo.make()", "references", ":Mk4"},
+		{"a.kt:Foo.recv()", "references", ":Ex1"},
+		{"a.kt:top()", "references", ":Tp3"},
+	} {
+		if edges[e] {
+			t.Errorf("unexpected edge %v", e)
+		}
+	}
+	for _, label := range []string{"T", "U", "V", "com", "Map", "List", "Int", "Unit", "Tp3", "Inf1"} {
+		if nodes[[2]string{"", label}] {
+			t.Errorf("unexpected stub %q", label)
+		}
+	}
+}
