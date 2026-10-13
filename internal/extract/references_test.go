@@ -165,6 +165,15 @@ class S(R):
     def m(self, x: Annotated[R, Field(gt=0)], y: _):
         pass
 `},
+		{"pkg/b.py", `from .m import Real as Base
+from .m import traced as Late
+from .a import Later as Late
+
+
+class Real(Base):
+    def clone(self, other: Base, l: Late) -> Base:
+        return other
+`},
 	})
 	for _, w := range [][3]string{
 		{"pkg/a.py:K", "inherits", ":Exception"},
@@ -180,6 +189,9 @@ class S(R):
 		{"pkg/a.py:S", "inherits", "pkg/m.py:Real"}, // through the import alias
 		{"pkg/a.py:S.m()", "references", "pkg/m.py:Real"},
 		{"pkg/a.py:S.m()", "references", ":Field"},
+		{"pkg/b.py:Real", "inherits", "pkg/m.py:Real"}, // not the class of the same name here
+		{"pkg/b.py:Real.clone()", "references", "pkg/m.py:Real"},
+		{"pkg/b.py:Real.clone()", "references", "pkg/a.py:Later"}, // the last import of Late
 	} {
 		if !edges[w] {
 			t.Errorf("missing edge %v", w)
