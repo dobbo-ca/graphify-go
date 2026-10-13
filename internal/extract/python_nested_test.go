@@ -208,12 +208,14 @@ class Klass:
 def outer():
     def nested_fn(): pass
 `,
-		"pkg/mod.py": "def in_mod(): pass\ndef starred(): pass\n",
+		"pkg/mod.py":   "def in_mod(): pass\ndef starred(): pass\n",
+		"pkg/plain.py": "from .core import func_b\n",
 		"main.py": `from typing import TYPE_CHECKING
 from pkg.core import func_a, func_b as fb
 from pkg import mod
 from pkg import reexp, renamed
 from pkg.core import CONST, missing, meth_only, nested_fn
+from pkg.plain import func_b as via_plain
 from pkg.mod import *
 from main import lazy
 if TYPE_CHECKING:
@@ -236,6 +238,7 @@ def lazy():
 		"main.py -imports-> typing",
 		"pkg/__init__.py -imports-> reexp()",
 		"pkg/__init__.py -imports-> renamed_src()",
+		"pkg/plain.py -imports-> func_b()",
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("imports:\n got %q\nwant %q", got, want)
@@ -246,7 +249,9 @@ def lazy():
 		"main.py -imports_from-> pkg/__init__.py",
 		"main.py -imports_from-> pkg/core.py",
 		"main.py -imports_from-> pkg/mod.py",
+		"main.py -imports_from-> pkg/plain.py",
 		"pkg/__init__.py -imports_from-> pkg/core.py",
+		"pkg/plain.py -imports_from-> pkg/core.py",
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("imports_from:\n got %q\nwant %q", got, want)

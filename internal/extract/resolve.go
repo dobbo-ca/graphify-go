@@ -327,12 +327,9 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		}
 	}
 
-	// A package's __init__.py gives a name it imports to its own importers.
-	reexports := map[[2]string]*ImportAlias{} // __init__.py, local name
+	// A Python module gives a name it imports to its own importers.
+	reexports := map[[2]string]*ImportAlias{} // file, local name
 	for _, r := range results {
-		if path.Base(r.File) != "__init__.py" {
-			continue
-		}
 		for k := range r.ImportAliases {
 			if a := &r.ImportAliases[k]; !a.InFunc {
 				reexports[[2]string{r.File, a.Local}] = a
@@ -1102,7 +1099,7 @@ func resolveImportGuided(results []Result, idFile map[string]string, out *model.
 }
 
 // pySymbol returns the one top-level definition that `from spec import name`
-// binds in the Python file from, through the names a package's __init__.py
+// binds in the Python file from, through the names that module itself
 // imports, or "". mods remembers the file of each module.
 func pySymbol(from, spec, name string, corpus map[string]bool, local map[[2]string][]string, owner map[string]string, reexports map[[2]string]*ImportAlias, mods map[[2]string]string) string {
 	// Bounded so a cyclic re-export can't hang.
