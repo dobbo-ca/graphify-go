@@ -320,17 +320,29 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	}
 	stubSeen := map[string]bool{}
 	var stubs []model.Node
-	// C typedef name -> the tag it names and a file that says so; the tag is
-	// "" when two typedefs of the name disagree.
-	ctags := map[string][2]string{}
+	// C typedef name -> each tag it stands for and the file that says so.
+	ctags := map[string][][2]string{}
 	for _, r := range results {
 		for _, a := range r.TypeAliases {
 			name, tag, _ := strings.Cut(a, " ")
-			if old, ok := ctags[name]; ok && old[0] != tag {
-				tag = ""
-			}
-			ctags[name] = [2]string{tag, r.File}
+			ctags[name] = append(ctags[name], [2]string{tag, r.File})
 		}
+	}
+	// ctag returns the tag a C file means by a typedef name: what the
+	// typedefs it can see say, else what all of the corpus say. ok is false
+	// when they disagree or say that name stands for no tag.
+	ctag := func(file, name string) (tag string, ok bool) {
+		recs := ctags[name]
+		seen := imported.of(file)
+		if vis := keep2(recs, func(r [2]string) bool { return r[1] == file || seen[r[1]] }); len(vis) > 0 {
+			recs = vis
+		}
+		for _, r := range recs {
+			if r[0] == "" || r[0] != recs[0][0] {
+				return "", false
+			}
+		}
+		return recs[0][0], true
 	}
 	for _, r := range results {
 		js := len(r.TypeRefs) > 0 && jsLike(r.File)
@@ -350,8 +362,12 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		for _, t := range r.TypeRefs {
 			ref := t.Relation == "references"
 			name := t.Name
-			if a := ctags[name]; a[0] != "" && !langfamily.Cross(t.File, a[1]) && len(typeDefs(local[[2]string{t.File, name}], name, idFile)) == 0 {
-				name = a[0]
+			noTag := false
+			if ext := path.Ext(t.File); ref && (ext == ".c" || ext == ".h") && len(ctags[name]) > 0 && len(typeDefs(local[[2]string{t.File, name}], name, idFile)) == 0 {
+				tag, ok := ctag(t.File, name)
+				if noTag = !ok; ok {
+					name = tag
+				}
 			}
 			// A supertype or a type position names a type; a decorator can
 			// name a function.
@@ -362,7 +378,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				}
 				return ids
 			}
-			tgt, stubOnly := "", false
+			tgt, stubOnly := "", noTag
 			own := local[[2]string{t.File, name}]
 			goQual := t.Qual != "" && strings.HasSuffix(t.File, ".go")
 			if js {
@@ -1347,6 +1363,17 @@ func (s *importedSet) of(file string) map[string]bool {
 	}
 	s.file = file
 	return s.set
+}
+
+// keep2 is keep for pairs.
+func keep2(in [][2]string, pred func([2]string) bool) [][2]string {
+	var out [][2]string
+	for _, r := range in {
+		if pred(r) {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // contains reports whether ids already holds id.
