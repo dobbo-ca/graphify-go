@@ -38,6 +38,10 @@ Or from source (pure Go, no C toolchain needed):
 go install github.com/dobbo-ca/graphify-go/cmd/graphify@latest
 ```
 
+The parser is [gositter](https://github.com/dobbo-ca/gositter), a Go port of
+the tree-sitter runtime. `go install` and `go build` work with `CGO_ENABLED=0`
+and cross-compile every target from one host.
+
 Releases are cut automatically from conventional commits (Uplift) and published
 as GitHub releases + a Homebrew formula on every merge to `main`.
 
@@ -94,6 +98,59 @@ detect → extract → build → cluster → analyze → report → export
   core abstractions), `graph.json` (NetworkX node-link format), and the
   agent-consumable `graphml` / `dot` / `csv` exports.
 
+### Performance notes
+
+Cold build of the Kubernetes source tree (M4 Pro, 14 cores):
+
+| Version | Wall time | Peak memory |
+|---------|-----------|-------------|
+| v0.10.1 (cgo tree-sitter) | 13.1 s | 3.3 GB |
+| now (gositter) | 1.5 s | 0.5 GB |
+
+Two places spend CPU to keep peak memory down, both on purpose:
+
+- Parsers are pooled, and after every file each one keeps 8 subtree heap
+  chunks and hands the rest back to a pool shared by all parsers. One huge
+  file does not leave its memory pinned in an idle parser; the cost is the
+  hand-back on each parse.
+- From resolve to the end of the output writes the Go GC target is 50 instead
+  of 100. On a Kubernetes-sized tree that costs about 5 to 7 percent CPU for
+  about 20 percent lower peak memory. A lower `GOGC`, or `GOGC=off`, is left
+  as set.
+
+`graphify update` keeps a parse cache in `graphify-out/`. A cache written by
+another graphify version is dropped and rebuilt once, with a note on stderr.
+
+### Files the parser gives up on
+
+A few inputs make a tree-sitter grammar retry the same byte without end: 54
+bytes of Julia can take 14 seconds and 1.4 GB. graphify stops a parse after
+65,536 parser steps in a row without progress. The file keeps its file node
+and nothing else, a warning on stderr names it on every build and update, and
+`GRAPH_REPORT.md` counts such files in its Summary.
+
+`GRAPHIFY_PARSE_BUDGET` sets the limit: a whole number of steps, `0` for no
+limit. The largest count in eight real repositories (about 71,000 parsed
+files) is 588. The count can grow with the size of a broken region, so a
+file of several KB of one repeated bad token can reach the limit although it
+parses in under a second; raise the limit if a file you need is skipped. The
+parse cache is kept per limit, so the first `update` after
+a change parses every file again; a git hook must see the same value as your
+shell, or each of the two rebuilds the cache.
+
+### Profiling a build
+
+`graphify build` and `graphify update` write Go profiles when asked:
+`GFY_CPUPROFILE=cpu.pprof` for CPU and `GFY_MEMPROFILE=mem.pprof` for
+allocations. Unset, they cost nothing. A path that cannot be created prints a
+warning and the run goes on without that profile.
+
+```bash
+GFY_CPUPROFILE=cpu.pprof GFY_MEMPROFILE=mem.pprof graphify build .
+go tool pprof -top cpu.pprof
+go tool pprof -sample_index=alloc_space -top mem.pprof
+```
+
 ## Use it in your own repo
 
 1. Add `graphify build` to CI on merge to `main` and commit `graphify-out/` —
@@ -105,7 +162,7 @@ detect → extract → build → cluster → analyze → report → export
 
 Languages today: **Go, JavaScript, TypeScript, Terraform/HCL, Python, Rust, C,
 C++, Java, C#, Ruby, PHP, Bash, Scala, Julia, Verilog/SystemVerilog, Kotlin,
-Lua, Zig** — every grammar with a Go tree-sitter binding. `detect` also honours
+Lua, Zig**. Each one has a grammar package in gositter. `detect` also honours
 `.gitignore`.
 
 The original's LLM-based semantic extraction, video/image/Office ingest,

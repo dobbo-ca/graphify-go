@@ -32,6 +32,7 @@ import (
 	"github.com/dobbo-ca/graphify-go/internal/query"
 	"github.com/dobbo-ca/graphify-go/internal/report"
 	"github.com/dobbo-ca/graphify-go/internal/security"
+	"github.com/dobbo-ca/graphify-go/internal/ts"
 )
 
 // outDir resolves the graphify-out directory for read commands. GRAPHIFY_OUT
@@ -171,7 +172,9 @@ func main() {
 		err = cmdBuild(os.Args[2:])
 		stop()
 	case "update":
+		stop := startProf()
 		err = cmdUpdate(os.Args[2:])
+		stop()
 	case "watch":
 		err = cmdWatch(arg(2, ""))
 	case "hook":
@@ -337,6 +340,12 @@ func assemble(root string, files []string, prev cache.Cache, prevStat cache.Stat
 	return results, newCache, newStat, stats
 }
 
+// cacheStamp is cache.Stamp plus the parse budget: another limit can stop
+// other files, so it is another cache.
+func cacheStamp() string {
+	return fmt.Sprintf("%s-b%d", cache.Stamp(version), ts.Budget)
+}
+
 // bigFile is the size from which a file is parsed ahead of the rest.
 const bigFile = 256 << 10
 
@@ -399,6 +408,13 @@ func writeOutputs(root string, walk detect.WalkReport, results []extract.Result,
 		debug.SetGCPercent(gc)
 	}
 	defer debug.SetGCPercent(gc)
+	overBudget := 0
+	for i := range results {
+		if results[i].OverBudget {
+			overBudget++
+			fmt.Fprintf(os.Stderr, "  warning: skipped %s (parser made no progress in %d steps; GRAPHIFY_PARSE_BUDGET=0 turns the limit off)\n", results[i].File, ts.Budget)
+		}
+	}
 	nodes, edges := extract.ResolveParts(results, files)
 	// The cache is encoded beside build and cluster, not beside Resolve: what
 	// the encoder allocates during a GC mark counts as live, and Resolve is
@@ -409,7 +425,7 @@ func writeOutputs(root string, walk detect.WalkReport, results []extract.Result,
 		clear(newCache)
 		saved <- nil
 	} else {
-		go func() { saved <- cache.SaveDrain(pending, cache.Stamp(version), newCache) }()
+		go func() { saved <- cache.SaveDrain(pending, cacheStamp(), newCache) }()
 	}
 	// The anti-shrink guard needs the graph.json on disk: read it beside the
 	// build, not after it.
@@ -429,6 +445,7 @@ func writeOutputs(root string, walk detect.WalkReport, results []extract.Result,
 	}
 	g := graph.BuildParts(nodes, edges)
 	g.Unclassified = walk.SkippedExts
+	g.OverBudget = overBudget
 	// --no-cluster writes the raw extraction: skip Louvain community detection so
 	// every node lands with no community assignment (mirrors upstream update
 	// --no-cluster). An empty map flows through NodeCommunity as "no community".
@@ -487,7 +504,7 @@ func writeOutputs(root string, walk detect.WalkReport, results []extract.Result,
 		os.Remove(pending)
 		return nil, nil, err
 	}
-	if err := cache.SaveStat(filepath.Join(outDir, cache.StatFileName), cache.Stamp(version), newStat); err != nil {
+	if err := cache.SaveStat(filepath.Join(outDir, cache.StatFileName), cacheStamp(), newStat); err != nil {
 		return nil, nil, err
 	}
 	// Record the scanned tree so `update` from a subdirectory (or with a
@@ -733,9 +750,12 @@ func cmdUpdate(args []string) error {
 	if gc != 100 {
 		debug.SetGCPercent(gc)
 	}
-	prev := cache.Load(filepath.Join(outDirFor(root), cache.FileName), cache.Stamp(version))
+	prev := cache.Load(filepath.Join(outDirFor(root), cache.FileName), cacheStamp())
 	debug.SetGCPercent(gc)
-	prevStat := cache.LoadStat(filepath.Join(outDirFor(root), cache.StatFileName), cache.Stamp(version))
+	if cache.Stale(filepath.Join(outDirFor(root), cache.FileName), cacheStamp()) {
+		fmt.Fprintln(os.Stderr, "[graphify] note: the cache was written by another graphify version or with other settings; rebuilding it once.")
+	}
+	prevStat := cache.LoadStat(filepath.Join(outDirFor(root), cache.StatFileName), cacheStamp())
 	// --force / GRAPHIFY_FORCE means a full re-scan, matching upstream: drop the
 	// caches so every file is re-read and re-parsed. Without this the flag only
 	// relaxed the anti-shrink guard, leaving a poisoned cache with no remedy

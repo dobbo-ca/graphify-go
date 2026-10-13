@@ -2,14 +2,16 @@ package model
 
 import (
 	"encoding/json"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"unsafe"
 )
 
 func TestEdgeCodes(t *testing.T) {
-	if n := unsafe.Sizeof(Edge{}); n != 64 {
-		t.Fatalf("Edge is %d bytes, want 64", n)
+	if n := unsafe.Sizeof(Edge{}); n != 72 {
+		t.Fatalf("Edge is %d bytes, want 72", n)
 	}
 	if RelImplements.String() != "implements" || ConfAmbiguous.String() != "AMBIGUOUS" || Rel("calls") != RelCalls || Conf("") != 0 {
 		t.Fatal("constants and tables disagree")
@@ -101,5 +103,48 @@ func TestLocAndFile(t *testing.T) {
 		if string(got) != string(want) || e.SourceFile.String() != p.SourceFile || e.SourceLocation.String() != p.SourceLocation {
 			t.Fatalf("got %s want %s", got, want)
 		}
+	}
+}
+
+// v0.10.1 held confidence as a string, so any number of distinct values loads.
+func TestManyConfidences(t *testing.T) {
+	const n = 70000
+	var sb strings.Builder
+	sb.WriteByte('[')
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		sb.WriteString(`{"source":"a","target":"b","relation":"calls","confidence":"many` + strconv.Itoa(i) + `"}`)
+	}
+	sb.WriteByte(']')
+	var es []Edge
+	if err := json.Unmarshal([]byte(sb.String()), &es); err != nil || len(es) != n {
+		t.Fatalf("unmarshal: %v, %d edges", err, len(es))
+	}
+	for _, i := range []int{0, 65534, 65535, n - 1} {
+		want := "many" + strconv.Itoa(i)
+		if got := es[i].Confidence.String(); got != want || Conf(want) != es[i].Confidence {
+			t.Errorf("edge %d: confidence %q, want %q", i, got, want)
+		}
+	}
+	got, _ := json.Marshal(es)
+	if string(got) != sb.String() {
+		t.Error("the edges do not marshal back to their input")
+	}
+}
+
+func TestTypeOnlyJSON(t *testing.T) {
+	const in = `{"source":"a","target":"b","relation":"imports_from","confidence":"EXTRACTED","type_only":true,"source_file":"a.ts","source_location":"L3"}`
+	var e Edge
+	if err := json.Unmarshal([]byte(in), &e); err != nil || !e.TypeOnly || e.Confidence != ConfExtracted || e.Relation != RelImportsFrom {
+		t.Fatalf("unmarshal: %v %+v", err, e)
+	}
+	if got, _ := json.Marshal(e); string(got) != in {
+		t.Fatalf("got %s want %s", got, in)
+	}
+	e.TypeOnly = false
+	if got, _ := json.Marshal(e); strings.Contains(string(got), "type_only") {
+		t.Fatalf("type_only written when false: %s", got)
 	}
 }

@@ -118,3 +118,21 @@ func TestGenerateHighAmbiguityWarning(t *testing.T) {
 		t.Errorf("expected high-ambiguity warning, got:\n%s", out)
 	}
 }
+
+func TestGenerateOverBudgetLine(t *testing.T) {
+	g := reportGraph()
+	communities := cluster.Cluster(g)
+	base := Generate(g, communities, "testroot", "")
+	const line = "- 2 file(s) skipped: parser made no progress (GRAPHIFY_PARSE_BUDGET)\n"
+	if strings.Contains(base, "skipped") {
+		t.Fatal("report without stopped files mentions skipped files")
+	}
+	g.OverBudget = 2
+	out := Generate(g, communities, "testroot", "")
+	if strings.Replace(out, line, "", 1) != base {
+		t.Errorf("report with 2 stopped files is not the base plus one line:\n%s", out)
+	}
+	if !strings.Contains(out, line+"\n## ") {
+		t.Error("the line is not the last of the Summary block")
+	}
+}

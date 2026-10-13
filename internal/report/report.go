@@ -60,6 +60,9 @@ func Generate(g *model.Graph, communities map[int][]string, root, builtAtCommit 
 	w("## Summary")
 	w("- %d nodes · %d edges · %d communities", g.NumNodes(), g.NumEdges(), len(communities))
 	w("- %s", confidence)
+	if g.OverBudget > 0 {
+		w("- %d file(s) skipped: parser made no progress (GRAPHIFY_PARSE_BUDGET)", g.OverBudget)
+	}
 	if builtAtCommit != "" {
 		w("")
 		w("## Graph Freshness")

@@ -87,6 +87,9 @@ func (r *Result) AppendJSON(b []byte) ([]byte, error) {
 	if b, err = appendJSONAny(b, r.GoMods == nil, r.GoMods); err != nil {
 		return b, err
 	}
+	if r.OverBudget {
+		b = append(b, `,"OverBudget":true`...)
+	}
 	return append(b, '}'), nil
 }
 

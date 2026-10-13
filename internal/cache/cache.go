@@ -147,6 +147,22 @@ func Load(path, stamp string) Cache {
 	return f.Files
 }
 
+// Stale reports whether the file at path is a cache written under another
+// stamp, which Load drops. It reads only the head of the file. A missing file
+// and one that is not a cache are not stale.
+func Stale(path, stamp string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	want, _ := json.Marshal(stamp)
+	want = append([]byte(`{"v":`), want...)
+	got := make([]byte, len(want))
+	n, _ := io.ReadFull(f, got)
+	return bytes.HasPrefix(got[:n], []byte(`{"v":"`)) && !bytes.Equal(got[:n], want)
+}
+
 // dropBadCalls removes the entries whose calls number a text that is not
 // there, so those files are parsed again.
 func dropBadCalls(c Cache) {

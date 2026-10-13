@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -122,5 +123,30 @@ func TestCmdGodNodesGraphOverride(t *testing.T) {
 	}
 	if _, err := capture(t, func() error { return cmdGodNodes([]string{"--graph", "../secrets.json"}) }); err == nil {
 		t.Error("cmdGodNodes(--graph ../secrets.json) = nil, want containment error")
+	}
+}
+
+// A graph.json may carry any number of distinct confidence values.
+func TestCmdGodNodesManyConfidences(t *testing.T) {
+	var sb strings.Builder
+	sb.WriteString(`{"nodes":[{"id":"hub","label":"hub","file_type":"go","source_file":"f.go","source_location":"L1"},{"id":"leaf","label":"leaf","file_type":"go","source_file":"f.go","source_location":"L2"}],"links":[`)
+	for i := 0; i < 70000; i++ {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		sb.WriteString(`{"source":"hub","target":"leaf","relation":"calls","confidence":"c` + strconv.Itoa(i) + `"}`)
+	}
+	sb.WriteString(`]}`)
+	dir := t.TempDir()
+	writeTestGraph(t, filepath.Join(dir, "graphify-out", "graph.json"), sb.String())
+	wd, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(wd)
+
+	out, err := capture(t, func() error { return cmdGodNodes(nil) })
+	if err != nil || !strings.Contains(out, "hub") {
+		t.Fatalf("cmdGodNodes() = %q, %v, want the hub node", out, err)
 	}
 }

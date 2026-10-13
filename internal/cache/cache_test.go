@@ -223,3 +223,28 @@ func TestSchemaBumpDiscardsPreFeatureCache(t *testing.T) {
 		t.Errorf("pre-feature schema cache should be discarded under current stamp, got %+v", got)
 	}
 }
+
+func TestStale(t *testing.T) {
+	path := filepath.Join(t.TempDir(), FileName)
+	if Stale(path, Stamp("dev")) {
+		t.Error("a missing file is stale")
+	}
+	if err := Save(path, Stamp("dev"), Cache{"a.go": {Hash: "h"}}); err != nil {
+		t.Fatal(err)
+	}
+	if Stale(path, Stamp("dev")) {
+		t.Error("a cache under the same stamp is stale")
+	}
+	// A longer and a shorter stamp than the file's.
+	for _, other := range []string{"dev-s13", Stamp("dev") + "-b9", "d"} {
+		if !Stale(path, other) {
+			t.Errorf("a cache under %q is not stale for %q", Stamp("dev"), other)
+		}
+	}
+	if err := os.WriteFile(path, []byte("not a cache"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if Stale(path, Stamp("dev")) {
+		t.Error("a file that is not a cache is stale")
+	}
+}
