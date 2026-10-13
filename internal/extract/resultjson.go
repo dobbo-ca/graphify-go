@@ -55,6 +55,9 @@ func (r *Result) AppendJSON(b []byte) ([]byte, error) {
 		if t.Deco {
 			b = append(b, `,"Deco":true`...)
 		}
+		if t.Qual != "" {
+			b = appendJSONFields(b, `,"Qual":`, t.Qual)
+		}
 		return append(b, '}'), nil
 	})
 	b = append(b, `,"Imps":`...)
