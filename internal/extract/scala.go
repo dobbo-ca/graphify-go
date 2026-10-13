@@ -187,6 +187,8 @@ func scalaTypeParams(n *ts.Node, skip map[string]bool, src []byte) map[string]bo
 			switch c := list.NamedChild(i); c.Kind() {
 			case "identifier":
 				out[c.Utf8Text(src)] = true
+			case "covariant_type_parameter", "contravariant_type_parameter":
+				out[fieldText(c, "name", src)] = true
 			case "type_parameters":
 				add(c)
 			}
