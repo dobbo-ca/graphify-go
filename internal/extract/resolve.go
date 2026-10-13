@@ -289,13 +289,22 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	imported := importedSet{targets: impTargets}
 	supers := map[string][]string{} // type id -> resolved base type ids
 	openSuper := map[string]bool{}  // type id with a base outside the corpus
+	jm := newJSMods(results, corpus, local, idFile)
+	jsAlias := jm.aliases()
 	for _, r := range results {
+		js := len(r.TypeRefs) > 0 && jsLike(r.File)
+		var bound map[string]string
+		if js {
+			bound = jm.bound(&r)
+		}
 		for _, t := range r.TypeRefs {
 			tgt := ""
-			if ids := typeDefs(local[[2]string{t.File, t.Name}], t.Name, idFile); len(ids) == 1 {
+			if js {
+				tgt = jm.supertype(t, &r, bound)
+			} else if ids := typeDefs(local[[2]string{t.File, t.Name}], t.Name, idFile); len(ids) == 1 {
 				tgt = ids[0]
 			}
-			if tgt == "" {
+			if tgt == "" && !js {
 				tgt = disambiguate(typeDefs(global[t.Name], t.Name, idFile), t.File, idFile, &imported)
 			}
 			if tgt == "" || tgt == t.FromID || langfamily.Cross(t.File, idFile[tgt]) {
@@ -307,9 +316,13 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 			if t.Relation == "inherits" {
 				supers[t.FromID] = append(supers[t.FromID], tgt)
 			}
+			conf := model.ConfInferred
+			if js {
+				conf = model.ConfExtracted
+			}
 			inherit = append(inherit, model.Edge{
 				Source: t.FromID, Target: tgt, Relation: model.Rel(t.Relation),
-				Confidence: model.ConfInferred, SourceFile: fc.of(t.File), SourceLocation: t.Loc,
+				Confidence: conf, SourceFile: fc.of(t.File), SourceLocation: t.Loc,
 			})
 		}
 	}
@@ -403,7 +416,10 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					// Two types in one file can each own a method of the same name; a
 					// bare call then has no unambiguous local target, so fall through
 					// to disambiguate rather than guess.
-					if len(here) == 1 {
+					if c.Recv == "" {
+						tgt = jsAlias[lkey]
+					}
+					if tgt == "" && len(here) == 1 {
 						tgt = here[0]
 					}
 					if tgt == "" {
@@ -471,7 +487,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	for _, parts := range callEdges {
 		edges = append(edges, parts...)
 	}
-	edges = append(edges, inherit)
+	edges = append(edges, inherit, jm.edges(&fc))
 	// A method whose type is in the sibling file of the same stem.
 	var owned []model.Edge
 	for _, r := range results {
@@ -1323,6 +1339,15 @@ func resolveRelImport(fromFile, spec string, corpus map[string]bool) string {
 func resolveModulePath(base string, corpus map[string]bool) string {
 	if corpus[base] {
 		return base
+	}
+	// TypeScript names the output file: `./x.js` is x.ts on disk.
+	if ext := path.Ext(base); ext == ".js" || ext == ".jsx" || ext == ".mjs" || ext == ".cjs" {
+		stem := strings.TrimSuffix(base, ext)
+		for _, ts := range []string{".ts", ".tsx", ".mts", ".cts", ".d.ts"} {
+			if corpus[stem+ts] {
+				return stem + ts
+			}
+		}
 	}
 	// One reused buffer: a missed probe then allocates nothing.
 	buf := make([]byte, 0, len(base)+len("/index.d.ts"))

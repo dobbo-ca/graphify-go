@@ -587,3 +587,165 @@ var w = function () {};
 		}
 	}
 }
+
+// Heritage binds a same-file or named-import base, never a guess.
+func TestJSHeritage(t *testing.T) {
+	m := `export class Base {}
+export class Solo {}
+export class Nm {}
+export function Fn() {}
+export default class Dm {}
+`
+	use := `import { Base as B2, Fn, Nm } from "./m";
+import D from "./m";
+import * as ns from "./m";
+class NotImported extends Solo {}
+class Aliased extends B2 {}
+class Amb extends Base {}
+class OfFn extends Fn {}
+class ViaDef extends D {}
+class Q extends ns.Nm {}
+class G extends Nm<string> {}
+class Call extends mix(B2) {}
+class Own extends Later implements Iface, ns.X {}
+class Later {}
+interface Iface extends Later {}
+interface J extends B2, Unknown {}
+`
+	other := "export class Base {}\n"
+	nodes, edges := resolveSrc(t, [][2]string{{"m.ts", m}, {"use.ts", use}, {"other.ts", other}})
+	wantGraph(t, nodes, edges, nil,
+		[][3]string{
+			{"use.ts:Aliased", "inherits", "m.ts:Base"},
+			{"use.ts:ViaDef", "inherits", "m.ts:Dm"},
+			{"use.ts:G", "inherits", "m.ts:Nm"},
+			{"use.ts:Own", "inherits", "use.ts:Later"},
+			{"use.ts:Own", "implements", "use.ts:Iface"},
+			{"use.ts:Iface", "inherits", "use.ts:Later"},
+			{"use.ts:J", "inherits", "m.ts:Base"},
+		},
+		[][3]string{
+			{"use.ts:NotImported", "inherits", "m.ts:Solo"},
+			{"use.ts:Amb", "inherits", "m.ts:Base"},
+			{"use.ts:Amb", "inherits", "other.ts:Base"},
+			{"use.ts:OfFn", "inherits", "m.ts:Fn()"},
+			{"use.ts:Q", "inherits", "m.ts:Nm"},
+			{"use.ts:Call", "inherits", "m.ts:Base"},
+		})
+	nodes, edges = resolveSrc(t, [][2]string{{"a.js", "class B {}\nclass C extends B {}\nclass D extends x.B {}\nconst lib = {};\nclass F extends lib.Old {}\nclass Q extends lib(B) {}\n"}})
+	wantGraph(t, nodes, edges, nil, [][3]string{{"a.js:C", "inherits", "a.js:B"}},
+		[][3]string{{"a.js:D", "inherits", "a.js:B"}, {"a.js:F", "inherits", "a.js:lib"}, {"a.js:Q", "inherits", "a.js:lib"}, {"a.js:Q", "inherits", "a.js:B"}})
+}
+
+// An export alias names the binding, `default` and a re-exported import
+// included.
+func TestJSAliasedExports(t *testing.T) {
+	a := "export default class Dflt {}\nexport class A {}\nexport function f() {}\n"
+	idx := "export { f as g, A as AA, default as Named } from \"./a\";\n"
+	idd := "export { default } from \"./a\";\n"
+	loc := "import { A as Inner } from \"./a\";\nexport { Inner as Outer };\n"
+	use := `import { g, AA, Named } from "./idx";
+import Dd from "./idd";
+import { Outer } from "./loc";
+import { default as Def } from "./a";
+class E1 extends AA {}
+class E2 extends Named {}
+class E3 extends Dd {}
+class E4 extends Outer {}
+class E5 extends Def {}
+function h() { g(); }
+`
+	use2 := "import { f, A } from \"./idx\";\nclass E6 extends A {}\n"
+	nodes, edges := resolveSrc(t, [][2]string{{"a.ts", a}, {"idx.ts", idx}, {"idd.ts", idd}, {"loc.ts", loc}, {"use.ts", use}, {"use2.ts", use2}})
+	wantGraph(t, nodes, edges, nil,
+		[][3]string{
+			{"use.ts:use.ts", "imports", "a.ts:f()"},
+			{"use.ts:use.ts", "imports", "a.ts:A"},
+			{"use.ts:use.ts", "imports", "a.ts:Dflt"},
+			{"use.ts:E1", "inherits", "a.ts:A"},
+			{"use.ts:E2", "inherits", "a.ts:Dflt"},
+			{"use.ts:E3", "inherits", "a.ts:Dflt"},
+			{"use.ts:E4", "inherits", "a.ts:A"},
+			{"use.ts:E5", "inherits", "a.ts:Dflt"},
+			{"loc.ts:loc.ts", "re_exports", "a.ts:a.ts"},
+			{"use.ts:h()", "calls", "a.ts:f()"},
+		},
+		[][3]string{
+			{"use2.ts:use2.ts", "imports", "a.ts:f()"},
+			{"use2.ts:use2.ts", "imports", "a.ts:A"},
+			{"use2.ts:E6", "inherits", "a.ts:A"},
+			{"loc.ts:loc.ts", "re_exports", "a.ts:A"},
+		})
+}
+
+// A named import targets the definition, through barrels; a namespace import
+// targets nothing; a re-export gives re_exports.
+func TestJSImportSymbols(t *testing.T) {
+	m := "export function x() {}\nexport class K {}\nexport const C1 = { a: 1 };\nexport default class Dm {}\n"
+	m2 := "export function y() {}\nexport interface Ifc {}\n"
+	m3 := "function dd() {}\nexport default dd;\n"
+	m4 := "export default function () {}\nexport const z = () => {};\n"
+	m5 := "class Foo {}\nexport { Foo as default };\n"
+	idx := "export { x, K } from \"./m\";\nexport * from \"./m2\";\nexport * as nsx from \"./m4\";\nexport { default as Dm2 } from \"./m\";\n"
+	use := `import { x, y, K as KK, Dm2, gone } from "./index";
+import d3 from "./m3";
+import d4, { z } from "./m4";
+import d5 from "./m5";
+import type { Ifc } from "./m2";
+import { C1, default as dflt } from "./m";
+import * as ns from "./m";
+`
+	nodes, edges := resolveSrc(t, [][2]string{{"m.ts", m}, {"m2.ts", m2}, {"m3.ts", m3}, {"m4.ts", m4}, {"m5.ts", m5}, {"index.ts", idx}, {"use.ts", use}})
+	wantGraph(t, nodes, edges, nil,
+		[][3]string{
+			{"use.ts:use.ts", "imports", "m.ts:x()"},
+			{"use.ts:use.ts", "imports", "m2.ts:y()"},
+			{"use.ts:use.ts", "imports", "m.ts:K"},
+			{"use.ts:use.ts", "imports", "m3.ts:dd()"},
+			{"use.ts:use.ts", "imports", "m4.ts:z()"},
+			{"use.ts:use.ts", "imports", "m5.ts:Foo"},
+			{"use.ts:use.ts", "imports", "m2.ts:Ifc"},
+			{"use.ts:use.ts", "imports", "m.ts:C1"},
+			{"use.ts:use.ts", "imports", "m.ts:Dm"},
+			{"index.ts:index.ts", "re_exports", "m.ts:x()"},
+			{"index.ts:index.ts", "re_exports", "m.ts:K"},
+			{"index.ts:index.ts", "re_exports", "m.ts:m.ts"},
+			{"index.ts:index.ts", "re_exports", "m2.ts:m2.ts"},
+			{"index.ts:index.ts", "re_exports", "m4.ts:m4.ts"},
+		},
+		[][3]string{
+			{"use.ts:use.ts", "imports", "m4.ts:m4.ts"},
+			{"index.ts:index.ts", "re_exports", "m.ts:Dm"},
+			{"index.ts:index.ts", "re_exports", "m4.ts:z()"},
+		})
+}
+
+// `./a.js` names a.ts, and a cycle of `export *` barrels ends.
+func TestJSImportJsSpecifierAndBarrelCycle(t *testing.T) {
+	srcs := [][2]string{
+		{"a.ts", "export class A {}\n"},
+		{"b.ts", "import { A } from './a.js';\nexport class B extends A {}\n"},
+	}
+	// 40 barrels that all re-export each other, and an importer of unknown names.
+	names := ""
+	for i := 0; i < 40; i++ {
+		body := ""
+		for j := 0; j < 40; j++ {
+			if j != i {
+				body += "export * from './m" + itoa(j) + "';\n"
+			}
+		}
+		srcs = append(srcs, [2]string{"m" + itoa(i) + ".ts", body})
+		names += "x" + itoa(i) + ", "
+	}
+	srcs = append(srcs, [2]string{"use.ts", "import { " + names + "} from './m0';\n"})
+	_, edges := resolveSrc(t, srcs)
+	for _, want := range [][3]string{
+		{"b.ts:b.ts", "imports", "a.ts:A"},
+		{"b.ts:B", "inherits", "a.ts:A"},
+	} {
+		if !edges[want] {
+			t.Errorf("missing edge %v", want)
+		}
+	}
+}
