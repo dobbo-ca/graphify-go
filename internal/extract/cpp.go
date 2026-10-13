@@ -123,11 +123,20 @@ func (b *builder) cppItems(n *ts.Node, src []byte) {
 			"linkage_specification", "declaration_list", "ERROR":
 			b.cppItems(c, src)
 		case "type_definition":
-			// `typedef struct S {...} T;` defines S.
-			if spec := c.ChildByFieldName("type"); spec != nil && spec.ChildByFieldName("body") != nil {
+			// `typedef struct S {...} T;` defines S, and T names the tag S.
+			tag := ""
+			if spec := c.ChildByFieldName("type"); spec != nil {
 				switch spec.Kind() {
 				case "struct_specifier", "union_specifier", "enum_specifier":
-					b.cppType(spec, src)
+					if spec.ChildByFieldName("body") != nil {
+						b.cppType(spec, src)
+					}
+					tag = cppNameText(spec.ChildByFieldName("name"), src)
+				}
+			}
+			for j := uint(0); j < c.ChildCount(); j++ {
+				if d := c.Child(j); c.FieldNameForChild(uint32(j)) == "declarator" && d.Kind() == "type_identifier" {
+					b.res.TypeAliases = append(b.res.TypeAliases, d.Utf8Text(src)+" "+tag)
 				}
 			}
 		}
@@ -218,6 +227,15 @@ func cppTemplateParams(n *ts.Node, outer map[string]bool, src []byte) map[string
 	list := n.ChildByFieldName("parameters")
 	for i := uint(0); list != nil && i < list.NamedChildCount(); i++ {
 		p := list.NamedChild(i)
+		// `int N`: a value, but `v<T, N>` reads it as a type name.
+		if d := p.ChildByFieldName("declarator"); d != nil && d.Kind() == "identifier" {
+			out[d.Utf8Text(src)] = true
+			continue
+		}
+		// `template <class> class TT`: the name is in the last child.
+		if p.Kind() == "template_template_parameter_declaration" && p.NamedChildCount() > 0 {
+			p = p.NamedChild(p.NamedChildCount() - 1)
+		}
 		if !strings.HasSuffix(p.Kind(), "type_parameter_declaration") {
 			continue
 		}
