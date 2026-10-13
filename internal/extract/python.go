@@ -26,8 +26,21 @@ func extractPython(rel string, src []byte) Result {
 	for i := uint(0); i < root.ChildCount(); i++ {
 		b.pyStatement(root.Child(i), src)
 	}
+	// The names a module-level def, class or from-import of the file binds.
+	b.pyOwn = map[string]bool{}
+	for _, d := range b.res.Defs {
+		if d.ID == b.id(d.Name) {
+			b.pyOwn[d.Name] = true
+		}
+	}
+	for _, a := range b.res.ImportAliases {
+		if !a.InFunc {
+			b.pyOwn[a.Local] = true
+		}
+	}
+	dyn := pyDynamic(root, src)
 	for i := range b.pyBodies {
-		b.pyCalls(&b.pyBodies[i].fn, b.pyBodies[i].id, src)
+		b.pyCalls(&b.pyBodies[i].fn, b.pyBodies[i].id, !dyn && !b.pyBodies[i].method, src)
 	}
 	b.pyRationale(root, src)
 	return b.res
@@ -44,7 +57,8 @@ func (b *builder) pyStatement(n *ts.Node, src []byte) {
 		b.pyFunc(n, src)
 	case "class_definition":
 		b.pyClass(n, src)
-	case "import_statement", "import_from_statement", "if_statement", "try_statement", "with_statement":
+	case "import_statement", "import_from_statement", "if_statement", "try_statement", "with_statement",
+		"for_statement", "while_statement", "match_statement":
 		b.pyNestedImports(n, src, false)
 	}
 }
@@ -79,7 +93,7 @@ func (b *builder) pyFunc(n *ts.Node, src []byte) {
 	}
 	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
-	b.pyBodies = append(b.pyBodies, pyBody{*n, id})
+	b.pyBodies = append(b.pyBodies, pyBody{*n, id, false})
 }
 
 func (b *builder) pyClass(n *ts.Node, src []byte) {
@@ -118,7 +132,7 @@ func (b *builder) pyClass(n *ts.Node, src []byte) {
 			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
 		})
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
-		b.pyBodies = append(b.pyBodies, pyBody{*m, mid})
+		b.pyBodies = append(b.pyBodies, pyBody{*m, mid, true})
 	}
 }
 
@@ -204,6 +218,22 @@ func pyModuleStem(mod *ts.Node, src []byte) string {
 		return text[i+1:]
 	}
 	return text
+}
+
+// pyBuiltins are the functions and types of the Python builtins module. A bare
+// call of one names the builtin unless its file defines or imports the name.
+// exit and quit are those of the site module.
+var pyBuiltins = map[string]bool{}
+
+func init() {
+	for _, n := range strings.Fields(`abs aiter all anext any ascii bin bool breakpoint bytearray bytes
+		callable chr classmethod compile complex delattr dict dir divmod enumerate eval exec filter
+		float format frozenset getattr globals hasattr hash help hex id input int isinstance
+		issubclass iter len list locals map max memoryview min next object oct open ord pow print
+		property range repr reversed round set setattr slice sorted staticmethod str sum super tuple
+		type vars zip __import__ exit quit`) {
+		pyBuiltins[n] = true
+	}
 }
 
 // pyClassName matches a bare capitalized name, the only annotation or callee
@@ -345,6 +375,7 @@ var (
 	pyCallKinds = pyBindKinds | tspy.Language().KindMask("typed_parameter", "typed_default_parameter",
 		"as_pattern_target", "call")
 	pyDefKinds = tspy.Language().KindMask("function_definition", "class_definition")
+	pyDynKinds = tspy.Language().KindMask("global_statement", "nonlocal_statement", "identifier")
 )
 
 // pyBinds adds the names bound under n to bound. Unless deep, the body of a
@@ -438,8 +469,27 @@ type pyScope struct {
 // pyBody is a function whose calls pyCalls records once the file's own
 // definitions have their ids.
 type pyBody struct {
-	fn ts.Node
-	id string
+	fn     ts.Node
+	id     string
+	method bool
+}
+
+// pyDynNames are the identifiers upstream takes as a way to rebind a module
+// name without an assignment (_python_receiver_shadow_checker).
+var pyDynNames = map[string]bool{
+	"exec": true, "eval": true, "globals": true, "locals": true, "vars": true, "setattr": true, "delattr": true,
+}
+
+// pyDynamic reports whether the file has a global or nonlocal statement or an
+// identifier of pyDynNames, anywhere. Upstream then gives no call the node of
+// an external module.
+func pyDynamic(root *ts.Node, src []byte) bool {
+	found := false
+	walkKinds(root, pyDynKinds, func(c ts.Node) bool {
+		found = found || c.Kind() != "identifier" || pyDynNames[c.Utf8Text(src)]
+		return !found
+	})
+	return found
 }
 
 // pyInFuncAlias records the name a from-import inside a function or class
@@ -457,10 +507,12 @@ func (b *builder) pyInFuncAlias(local, val string, loc model.Loc) {
 // attribute name, with the receiver's class in place of a typed local. One walk
 // of fn collects the local types, the bound names and the call sites. A def
 // inside fn is a node the function around it contains, and the caller of the
-// calls in its own body.
+// calls in its own body. ext is false when no call of fn can name an external
+// module: upstream gives that edge to a function of the file alone, and to no
+// function of a file pyDynamic holds for.
 // ponytail: the types and bound names are one flat scope for fn and the defs
 // inside it; add scopes if a repo shows wrong edges.
-func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
+func (b *builder) pyCalls(fn *ts.Node, callerID string, ext bool, src []byte) {
 	body := fn.ChildByFieldName("body")
 	if body == nil {
 		return
@@ -593,8 +645,21 @@ sites:
 					continue sites
 				}
 			}
-			b.call(c.caller, c.callee, c.loc)
 			val, inFn := imported(c.caller, c.callee)
+			// A builtin names nothing of another file unless an import or a
+			// def of this file has its name. A star import can bind any name.
+			if val == "" && pyBuiltins[c.callee] && b.pyMods != nil && !b.pyOwn[c.callee] {
+				// An import of a function around the call can name it even
+				// when another binding hides which one does.
+				own := false
+				for s, ok := c.caller, true; ok && !own; s, ok = parent[s] {
+					_, own = mods[[2]string{s, c.callee}]
+				}
+				if !own {
+					continue
+				}
+			}
+			b.call(c.caller, c.callee, c.loc)
 			if mod = val; !strings.Contains(val, ":") {
 				mod = ""
 			}
@@ -612,7 +677,7 @@ sites:
 			val, inFn := imported(c.caller, recv)
 			// Upstream gives a call on an external module to a top-level
 			// function, and to a plain module-level import, alone.
-			if mod = val; mod != "" && (inFn || c.caller != callerID || strings.Contains(val, ":")) {
+			if mod = val; mod != "" && (!ext || inFn || c.caller != callerID || strings.Contains(val, ":")) {
 				mod += ":"
 			}
 			if t := types[recv]; t != "" {
