@@ -355,3 +355,37 @@ func F[U any](l *Local, u U, vs ...Inner) (n int, err error) { return }
 		}
 	}
 }
+
+// Upstream 0.9.88 on fixtures c1, c3, c6: a typedef name in a return or
+// parameter type gives references; `struct S` and primitive types give
+// nothing. Not copied: upstream has no struct node, so its target is a stub.
+func TestCReferences(t *testing.T) {
+	nodes, edges := resolveSrc(t, [][2]string{
+		{"types.h", "typedef struct Point { int x; } Point;\nstruct Box { Point origin; };\n"},
+		{"main.c", `#include "types.h"
+Point make_point(int x, struct Box *b) { Point p; return p; }
+int area(const Point *p, Missing m, FILE **f, uint32_t n, size_t k, void (*cb)(Other)) { return 0; }
+Pt (*getfp(Arg a))(Inner) { return 0; }
+`},
+	})
+	for _, w := range [][3]string{
+		{"main.c:make_point()", "references", "types.h:Point"},
+		{"main.c:area()", "references", "types.h:Point"},
+		{"main.c:area()", "references", ":Missing"},
+		{"main.c:area()", "references", ":FILE"},
+		{"main.c:getfp()", "references", ":Pt"},
+		{"main.c:getfp()", "references", ":Arg"},
+	} {
+		if !edges[w] {
+			t.Errorf("missing edge %v", w)
+		}
+	}
+	if edges[[3]string{"main.c:make_point()", "references", "types.h:Box"}] {
+		t.Error("struct Box is a tag, not a typedef name")
+	}
+	for _, label := range []string{"uint32_t", "size_t", "Other", "Inner", "Box", "int"} {
+		if nodes[[2]string{"", label}] {
+			t.Errorf("unexpected stub %q", label)
+		}
+	}
+}
