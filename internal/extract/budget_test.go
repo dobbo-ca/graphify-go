@@ -47,7 +47,7 @@ func TestBudgetScalesWithSize(t *testing.T) {
 	if r := FileFromBytes("a.kt", kt); !r.OverBudget {
 		t.Error("12000 bytes of kotlin \"<\" at a quarter of the limit: parsed, want a stop")
 	}
-	// The size of the file buys an endless retry 4 times the limit, no more.
+	// A file of 64 KB or more gets the plain limit.
 	ts.Budget = 65536
 	big := strings.Repeat("x = 1\n", 1<<16) + stallJulia
 	if r := FileFromBytes("a.jl", []byte(big)); !r.OverBudget || len(r.Nodes) != 1 {

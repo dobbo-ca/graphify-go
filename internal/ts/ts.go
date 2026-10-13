@@ -93,11 +93,14 @@ func budget() uint32 {
 	return 65536
 }
 
-// limit scales Budget by the source size, up to 4 times at 16 KB. A broken
-// region can cost steps without progress for each byte and still end: 8.5
-// for kotlin "<<<<". The cap bounds an endless retry in a large file.
+// limit scales Budget by the source size: 4 times at 16 KB, back to 1 from
+// 64 KB. A broken region can cost steps without progress for each byte and
+// still end: 8.5 for kotlin "<<<<". A stalled step can cost time in
+// proportion to the size, so a large file gets no more steps.
 func limit(n int) uint32 {
-	return uint32(min(uint64(Budget)*uint64(min(max(n, 4096), 16384))/4096, math.MaxUint32))
+	n = max(n, 4096)
+	f := min(n, 16384, max(1<<28/n, 4096))
+	return uint32(min(uint64(Budget)*uint64(f)/4096, math.MaxUint32))
 }
 
 // Parse returns the root node and a release func. The tree lives in the
