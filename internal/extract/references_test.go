@@ -397,3 +397,48 @@ Pt (*getfp(Arg a))(Inner) { return 0; }
 		}
 	}
 }
+
+// Upstream 0.9.88 on fixtures cpp1, cpp2, cpp4, cpp7: return, parameter and
+// field types and the template arguments of a base give references; an
+// unresolved base gets a stub. Not copied: a stub for a template parameter.
+func TestCppReferences(t *testing.T) {
+	nodes, edges := resolveSrc(t, [][2]string{
+		{"types.hpp", "namespace geo {\nclass Point {};\nclass Dep {};\ntemplate <class X> class Base {};\n}\n"},
+		{"sample/other.cpp", "class Point {};\nclass Base {};\n"},
+		{"shape.cpp", `#include "types.hpp"
+#include <vector>
+class Shape : public geo::Base<geo::Dep>, public Missing {
+  std::vector<geo::Point> pts;
+  geo::Point *origin;
+  Unknown (*cb)(int);
+  geo::Dep decl(Hidden h);
+  geo::Point center(const geo::Point &p, std::string s) { return p; }
+};
+template <typename T, class U = geo::Dep>
+T ident(T v, geo::Point q, U u) { return v; }
+geo::Point Shape::far(Other o) { return geo::Point(); }
+`},
+	})
+	for _, w := range [][3]string{
+		{"shape.cpp:Shape", "inherits", "types.hpp:Base"},
+		{"shape.cpp:Shape", "inherits", ":Missing"},
+		{"shape.cpp:Shape", "references", "types.hpp:Dep"},
+		{"shape.cpp:Shape", "references", ":vector"},
+		{"shape.cpp:Shape", "references", "types.hpp:Point"},
+		{"shape.cpp:Shape", "references", ":Unknown"},
+		{"shape.cpp:Shape.center()", "references", "types.hpp:Point"},
+		{"shape.cpp:Shape.center()", "references", ":string"},
+		{"shape.cpp:ident()", "references", "types.hpp:Point"},
+		{"shape.cpp:Shape.far()", "references", ":Other"},
+		{"shape.cpp:Shape.far()", "references", "types.hpp:Point"},
+	} {
+		if !edges[w] {
+			t.Errorf("missing edge %v", w)
+		}
+	}
+	for _, label := range []string{"T", "U", "Hidden", "int"} {
+		if nodes[[2]string{"", label}] {
+			t.Errorf("unexpected stub %q", label)
+		}
+	}
+}

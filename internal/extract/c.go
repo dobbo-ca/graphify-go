@@ -72,12 +72,19 @@ func (b *builder) cFunc(n *ts.Node, src []byte) {
 // and to each parameter type that is a typedef name. `struct S` names a tag
 // and a primitive type names nothing.
 func (b *builder) cRefs(id string, fn *ts.Node, src []byte) {
-	ref := func(n *ts.Node) {
-		if t := n.ChildByFieldName("type"); t != nil && t.Kind() == "type_identifier" {
+	sigTypes(fn, func(t *ts.Node) {
+		if t.Kind() == "type_identifier" {
 			b.ref(id, t.Utf8Text(src), "references", false, line(fn))
 		}
+	})
+}
+
+// sigTypes calls ref with the return type node of the C or C++ function
+// definition fn and with the type node of each of its parameters.
+func sigTypes(fn *ts.Node, ref func(t *ts.Node)) {
+	if t := fn.ChildByFieldName("type"); t != nil {
+		ref(t)
 	}
-	ref(fn)
 	walk(fn.ChildByFieldName("declarator"), func(cv ts.Node) bool {
 		c := &cv
 		if c.Kind() != "function_declarator" {
@@ -96,8 +103,8 @@ func (b *builder) cRefs(id string, fn *ts.Node, src []byte) {
 		}
 		if ps := c.ChildByFieldName("parameters"); ps != nil {
 			for i := uint(0); i < ps.NamedChildCount(); i++ {
-				if p := ps.NamedChild(i); p.Kind() == "parameter_declaration" {
-					ref(p)
+				if t := ps.NamedChild(i).ChildByFieldName("type"); t != nil {
+					ref(t)
 				}
 			}
 		}
