@@ -9,7 +9,9 @@ body = """
 """
 trim = true
 
+# Final tags only, so a release spans from the previous final tag.
 [git]
+tag_pattern = "^v?[0-9]+\\.[0-9]+\\.[0-9]+$"
 conventional_commits = true
 filter_unconventional = true
 commit_parsers = [
