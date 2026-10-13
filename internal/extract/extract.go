@@ -338,6 +338,7 @@ type builder struct {
 	pyMods     map[string]string // local name -> plainly imported module
 	pyTypeVars map[string]bool   // module names bound by TypeVar
 	goPkgs     map[string]string // import name -> import path
+	cppTParams map[string]bool   // template parameters in scope
 	// rubyMethods holds method names defined in the file (bare self-sends).
 	rubyMethods map[string]bool
 	jsBodies    []jsBody             // function bodies awaiting the JS call walk

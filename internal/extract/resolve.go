@@ -353,19 +353,25 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		for _, t := range r.TypeRefs {
 			ref := t.Relation == "references"
 			name := t.Name
-			noTag := false
+			noTag, viaTag := false, false
 			if ext := path.Ext(t.File); ref && (ext == ".c" || ext == ".h") && len(ctags[name]) > 0 && len(typeDefs(local[[2]string{t.File, name}], name, idFile)) == 0 {
 				tag, ok := ctag(t.File, name)
-				if noTag = !ok; ok {
+				if noTag, viaTag = !ok, ok; ok {
 					name = tag
 				}
 			}
+			cFam := cSource[path.Ext(t.File)] || cHeader[path.Ext(t.File)]
 			// A supertype or a type position names a type; a decorator can
 			// name a function.
 			cands := func(ids []string, name string) []string {
 				ids = typeDefs(ids, name, idFile)
 				if ref && !t.Deco {
 					ids = keep(ids, isType)
+				}
+				// A type of another C or C++ source file is not in scope,
+				// but for the struct behind a typedef of a header.
+				if cFam && !viaTag {
+					ids = keep(ids, func(id string) bool { return idFile[id] == t.File || !cSource[path.Ext(idFile[id])] })
 				}
 				return ids
 			}
@@ -1246,6 +1252,12 @@ func (s *importedSet) of(file string) map[string]bool {
 	s.file = file
 	return s.set
 }
+
+// The extensions of C and C++ source files and headers.
+var (
+	cSource = set(".c", ".cc", ".cpp", ".cxx", ".c++", ".m", ".mm")
+	cHeader = set(".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp", ".tcc")
+)
 
 // keep2 is keep for pairs.
 func keep2(in [][2]string, pred func([2]string) bool) [][2]string {

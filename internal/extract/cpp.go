@@ -114,7 +114,11 @@ func (b *builder) cppItems(n *ts.Node, src []byte) {
 			}
 		case "template_declaration":
 			// Unwrap `template<...>` and re-dispatch on the templated item.
+			// Its parameters name no type while it lasts.
+			outer := b.cppTParams
+			b.cppTParams = cppTemplateParams(c, outer, src)
 			b.cppItems(c, src)
+			b.cppTParams = outer
 		case "preproc_if", "preproc_ifdef", "preproc_else", "preproc_elif", "preproc_elifdef",
 			"linkage_specification", "declaration_list", "ERROR":
 			b.cppItems(c, src)
@@ -146,6 +150,7 @@ func (b *builder) cppFunc(n *ts.Node, src []byte) {
 			// class is in a header: Resolve finds it
 			b.contains(mid, line(n))
 			b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: name, File: b.file, Owner: scope})
+			b.cppSignature(mid, n, src)
 			b.cppCalls(n.ChildByFieldName("body"), mid, src)
 			return
 		}
@@ -154,12 +159,77 @@ func (b *builder) cppFunc(n *ts.Node, src []byte) {
 			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(n),
 		})
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: name, File: b.file})
+		b.cppSignature(mid, n, src)
 		b.cppCalls(n.ChildByFieldName("body"), mid, src)
 		return
 	}
 	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
+	b.cppSignature(id, n, src)
 	b.cppCalls(n.ChildByFieldName("body"), id, src)
+}
+
+// cppSignature records a references edge from the function id to the types
+// its return type and its parameters name.
+func (b *builder) cppSignature(id string, fn *ts.Node, src []byte) {
+	sigTypes(fn, func(t *ts.Node) { b.cppTypeRefs(id, t, src, line(fn)) })
+}
+
+// cppTypeRefs records a references edge from id to the type t names and to
+// its template arguments. `ns::T` gives T, `struct S` and a primitive type
+// give nothing, and a template parameter in scope names no type.
+func (b *builder) cppTypeRefs(id string, t *ts.Node, src []byte, loc model.Loc) {
+	if t == nil {
+		return
+	}
+	switch t.Kind() {
+	case "type_identifier":
+		if name := t.Utf8Text(src); !b.cppTParams[name] {
+			b.ref(id, name, "references", false, loc)
+		}
+	case "qualified_identifier":
+		b.cppTypeRefs(id, t.ChildByFieldName("name"), src, loc)
+	case "template_type":
+		b.cppTypeRefs(id, t.ChildByFieldName("name"), src, loc)
+		b.cppTemplateArgs(id, t, src, loc)
+	}
+}
+
+// cppTemplateArgs records the types in the template arguments of t.
+func (b *builder) cppTemplateArgs(id string, t *ts.Node, src []byte, loc model.Loc) {
+	args := t.ChildByFieldName("arguments")
+	if args == nil {
+		return
+	}
+	for i := uint(0); i < args.NamedChildCount(); i++ {
+		if a := args.NamedChild(i); a.Kind() == "type_descriptor" {
+			b.cppTypeRefs(id, a.ChildByFieldName("type"), src, loc)
+		}
+	}
+}
+
+// cppTemplateParams returns outer plus the type parameter names of the
+// template_declaration n.
+func cppTemplateParams(n *ts.Node, outer map[string]bool, src []byte) map[string]bool {
+	out := map[string]bool{}
+	for k := range outer {
+		out[k] = true
+	}
+	list := n.ChildByFieldName("parameters")
+	for i := uint(0); list != nil && i < list.NamedChildCount(); i++ {
+		p := list.NamedChild(i)
+		if !strings.HasSuffix(p.Kind(), "type_parameter_declaration") {
+			continue
+		}
+		// `class T = Default`: the first type name is the parameter.
+		for j := uint(0); j < p.NamedChildCount(); j++ {
+			if c := p.NamedChild(j); c.Kind() == "type_identifier" {
+				out[c.Utf8Text(src)] = true
+				break
+			}
+		}
+	}
+	return out
 }
 
 // cppType records a class/struct/union/enum and the methods inside its body.
@@ -177,7 +247,16 @@ func (b *builder) cppType(n *ts.Node, src []byte) {
 		if c := n.NamedChild(i); c.Kind() == "base_class_clause" {
 			for j := uint(0); j < c.NamedChildCount(); j++ {
 				if base := c.NamedChild(j); base.Kind() != "access_specifier" {
-					b.typeRef(typeID, cppNameText(base, src), "inherits", line(n))
+					// `: Base<Dep>` inherits Base and references Dep.
+					if name := cppNameText(base, src); !b.cppTParams[name] {
+						b.ref(typeID, name, "inherits", false, line(n))
+					}
+					if base.Kind() == "qualified_identifier" {
+						base = base.ChildByFieldName("name")
+					}
+					if base != nil && base.Kind() == "template_type" {
+						b.cppTemplateArgs(typeID, base, src, line(n))
+					}
 				}
 			}
 		}
@@ -197,6 +276,9 @@ func (b *builder) cppMembers(body *ts.Node, typeID, name string, src []byte) {
 			b.cppMembers(m, typeID, name, src)
 			continue
 		}
+		if m.Kind() == "field_declaration" && !cppIsMethodDecl(m.ChildByFieldName("declarator")) {
+			b.cppTypeRefs(typeID, m.ChildByFieldName("type"), src, line(m))
+		}
 		if m.Kind() != "function_definition" {
 			continue
 		}
@@ -212,8 +294,22 @@ func (b *builder) cppMembers(body *ts.Node, typeID, name string, src []byte) {
 		})
 		// Register under the bare method name so `x.method()` sites resolve.
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
+		b.cppSignature(mid, m, src)
 		b.cppCalls(m.ChildByFieldName("body"), mid, src)
 	}
+}
+
+// cppIsMethodDecl reports whether the declarator of a class member declares a
+// method (`T* m(int);`) and not a field or a function pointer (`T (*cb)(int);`).
+func cppIsMethodDecl(d *ts.Node) bool {
+	for d != nil && (d.Kind() == "pointer_declarator" || d.Kind() == "reference_declarator") {
+		d = firstNamed(d)
+	}
+	if d == nil || d.Kind() != "function_declarator" {
+		return false
+	}
+	inner := d.ChildByFieldName("declarator")
+	return inner == nil || inner.Kind() != "parenthesized_declarator"
 }
 
 // cppInclude records the included header. `#include "x.h"` records the path
