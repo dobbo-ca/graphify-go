@@ -323,13 +323,14 @@ func itoa(i int) string {
 
 // builder accumulates nodes/edges/defs for one file, de-duplicating node IDs.
 type builder struct {
-	file   string
-	src    model.File // file, as edges hold it
-	fileID string
-	stem   string // id prefix of the symbols: the file path
-	res    Result
-	seen   map[string]bool
-	pyMods map[string]string // local name -> plainly imported module
+	file       string
+	src        model.File // file, as edges hold it
+	fileID     string
+	stem       string // id prefix of the symbols: the file path
+	res        Result
+	seen       map[string]bool
+	pyMods     map[string]string // local name -> plainly imported module
+	pyTypeVars map[string]bool   // module names bound by TypeVar
 	// rubyMethods holds method names defined in the file (bare self-sends).
 	rubyMethods map[string]bool
 	jsBodies    []jsBody             // function bodies awaiting the JS call walk
@@ -458,6 +459,15 @@ func (b *builder) typeRef(fromID, name, relation string, loc model.Loc) {
 		return
 	}
 	b.res.TypeRefs = append(b.res.TypeRefs, TypeRef{FromID: fromID, Name: name, Relation: relation, File: b.file, Loc: loc})
+}
+
+// ref records a name FromID mentions in a type position or as a decorator.
+// Resolve binds it, or points the edge at a stub node.
+func (b *builder) ref(fromID, name, relation string, deco bool, loc model.Loc) {
+	if fromID == "" || name == "" {
+		return
+	}
+	b.res.TypeRefs = append(b.res.TypeRefs, TypeRef{FromID: fromID, Name: name, Relation: relation, File: b.file, Loc: loc, Stub: true, Deco: deco})
 }
 
 // baseTypeName reduces a supertype's source text to the bare name Resolve can
