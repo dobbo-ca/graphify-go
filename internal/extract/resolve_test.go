@@ -320,7 +320,7 @@ func TestResolveImportEdgesAcrossBatches(t *testing.T) {
 	}
 	var got []imp
 	for _, e := range Resolve(results, files).Edges {
-		got = append(got, imp{e.Source, e.Target, e.Relation.String(), e.TypeOnly})
+		got = append(got, imp{e.Source, e.Target, e.Relation.String(), e.TypeOnly()})
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("import edges differ: got %d, want %d", len(got), len(want))
@@ -396,7 +396,7 @@ func TestResolveImportEdgesDedupByTargetID(t *testing.T) {
 	}}}
 	var got []string
 	for _, e := range Resolve(results, files).Edges {
-		got = append(got, fmt.Sprintf("%s>%s %s %v", e.Source, e.Target, e.Relation, e.TypeOnly))
+		got = append(got, fmt.Sprintf("%s>%s %s %v", e.Source, e.Target, e.Relation, e.TypeOnly()))
 	}
 	if want := []string{"m>a_b_ts imports_from false"}; !slices.Equal(got, want) {
 		t.Fatalf("import edges = %v, want %v", got, want)

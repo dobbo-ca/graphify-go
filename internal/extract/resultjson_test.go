@@ -55,6 +55,9 @@ func TestResultAppendJSONMatchesMarshal(t *testing.T) {
 	n := 0
 	fillJSON(reflect.ValueOf(&full).Elem(), &n)
 	odd := "<é&> \"q\\\x00\x7f\xff\u2028日本"
+	typeOnly, typeOnlyAt := model.Edge{Weight: 3}, model.Edge{SourceLocation: model.Line(7)}
+	typeOnly.SetTypeOnly(true)
+	typeOnlyAt.SetTypeOnly(true)
 	cases := map[string]Result{
 		"zero": {},
 		"full": full,
@@ -63,7 +66,7 @@ func TestResultAppendJSONMatchesMarshal(t *testing.T) {
 			ImportAliases: []ImportAlias{}, MDRefs: []MDRef{}, GoMods: map[string]string{}},
 		"omitted and escaped": {
 			Nodes: []model.Node{{ID: odd, Label: odd}, {Attributes: map[string]string{}}, {Attributes: map[string]string{"b": odd, "a": "1"}}},
-			Edges: []model.Edge{{Source: odd}, {Weight: 1e-7, ConfidenceScore: 1e21}, {Weight: math.Copysign(0, -1), ConfidenceScore: -2.5}, {Weight: 3, TypeOnly: true}},
+			Edges: []model.Edge{{Source: odd}, {Weight: 1e-7, ConfidenceScore: 1e21}, {Weight: math.Copysign(0, -1), ConfidenceScore: -2.5}, typeOnly, typeOnlyAt},
 			Defs:  []Def{{ID: odd, Abstract: true}, {}},
 			Calls: []Call{{Callee: 1}}, CallText: []string{"", odd},
 			Imps: []Imp{{Spec: odd, Names: []string{odd, ""}}, {Rel: true}, {TypeOnly: true}},
@@ -81,6 +84,11 @@ func TestResultAppendJSONMatchesMarshal(t *testing.T) {
 		if !bytes.Equal(got[1:], want) {
 			t.Errorf("%s:\n got: %s\nwant: %s", name, got[1:], want)
 		}
+	}
+	r := Result{Edges: []model.Edge{typeOnly, typeOnlyAt}}
+	if got, _ := r.AppendJSON(nil); !bytes.Contains(got, []byte(`"type_only":true,"weight":3}`)) ||
+		!bytes.Contains(got, []byte(`"type_only":true,"source_location":"L7"}`)) {
+		t.Errorf("type-only edges: %s", got)
 	}
 	// An unencodable float is an error, as it is for json.Marshal.
 	for _, e := range []model.Edge{{Weight: math.NaN()}, {ConfidenceScore: math.Inf(1)}} {

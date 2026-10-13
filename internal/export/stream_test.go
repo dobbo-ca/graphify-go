@@ -63,8 +63,11 @@ func streamGraph(n, m int) (*model.Graph, map[int][]string) {
 	for i := 0; i < m; i++ {
 		e := model.Edge{Source: fmt.Sprintf("n%d", i%n), Target: fmt.Sprintf("n%d", (i*7+1)%n), Relation: model.Rel(rels[i%len(rels)] + fmt.Sprint(i/n)), Confidence: model.Conf([]string{"EXTRACTED", "INFERRED", "AMBIGUOUS", "OTHER"}[i%4])}
 		switch i % 3 {
+		case 0:
+			e.SetTypeOnly(i%2 == 0) // no location
 		case 1:
 			e.SourceFile, e.SourceLocation, e.Weight = model.FileOf("b/日.py"), model.Line(9), 0.1+float64(i)/3
+			e.SetTypeOnly(i%2 == 0)
 		case 2:
 			e.ConfidenceScore = 1e-7 * float64(i)
 			if i%5 == 0 {
@@ -100,6 +103,9 @@ func TestWriteJSONMatchesMarshalIndent(t *testing.T) {
 				var got bytes.Buffer
 				if err := writeJSON(&got, g, communities, commit); err != nil {
 					t.Fatal(err)
+				}
+				if bytes.Contains(got.Bytes(), []byte(`"source_location": ""`)) || bytes.Count(got.Bytes(), []byte("\"source_location\": \"L9\",\n      \"weight\"")) != (c.edges+1)/3 {
+					t.Fatalf("nodes=%d edges=%d: a type-only edge changed a location\n got: %s", c.nodes, c.edges, got.Bytes())
 				}
 				if !bytes.Equal(got.Bytes(), want) {
 					t.Fatalf("nodes=%d edges=%d unclassified=%v commit=%q: streamed output differs\n got: %s\nwant: %s", c.nodes, c.edges, unc, commit, got.Bytes(), want)
