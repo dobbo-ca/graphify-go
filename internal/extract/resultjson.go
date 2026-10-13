@@ -114,6 +114,12 @@ func (r *Result) AppendJSON(b []byte) ([]byte, error) {
 			return model.AppendJSONString(b, *s), nil
 		})
 	}
+	if len(r.TypeAliases) > 0 {
+		b = append(b, `,"TypeAliases":`...)
+		b, _ = appendJSONArr(b, r.TypeAliases, func(b []byte, s *string) ([]byte, error) {
+			return model.AppendJSONString(b, *s), nil
+		})
+	}
 	if r.OverBudget {
 		b = append(b, `,"OverBudget":true`...)
 	}
