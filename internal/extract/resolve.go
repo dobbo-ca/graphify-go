@@ -334,7 +334,29 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 			continue
 		}
 		for k := range r.ImportAliases {
-			reexports[[2]string{r.File, r.ImportAliases[k].Local}] = &r.ImportAliases[k]
+			if a := &r.ImportAliases[k]; !a.InFunc {
+				reexports[[2]string{r.File, a.Local}] = a
+			}
+		}
+	}
+	// A Python file imports each top-level definition its from-imports name.
+	var pySyms []model.Edge
+	pyMod := map[[2]string]string{}
+	for _, r := range results {
+		var seen map[string]bool
+		for _, a := range r.ImportAliases {
+			tgt := pySymbol(r.File, a.Spec, a.Imported, corpus, local, owner, reexports, pyMod)
+			if tgt == "" || idFile[tgt] == r.File || seen[tgt] {
+				continue
+			}
+			if seen == nil {
+				seen = map[string]bool{}
+			}
+			seen[tgt] = true
+			pySyms = append(pySyms, model.Edge{
+				Source: idutil.MakeID(r.File), Target: tgt, Relation: model.RelImports,
+				Confidence: model.ConfExtracted, SourceFile: fc.of(r.File), SourceLocation: a.Loc,
+			})
 		}
 	}
 
@@ -502,7 +524,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	for _, parts := range callEdges {
 		nParts += len(parts)
 	}
-	edges := make([][]model.Edge, 0, len(results)+nParts+7)
+	edges := make([][]model.Edge, 0, len(results)+nParts+8)
 	for _, r := range results {
 		nodes = append(nodes, r.Nodes)
 		edges = append(edges, r.Edges)
@@ -511,7 +533,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	for _, parts := range callEdges {
 		edges = append(edges, parts...)
 	}
-	edges = append(edges, inherit, jm.edges(&fc))
+	edges = append(edges, inherit, jm.edges(&fc), pySyms)
 	// A method whose type is in the sibling file of the same stem.
 	var owned []model.Edge
 	for _, r := range results {
@@ -1019,7 +1041,9 @@ func resolveImportGuided(results []Result, idFile map[string]string, out *model.
 	want := map[string]bool{}
 	for _, r := range results {
 		for _, a := range r.ImportAliases {
-			want[a.ModuleStem] = true
+			if !a.InFunc {
+				want[a.ModuleStem] = true
+			}
 		}
 	}
 	index := map[string][]string{}
@@ -1043,7 +1067,9 @@ func resolveImportGuided(results []Result, idFile map[string]string, out *model.
 		}
 		aliases := map[string]ImportAlias{}
 		for _, a := range r.ImportAliases {
-			aliases[a.Local] = a // last write wins, mirroring upstream alias dict
+			if !a.InFunc {
+				aliases[a.Local] = a // last write wins, mirroring upstream alias dict
+			}
 		}
 		rf := model.FileOf(r.File)
 		for _, n := range r.Calls {

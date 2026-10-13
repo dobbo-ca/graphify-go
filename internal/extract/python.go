@@ -473,6 +473,11 @@ func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
 		c := &cv
 		localType(c)
 		if within(c, body) && pyImportNames(c, src, func(local, val string) {
+			if mod, name, ok := strings.Cut(val, ":"); ok {
+				b.res.ImportAliases = append(b.res.ImportAliases, ImportAlias{
+					Local: local, Imported: name, Spec: mod, Loc: line(c), InFunc: true,
+				})
+			}
 			if old, dup := mods[local]; dup && old != val {
 				val = ""
 			}

@@ -73,11 +73,13 @@ func (r *Result) CallsOK() bool {
 
 // ImportAlias is per-file evidence from a top-level `from M import N [as L]`:
 // the local name L (alias or N) resolves to symbol N in module-stem M. Spec
-// is M as written.
+// is M as written. InFunc marks an import inside a function, which binds no
+// name of the file.
 type ImportAlias struct {
 	Local, Imported, ModuleStem string
 	Spec                        string
 	Loc                         model.Loc
+	InFunc                      bool `json:",omitempty"`
 }
 
 // TypeRef is an unresolved supertype reference: the type FromID declared Name

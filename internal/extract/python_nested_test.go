@@ -19,16 +19,15 @@ func pyEdges(srcs map[string]string, rels ...model.Relation) []string {
 		label[n.ID] = n.Label
 	}
 	// A label of two files shows with its file.
-	files := map[string]string{}
+	files, dup := map[string]string{}, map[string]bool{}
 	for _, n := range ext.Nodes {
 		if f, ok := files[n.Label]; ok && f != n.SourceFile {
-			files[n.Label] = ""
-		} else if !ok {
-			files[n.Label] = n.SourceFile
+			dup[n.Label] = true
 		}
+		files[n.Label] = n.SourceFile
 	}
 	for _, n := range ext.Nodes {
-		if files[n.Label] == "" {
+		if dup[n.Label] {
 			label[n.ID] = n.SourceFile + ":" + n.Label
 		}
 	}
@@ -190,5 +189,66 @@ class K:
 		if e.Relation == model.RelCalls && e.Confidence != model.ConfExtracted {
 			t.Errorf("call %s -> %s is %s, want EXTRACTED", e.Source, e.Target, e.Confidence)
 		}
+	}
+}
+
+// A file imports each top-level definition a from-import names, at any depth
+// and through a package __init__.py; a submodule, a constant, a method and a
+// nested def get no such edge.
+func TestPythonImportedSymbolEdges(t *testing.T) {
+	srcs := map[string]string{
+		"pkg/__init__.py": "from .core import reexp, renamed_src as renamed\n",
+		"pkg/core.py": `CONST = 1
+def func_a(): pass
+def func_b(): pass
+def reexp(): pass
+def renamed_src(): pass
+class Klass:
+    def meth_only(self): pass
+def outer():
+    def nested_fn(): pass
+`,
+		"pkg/mod.py": "def in_mod(): pass\ndef starred(): pass\n",
+		"main.py": `from typing import TYPE_CHECKING
+from pkg.core import func_a, func_b as fb
+from pkg import mod
+from pkg import reexp, renamed
+from pkg.core import CONST, missing, meth_only, nested_fn
+from pkg.mod import *
+from main import lazy
+if TYPE_CHECKING:
+    from pkg.core import Klass
+def lazy():
+    from pkg.mod import in_mod
+    from pkg.core import func_a
+`,
+	}
+	got := pyEdges(srcs, model.RelImports)
+	want := []string{
+		"main.py -imports-> Klass",
+		"main.py -imports-> func_a()",
+		"main.py -imports-> func_b()",
+		"main.py -imports-> in_mod()",
+		// an import of the file itself stays the external it was
+		"main.py -imports-> main",
+		"main.py -imports-> reexp()",
+		"main.py -imports-> renamed_src()",
+		"main.py -imports-> typing",
+		"pkg/__init__.py -imports-> reexp()",
+		"pkg/__init__.py -imports-> renamed_src()",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("imports:\n got %q\nwant %q", got, want)
+	}
+	// The module edges stay as they are: none for the import inside lazy.
+	got = pyEdges(srcs, model.RelImportsFrom)
+	want = []string{
+		"main.py -imports_from-> pkg/__init__.py",
+		"main.py -imports_from-> pkg/core.py",
+		"main.py -imports_from-> pkg/mod.py",
+		"pkg/__init__.py -imports_from-> pkg/core.py",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("imports_from:\n got %q\nwant %q", got, want)
 	}
 }
