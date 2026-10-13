@@ -224,3 +224,36 @@ func TestPythonAliasBindsItsOwnModule(t *testing.T) {
 		}
 	}
 }
+
+// Upstream fixtures r4p, r4o, r4q: a fallback alias from outside the corpus
+// leaves the plain import in force; two imports on one line keep their own
+// module; `from . import Name as N` is an alias too.
+func TestPythonAliasImportOrder(t *testing.T) {
+	_, edges := resolveSrc(t, [][2]string{
+		{"pkg/__init__.py", "class Name:\n    pass\n"},
+		{"pkg/fast.py", "class Foo:\n    pass\n\n\nclass X:\n    pass\n"},
+		{"pkg/c.py", "class X:\n    pass\n"},
+		{"pkg/app.py", `try:
+    from .fast import Foo
+except ImportError:
+    from slowext import SlowFoo as Foo
+from .fast import X as P; from .c import X as R
+from . import Name as N
+
+
+class K(Foo):
+    def m(self, p: P, r: R, n: N):
+        pass
+`},
+	})
+	for _, w := range [][3]string{
+		{"pkg/app.py:K", "inherits", "pkg/fast.py:Foo"},
+		{"pkg/app.py:K.m()", "references", "pkg/fast.py:X"},
+		{"pkg/app.py:K.m()", "references", "pkg/c.py:X"},
+		{"pkg/app.py:K.m()", "references", "pkg/__init__.py:Name"},
+	} {
+		if !edges[w] {
+			t.Errorf("missing edge %v", w)
+		}
+	}
+}
