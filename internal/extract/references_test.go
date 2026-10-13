@@ -580,3 +580,75 @@ func TestJavaNestedTypeNoBind(t *testing.T) {
 		}
 	}
 }
+
+// Upstream 0.9.88 on fixtures rsn1, rsn2: signatures, fields and variant
+// payloads reference their types, a supertrait or trait impl gets a stub.
+// Not copied: a stub for a type parameter, an associated type or its name,
+// a type position bound to a function, a trait's arguments as its base.
+func TestRustReferences(t *testing.T) {
+	nodes, edges := resolveSrc(t, [][2]string{
+		{"b.rs", "pub struct Uniq;\npub struct Dup;\npub fn helper() {}\n"},
+		{"a.rs", `use serde::Ext;
+pub struct S<T> { a: Early, b: Vec<Box<Uniq>>, c: Option<Ext>, d: T, e: crate::b::Dup, f: helper, g: i32, h: String }
+pub struct Tup(pub Early, *const Raw);
+pub enum En { V(Late), W { x: Uniq } }
+pub trait Tr: Sup + Unknown + Debug + Into<Late> { fn m(&self, x: Early) -> Late; }
+pub trait Sup {}
+pub struct Early;
+pub struct Late;
+pub struct Path;
+impl Tr for S<u8> {}
+impl Ext2 for Early {}
+impl From<Uniq> for Late {}
+impl Tr for Foreign {}
+pub fn f<U: Bd>(a: Early, b: &mut Late, c: impl Imp, u: U, p: Path, s: Self::Item) -> Result<Uniq, Err1> {}
+impl<T> S<T> { fn g(&self, t: T, x: Self::Out) -> S<T> {} }
+pub fn d(f: &dyn Fn(Early) -> Late, g: Box<dyn Tr<Item = Late>>, c: fn(M) -> N) {}
+`},
+	})
+	for _, w := range [][3]string{
+		{"a.rs:S", "references", "a.rs:Early"},
+		{"a.rs:S", "references", "b.rs:Uniq"},
+		{"a.rs:S", "references", ":Ext"},
+		{"a.rs:S", "references", "b.rs:Dup"},
+		{"a.rs:Tup", "references", "a.rs:Early"},
+		{"a.rs:En", "references", "a.rs:Late"},
+		{"a.rs:En", "references", "b.rs:Uniq"},
+		{"a.rs:Tr", "inherits", "a.rs:Sup"},
+		{"a.rs:Tr", "inherits", ":Unknown"},
+		{"a.rs:Tr", "references", "a.rs:Late"},
+		{"a.rs:S", "implements", "a.rs:Tr"},
+		{"a.rs:Early", "implements", ":Ext2"},
+		{"a.rs:Late", "references", "b.rs:Uniq"},
+		{"a.rs:f()", "references", "a.rs:Early"},
+		{"a.rs:f()", "references", "a.rs:Late"},
+		{"a.rs:f()", "references", ":Imp"},
+		{"a.rs:f()", "references", "a.rs:Path"},
+		{"a.rs:f()", "references", "b.rs:Uniq"},
+		{"a.rs:f()", "references", ":Err1"},
+		{"a.rs:S.g()", "references", "a.rs:S"},
+		{"a.rs:d()", "references", "a.rs:Early"},
+		{"a.rs:d()", "references", "a.rs:Tr"},
+		{"a.rs:d()", "references", ":M"},
+		{"a.rs:d()", "references", ":N"},
+	} {
+		if !edges[w] {
+			t.Errorf("missing edge %v", w)
+		}
+	}
+	for _, e := range [][3]string{
+		{"a.rs:S", "references", "b.rs:helper()"},
+		{"a.rs:Tup", "references", ":Raw"},
+		{"a.rs:Late", "implements", "b.rs:Uniq"},
+		{"a.rs:Tr", "inherits", "a.rs:Late"},
+	} {
+		if edges[e] {
+			t.Errorf("unexpected edge %v", e)
+		}
+	}
+	for _, label := range []string{"T", "U", "Item", "Out", "Debug", "Result", "Fn", "Box", "String", "Raw", "Foreign"} {
+		if nodes[[2]string{"", label}] {
+			t.Errorf("unexpected stub %q", label)
+		}
+	}
+}
