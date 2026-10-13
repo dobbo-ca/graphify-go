@@ -404,7 +404,14 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				if ids := typeDefs(own, name, idFile); len(ids) > 0 {
 					tgt = ids[0]
 				} else if tgt = bound[t.Name]; tgt == "" {
-					if ids := typeDefs(global[name], name, idFile); len(ids) == 1 {
+					// A definition in a namespace of the file is no Def.
+					for _, n := range r.Nodes {
+						if (n.Label == name || n.Label == name+"()") && n.ID != t.FromID {
+							tgt = n.ID
+							break
+						}
+					}
+					if ids := typeDefs(global[name], name, idFile); tgt == "" && len(ids) == 1 {
 						tgt = ids[0]
 					}
 				}
