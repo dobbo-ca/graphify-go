@@ -48,7 +48,17 @@ func (r *Result) AppendJSON(b []byte) ([]byte, error) {
 	b = append(b, `,"TypeRefs":`...)
 	b, _ = appendJSONArr(b, r.TypeRefs, func(b []byte, t *TypeRef) ([]byte, error) {
 		b = appendJSONFields(b, `{"FromID":`, t.FromID, `,"Name":`, t.Name, `,"Relation":`, t.Relation, `,"File":`, t.File)
-		return append(t.Loc.AppendJSON(append(b, `,"Loc":`...)), '}'), nil
+		b = t.Loc.AppendJSON(append(b, `,"Loc":`...))
+		if t.Stub {
+			b = append(b, `,"Stub":true`...)
+		}
+		if t.Deco {
+			b = append(b, `,"Deco":true`...)
+		}
+		if t.Qual != "" {
+			b = appendJSONFields(b, `,"Qual":`, t.Qual)
+		}
+		return append(b, '}'), nil
 	})
 	b = append(b, `,"Imps":`...)
 	b, _ = appendJSONArr(b, r.Imps, func(b []byte, i *Imp) ([]byte, error) {
@@ -101,6 +111,12 @@ func (r *Result) AppendJSON(b []byte) ([]byte, error) {
 	if len(r.Exports) > 0 {
 		b = append(b, `,"Exports":`...)
 		b, _ = appendJSONArr(b, r.Exports, func(b []byte, s *string) ([]byte, error) {
+			return model.AppendJSONString(b, *s), nil
+		})
+	}
+	if len(r.TypeAliases) > 0 {
+		b = append(b, `,"TypeAliases":`...)
+		b, _ = appendJSONArr(b, r.TypeAliases, func(b []byte, s *string) ([]byte, error) {
 			return model.AppendJSONString(b, *s), nil
 		})
 	}

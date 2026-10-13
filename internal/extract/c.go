@@ -39,9 +39,18 @@ func (b *builder) cItems(root *ts.Node, src []byte) {
 			// A struct/union/enum can be introduced inside a declaration
 			// (`struct S {...} x;`) or a typedef (`typedef struct {...} S;`).
 			if spec := n.ChildByFieldName("type"); spec != nil {
+				// `typedef struct _kv kv;`: kv names the tag _kv. Any other
+				// type has no tag.
+				tag := ""
 				switch spec.Kind() {
 				case "struct_specifier", "union_specifier", "enum_specifier":
 					b.cType(spec, src)
+					tag = fieldText(spec, "name", src)
+				}
+				for j := uint(0); n.Kind() == "type_definition" && j < n.ChildCount(); j++ {
+					if d := n.Child(j); n.FieldNameForChild(uint32(j)) == "declarator" && d.Kind() == "type_identifier" {
+						b.res.TypeAliases = append(b.res.TypeAliases, d.Utf8Text(src)+" "+tag)
+					}
 				}
 			}
 		}
@@ -55,7 +64,52 @@ func (b *builder) cFunc(n *ts.Node, src []byte) {
 	}
 	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
+	b.cRefs(id, n, src)
 	b.cCalls(n.ChildByFieldName("body"), id, src)
+}
+
+// cRefs records a references edge from the function id to its return type
+// and to each parameter type that is a typedef name. `struct S` names a tag
+// and a primitive type names nothing.
+func (b *builder) cRefs(id string, fn *ts.Node, src []byte) {
+	sigTypes(fn, func(t *ts.Node) {
+		if t.Kind() == "type_identifier" {
+			b.ref(id, t.Utf8Text(src), "references", false, line(fn))
+		}
+	})
+}
+
+// sigTypes calls ref with the return type node of the C or C++ function
+// definition fn and with the type node of each of its parameters.
+func sigTypes(fn *ts.Node, ref func(t *ts.Node)) {
+	if t := fn.ChildByFieldName("type"); t != nil {
+		ref(t)
+	}
+	walk(fn.ChildByFieldName("declarator"), func(cv ts.Node) bool {
+		c := &cv
+		if c.Kind() != "function_declarator" {
+			return true
+		}
+		// `T (*f(int n))(P)`: the parameters of f sit beside its name, in
+		// the declarator behind the pointer. `T NAME(f)(P)` has none there.
+		for d, ptr := c.ChildByFieldName("declarator"), false; d != nil; d = d.ChildByFieldName("declarator") {
+			if d.Kind() == "parenthesized_declarator" {
+				d = firstNamed(d)
+			}
+			if d == nil || d.Kind() == "function_declarator" && ptr {
+				return d != nil
+			}
+			ptr = ptr || d.Kind() == "pointer_declarator"
+		}
+		if ps := c.ChildByFieldName("parameters"); ps != nil {
+			for i := uint(0); i < ps.NamedChildCount(); i++ {
+				if t := ps.NamedChild(i).ChildByFieldName("type"); t != nil {
+					ref(t)
+				}
+			}
+		}
+		return false
+	})
 }
 
 // cType records a struct/union/enum definition and any function-pointer fields

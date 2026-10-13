@@ -24,6 +24,7 @@ func extractGo(rel string, src []byte) Result {
 		}
 	}
 
+	b.goPkgs = goPkgPaths(root, src)
 	for i := uint(0); i < root.ChildCount(); i++ {
 		n := root.Child(i)
 		switch n.Kind() {
@@ -47,6 +48,7 @@ func (b *builder) goFunc(n *ts.Node, src []byte, rets map[string]string) {
 	}
 	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
+	b.goSignature(id, n, goTypeParams(n.ChildByFieldName("type_parameters"), "identifier", src), src)
 	b.goCalls(n, id, "", src, rets)
 }
 
@@ -68,6 +70,15 @@ func (b *builder) goMethod(n *ts.Node, src []byte, rets map[string]string) {
 	if p := firstNamed(n.ChildByFieldName("receiver")); p != nil {
 		self = fieldText(p, "name", src)
 	}
+	// `func (g *Gen[T]) M()`: T is the receiver's type parameter.
+	var skip map[string]bool
+	walk(n.ChildByFieldName("receiver"), func(cv ts.Node) bool {
+		if cv.Kind() == "type_arguments" {
+			skip = goTypeParams(&cv, "type_identifier", src)
+		}
+		return true
+	})
+	b.goSignature(id, n, skip, src)
 	b.goCalls(n, id, self, src, rets)
 }
 
@@ -103,8 +114,138 @@ func (b *builder) goTypes(n *ts.Node, src []byte) {
 		if name == "" {
 			continue
 		}
-		b.def(b.id(name), name, name, line(c))
+		id := b.id(name)
+		b.def(id, name, name, line(c))
+		skip := goTypeParams(c.ChildByFieldName("type_parameters"), "identifier", src)
+		t := c.ChildByFieldName("type")
+		if t == nil {
+			continue
+		}
+		switch t.Kind() {
+		case "struct_type":
+			walk(firstNamed(t), func(fv ts.Node) bool {
+				f := &fv
+				if f.Kind() != "field_declaration" {
+					return f.Kind() == "field_declaration_list"
+				}
+				// An unnamed field embeds its type (graphify-go-vi5.11) and
+				// references only that type's arguments.
+				if f.ChildByFieldName("name") != nil {
+					b.goRefs(id, f.ChildByFieldName("type"), skip, src, line(f))
+				} else {
+					b.goTypeArgs(id, f, skip, src)
+				}
+				return false
+			})
+		case "interface_type":
+			// `~int | Early` and `~Early` are type sets; a lone type embeds.
+			for j := uint(0); j < t.NamedChildCount(); j++ {
+				e := t.NamedChild(j)
+				if e.Kind() != "type_elem" {
+					continue
+				}
+				if e.NamedChildCount() > 1 || e.NamedChild(0).Kind() == "negated_type" {
+					b.goRefs(id, e, skip, src, line(e))
+				} else {
+					b.goTypeArgs(id, e, skip, src)
+				}
+			}
+		}
 	}
+}
+
+// goPredeclared holds the predeclared types, which are no corpus symbols.
+var goPredeclared = set("bool", "byte", "complex64", "complex128", "error", "float32", "float64",
+	"int", "int8", "int16", "int32", "int64", "rune", "string",
+	"uint", "uint8", "uint16", "uint32", "uint64", "uintptr", "any", "comparable")
+
+var goTypeKinds = tsgo.Language().KindMask("type_identifier", "qualified_type")
+
+// goTypeArgs records the types in the type arguments under n.
+func (b *builder) goTypeArgs(id string, n *ts.Node, skip map[string]bool, src []byte) {
+	walk(n, func(cv ts.Node) bool {
+		if cv.Kind() != "type_arguments" {
+			return true
+		}
+		b.goRefs(id, &cv, skip, src, line(n))
+		return false
+	})
+}
+
+// goSignature records the types the parameters and results of fn name.
+func (b *builder) goSignature(id string, fn *ts.Node, skip map[string]bool, src []byte) {
+	b.goRefs(id, fn.ChildByFieldName("parameters"), skip, src, line(fn))
+	b.goRefs(id, fn.ChildByFieldName("result"), skip, src, line(fn))
+}
+
+// goRefs records a references edge from id to each type named under n, but
+// for the predeclared types and the type parameters in skip. `pkg.T` carries
+// the import path of pkg as its qualifier.
+func (b *builder) goRefs(id string, n *ts.Node, skip map[string]bool, src []byte, loc model.Loc) {
+	walkKinds(n, goTypeKinds, func(cv ts.Node) bool {
+		c := &cv
+		if c.Kind() == "qualified_type" {
+			pkg := fieldText(c, "package", src)
+			before := len(b.res.TypeRefs)
+			b.ref(id, fieldText(c, "name", src), "references", false, loc)
+			if len(b.res.TypeRefs) > before && pkg != "" {
+				if p := b.goPkgs[pkg]; p != "" {
+					pkg = p
+				}
+				b.res.TypeRefs[before].Qual = pkg
+			}
+			return false
+		}
+		if name := c.Utf8Text(src); !goPredeclared[name] && !skip[name] {
+			b.ref(id, name, "references", false, loc)
+		}
+		return true
+	})
+}
+
+// goTypeParams returns the names of kind under a type parameter list or a
+// receiver's type arguments.
+func goTypeParams(n *ts.Node, kind string, src []byte) map[string]bool {
+	var out map[string]bool
+	walk(n, func(cv ts.Node) bool {
+		if cv.Kind() == kind {
+			if out == nil {
+				out = map[string]bool{}
+			}
+			out[cv.Utf8Text(src)] = true
+		}
+		return true
+	})
+	return out
+}
+
+// goPkgPaths maps the name each import binds in the file to its import path.
+func goPkgPaths(root *ts.Node, src []byte) map[string]string {
+	out := map[string]string{}
+	for i := uint(0); i < root.ChildCount(); i++ {
+		if root.Child(i).Kind() != "import_declaration" {
+			continue
+		}
+		walk(root.Child(i), func(cv ts.Node) bool {
+			c := &cv
+			if c.Kind() != "import_spec" {
+				return true
+			}
+			p := unquote(fieldText(c, "path", src))
+			name := fieldText(c, "name", src)
+			if name == "" {
+				// The package of example.com/m/v2 is m by convention.
+				seg := strings.Split(p, "/")
+				name = seg[len(seg)-1]
+				if len(seg) > 1 && len(name) > 1 && name[0] == 'v' && strings.Trim(name[1:], "0123456789") == "" {
+					name = seg[len(seg)-2]
+				}
+			}
+			out[name] = p
+			return false
+		})
+	}
+	return out
 }
 
 func (b *builder) goImports(n *ts.Node, src []byte) {

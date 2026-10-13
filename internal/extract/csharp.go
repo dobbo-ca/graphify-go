@@ -1,6 +1,7 @@
 package extract
 
 import (
+	"strings"
 	"unicode"
 
 	tscs "github.com/dobbo-ca/gositter/grammars/csharp"
@@ -71,7 +72,14 @@ func (b *builder) csType(n *ts.Node, src []byte, ifaces map[string]bool) {
 	}
 	typeID := b.id(name)
 	b.def(typeID, name, name, line(n))
-	b.csBases(typeID, n, src, ifaces)
+	skip := csTypeParams(n, csNestedTypes(n, src, map[string]bool{}), src)
+	b.csBases(typeID, n, src, ifaces, skip)
+	// A record or class with a primary constructor takes its parameters as members.
+	for i := uint(0); i < n.ChildCount(); i++ {
+		if ps := n.Child(i); ps.Kind() == "parameter_list" {
+			b.csParams(typeID, ps, skip, src)
+		}
+	}
 
 	body := n.ChildByFieldName("body")
 	if body == nil {
@@ -79,7 +87,19 @@ func (b *builder) csType(n *ts.Node, src []byte, ifaces map[string]bool) {
 	}
 	for i := uint(0); i < body.ChildCount(); i++ {
 		m := body.Child(i)
-		if m.Kind() != "method_declaration" {
+		switch m.Kind() {
+		case "field_declaration":
+			for j := uint(0); j < m.NamedChildCount(); j++ {
+				if v := m.NamedChild(j); v.Kind() == "variable_declaration" {
+					b.csTypeRefs(typeID, v.ChildByFieldName("type"), skip, src)
+				}
+			}
+			continue
+		case "property_declaration":
+			b.csTypeRefs(typeID, m.ChildByFieldName("type"), skip, src)
+			continue
+		case "method_declaration":
+		default:
 			continue
 		}
 		mname := fieldText(m, "name", src)
@@ -94,6 +114,7 @@ func (b *builder) csType(n *ts.Node, src []byte, ifaces map[string]bool) {
 		})
 		// Register under the bare method name so `x.Method()` call sites resolve.
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
+		b.csSignature(mid, m, skip, src)
 		b.csCalls(m.ChildByFieldName("body"), mid, src)
 	}
 }
@@ -168,7 +189,7 @@ func csInterfaceNames(root *ts.Node, src []byte) map[string]bool {
 // implements target when it is an interface declared in this file or follows the
 // IPascalCase convention, and an inherits target otherwise. Every base of an
 // interface is interface inheritance.
-func (b *builder) csBases(typeID string, n *ts.Node, src []byte, ifaces map[string]bool) {
+func (b *builder) csBases(typeID string, n *ts.Node, src []byte, ifaces, skip map[string]bool) {
 	isInterface := n.Kind() == "interface_declaration"
 	for i := uint(0); i < n.ChildCount(); i++ {
 		bl := n.Child(i)
@@ -176,12 +197,24 @@ func (b *builder) csBases(typeID string, n *ts.Node, src []byte, ifaces map[stri
 			continue
 		}
 		for j := uint(0); j < bl.NamedChildCount(); j++ {
-			base := baseTypeName(bl.NamedChild(j).Utf8Text(src))
+			c := bl.NamedChild(j)
+			base := baseTypeName(c.Utf8Text(src))
 			relation := "inherits"
 			if !isInterface && csIsInterfaceName(base, ifaces) {
 				relation = "implements"
 			}
-			b.typeRef(typeID, base, relation, line(n))
+			switch c.Kind() {
+			case "identifier", "generic_name", "qualified_name":
+				if skip[base] {
+					continue
+				}
+				b.ref(typeID, base, relation, false, line(n))
+				if c.Kind() == "generic_name" {
+					b.csTypeArgs(typeID, c, skip, src)
+				}
+			default:
+				b.typeRef(typeID, base, relation, line(n))
+			}
 		}
 	}
 }
@@ -194,4 +227,136 @@ func csIsInterfaceName(base string, ifaces map[string]bool) bool {
 	}
 	r := []rune(base)
 	return len(r) >= 2 && r[0] == 'I' && unicode.IsUpper(r[1])
+}
+
+// csTypeParams returns skip plus the type parameters n declares.
+func csTypeParams(n *ts.Node, skip map[string]bool, src []byte) map[string]bool {
+	return listTypeParams(n, "type_parameter_list", skip, src)
+}
+
+// listTypeParams returns skip plus the names in the listKind child of n.
+func listTypeParams(n *ts.Node, listKind string, skip map[string]bool, src []byte) map[string]bool {
+	out := map[string]bool{}
+	for k := range skip {
+		out[k] = true
+	}
+	for i := uint(0); i < n.ChildCount(); i++ {
+		list := n.Child(i)
+		if list.Kind() != listKind {
+			continue
+		}
+		for j := uint(0); j < list.NamedChildCount(); j++ {
+			p := list.NamedChild(j)
+			for k := uint(0); k < p.NamedChildCount(); k++ {
+				if id := p.NamedChild(k); id.Kind() == "identifier" {
+					out[id.Utf8Text(src)] = true
+					break
+				}
+			}
+		}
+	}
+	return out
+}
+
+// csNestedTypes adds the names of the types nested in n to out. They have
+// no node, so a ref to one must not bind to a namesake elsewhere.
+func csNestedTypes(n *ts.Node, src []byte, out map[string]bool) map[string]bool {
+	if body := n.ChildByFieldName("body"); body != nil {
+		for i := uint(0); i < body.NamedChildCount(); i++ {
+			switch c := body.NamedChild(i); c.Kind() {
+			case "class_declaration", "struct_declaration", "interface_declaration",
+				"enum_declaration", "record_declaration":
+				out[fieldText(c, "name", src)] = true
+				csNestedTypes(c, src, out)
+			}
+		}
+	}
+	return out
+}
+
+func (b *builder) csRef(id, name string, skip map[string]bool, loc model.Loc) {
+	if !skip[name] {
+		b.ref(id, name, "references", false, loc)
+	}
+}
+
+// csTypeRefs records a reference from id to each type t names, generic
+// arguments included. Keyword types and names in skip give nothing; a
+// qualified name keeps its last segment.
+func (b *builder) csTypeRefs(id string, t *ts.Node, skip map[string]bool, src []byte) {
+	if t == nil {
+		return
+	}
+	switch t.Kind() {
+	case "predefined_type":
+	case "identifier":
+		b.csRef(id, t.Utf8Text(src), skip, line(t))
+	case "qualified_name":
+		text := t.Utf8Text(src)
+		name, _, _ := strings.Cut(text[strings.LastIndex(text, ".")+1:], "<")
+		b.csRef(id, name, skip, line(t))
+	case "generic_name":
+		for i := uint(0); i < t.NamedChildCount(); i++ {
+			if c := t.NamedChild(i); c.Kind() == "identifier" || c.Kind() == "qualified_name" {
+				text := c.Utf8Text(src)
+				b.csRef(id, text[strings.LastIndex(text, ".")+1:], skip, line(c))
+				break
+			}
+		}
+		b.csTypeArgs(id, t, skip, src)
+	case "tuple_type":
+		for i := uint(0); i < t.NamedChildCount(); i++ {
+			if el := t.NamedChild(i); el.Kind() == "tuple_element" {
+				b.csTypeRefs(id, el.ChildByFieldName("type"), skip, src)
+			}
+		}
+	default:
+		for i := uint(0); i < t.NamedChildCount(); i++ {
+			b.csTypeRefs(id, t.NamedChild(i), skip, src)
+		}
+	}
+}
+
+// csTypeArgs records the types in the type_argument_list of the generic_name t.
+func (b *builder) csTypeArgs(id string, t *ts.Node, skip map[string]bool, src []byte) {
+	for i := uint(0); i < t.NamedChildCount(); i++ {
+		if args := t.NamedChild(i); args.Kind() == "type_argument_list" {
+			for j := uint(0); j < args.NamedChildCount(); j++ {
+				b.csTypeRefs(id, args.NamedChild(j), skip, src)
+			}
+		}
+	}
+}
+
+// csParams records the type of each parameter of the parameter_list ps.
+func (b *builder) csParams(id string, ps *ts.Node, skip map[string]bool, src []byte) {
+	for i := uint(0); i < ps.NamedChildCount(); i++ {
+		if p := ps.NamedChild(i); p.Kind() == "parameter" {
+			b.csTypeRefs(id, p.ChildByFieldName("type"), skip, src)
+		}
+	}
+}
+
+// csSignature records the parameter and return types and the attributes of
+// method m. Upstream reads attributes from methods only.
+func (b *builder) csSignature(id string, m *ts.Node, skip map[string]bool, src []byte) {
+	skip = csTypeParams(m, skip, src)
+	if ps := m.ChildByFieldName("parameters"); ps != nil {
+		b.csParams(id, ps, skip, src)
+	}
+	b.csTypeRefs(id, m.ChildByFieldName("returns"), skip, src)
+	for i := uint(0); i < m.NamedChildCount(); i++ {
+		al := m.NamedChild(i)
+		if al.Kind() != "attribute_list" {
+			continue
+		}
+		for j := uint(0); j < al.NamedChildCount(); j++ {
+			if a := al.NamedChild(j); a.Kind() == "attribute" {
+				if nm := a.ChildByFieldName("name"); nm != nil {
+					text := nm.Utf8Text(src)
+					b.csRef(id, text[strings.LastIndex(text, ".")+1:], skip, line(a))
+				}
+			}
+		}
+	}
 }

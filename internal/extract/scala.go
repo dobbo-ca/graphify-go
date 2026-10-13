@@ -50,6 +50,7 @@ func (b *builder) scalaFunc(n *ts.Node, src []byte) {
 	}
 	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
+	b.scalaSignature(id, n, nil, src)
 	b.scalaCalls(n.ChildByFieldName("body"), id, src)
 }
 
@@ -64,11 +65,21 @@ func (b *builder) scalaType(n *ts.Node, src []byte) {
 	b.def(typeID, name, name, line(n))
 
 	body := n.ChildByFieldName("body")
+	skip := scalaTypeParams(n, scalaNested(body, src, map[string]bool{}), src)
+	b.scalaBases(typeID, n, src)
+	b.scalaClassRefs(typeID, n, skip, src)
 	if body == nil {
 		return
 	}
 	for i := uint(0); i < body.ChildCount(); i++ {
 		m := body.Child(i)
+		switch m.Kind() {
+		case "val_definition", "var_definition":
+			b.scalaTypeRefs(typeID, m.ChildByFieldName("type"), skip, src)
+		case "type_definition":
+			// `type F[A] = Map[A, B]`: A is the alias's own parameter.
+			b.scalaTypeRefs(typeID, m.ChildByFieldName("type"), scalaTypeParams(m, skip, src), src)
+		}
 		if m.Kind() != "function_definition" && m.Kind() != "function_declaration" {
 			continue
 		}
@@ -84,6 +95,7 @@ func (b *builder) scalaType(n *ts.Node, src []byte) {
 		})
 		// Register under the bare method name so `x.method()` call sites resolve.
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file, Abstract: m.Kind() == "function_declaration"})
+		b.scalaSignature(mid, m, skip, src)
 		b.scalaCalls(m.ChildByFieldName("body"), mid, src)
 	}
 }
@@ -148,4 +160,171 @@ func (b *builder) scalaCalls(body *ts.Node, callerID string, src []byte) {
 		}
 		return true
 	})
+}
+
+// scalaNested adds the names of the types nested in the template body to
+// out. They have no node, so a ref to one must not bind to a namesake.
+func scalaNested(body *ts.Node, src []byte, out map[string]bool) map[string]bool {
+	if body == nil {
+		return out
+	}
+	for i := uint(0); i < body.NamedChildCount(); i++ {
+		switch c := body.NamedChild(i); c.Kind() {
+		case "class_definition", "object_definition", "trait_definition", "enum_definition":
+			out[fieldText(c, "name", src)] = true
+			scalaNested(c.ChildByFieldName("body"), src, out)
+		}
+	}
+	return out
+}
+
+// scalaTypeParams returns skip plus the type parameters n declares.
+func scalaTypeParams(n *ts.Node, skip map[string]bool, src []byte) map[string]bool {
+	out := map[string]bool{}
+	for k := range skip {
+		out[k] = true
+	}
+	var add func(list *ts.Node)
+	add = func(list *ts.Node) {
+		for i := uint(0); i < list.NamedChildCount(); i++ {
+			switch c := list.NamedChild(i); c.Kind() {
+			case "identifier":
+				out[c.Utf8Text(src)] = true
+			case "covariant_type_parameter", "contravariant_type_parameter":
+				out[fieldText(c, "name", src)] = true
+			case "type_parameters":
+				add(c)
+			}
+		}
+	}
+	for i := uint(0); i < n.NamedChildCount(); i++ {
+		if c := n.NamedChild(i); c.Kind() == "type_parameters" {
+			add(c)
+		}
+	}
+	return out
+}
+
+// scalaBases records the first base as inherits and the rest as mixes_in.
+func (b *builder) scalaBases(typeID string, n *ts.Node, src []byte) {
+	ext := n.ChildByFieldName("extend")
+	if ext == nil {
+		return
+	}
+	rel := "inherits"
+	for i := uint(0); i < ext.NamedChildCount(); i++ {
+		c := ext.NamedChild(i)
+		if c.Kind() == "generic_type" {
+			if c = c.ChildByFieldName("type"); c == nil {
+				continue
+			}
+		}
+		name := ""
+		switch c.Kind() {
+		case "type_identifier":
+			name = c.Utf8Text(src)
+		case "stable_type_identifier":
+			for j := uint(0); j < c.NamedChildCount(); j++ {
+				name = c.NamedChild(j).Utf8Text(src)
+			}
+		}
+		if name != "" {
+			b.ref(typeID, name, rel, false, line(c))
+			rel = "mixes_in"
+		}
+	}
+}
+
+// scalaClassRefs records the constructor parameter types, context bounds
+// and derives clause of a type.
+func (b *builder) scalaClassRefs(typeID string, n *ts.Node, skip map[string]bool, src []byte) {
+	for i := uint(0); i < n.NamedChildCount(); i++ {
+		switch c := n.NamedChild(i); c.Kind() {
+		case "class_parameters":
+			for j := uint(0); j < c.NamedChildCount(); j++ {
+				if p := c.NamedChild(j); p.Kind() == "class_parameter" {
+					b.scalaTypeRefs(typeID, p.ChildByFieldName("type"), skip, src)
+				}
+			}
+		case "type_parameters":
+			b.scalaBounds(typeID, c, skip, src)
+		case "derives_clause":
+			for j := uint(0); j < c.NamedChildCount(); j++ {
+				d := c.NamedChild(j)
+				if d.Kind() != "type_identifier" && d.NamedChildCount() > 0 {
+					d = d.NamedChild(d.NamedChildCount() - 1)
+				}
+				if d.Kind() == "type_identifier" {
+					b.ref(typeID, d.Utf8Text(src), "references", false, line(d))
+				}
+			}
+		}
+	}
+}
+
+// scalaSignature records the types of the first parameter list, the return
+// type and the context bounds of a function.
+func (b *builder) scalaSignature(id string, n *ts.Node, skip map[string]bool, src []byte) {
+	skip = scalaTypeParams(n, skip, src)
+	params := false
+	for i := uint(0); i < n.NamedChildCount(); i++ {
+		switch c := n.NamedChild(i); c.Kind() {
+		case "parameters":
+			if params {
+				continue
+			}
+			params = true
+			for j := uint(0); j < c.NamedChildCount(); j++ {
+				if p := c.NamedChild(j); p.Kind() == "parameter" {
+					b.scalaTypeRefs(id, p.ChildByFieldName("type"), skip, src)
+				}
+			}
+		case "type_parameters":
+			b.scalaBounds(id, c, skip, src)
+		}
+	}
+	b.scalaTypeRefs(id, n.ChildByFieldName("return_type"), skip, src)
+}
+
+// scalaBounds records the context bounds (`[A: Ordering]`) of a type
+// parameter list, nested lists included.
+func (b *builder) scalaBounds(id string, list *ts.Node, skip map[string]bool, src []byte) {
+	for i := uint(0); i < list.NamedChildCount(); i++ {
+		switch c := list.NamedChild(i); c.Kind() {
+		case "type_parameters":
+			b.scalaBounds(id, c, skip, src)
+		case "context_bound":
+			b.scalaTypeRefs(id, c.ChildByFieldName("type"), skip, src)
+		}
+	}
+}
+
+// scalaTypeRefs records a reference from id to each type t names, generic
+// arguments included. Names in skip give nothing.
+func (b *builder) scalaTypeRefs(id string, t *ts.Node, skip map[string]bool, src []byte) {
+	if t == nil {
+		return
+	}
+	switch t.Kind() {
+	case "type_identifier":
+		if name := t.Utf8Text(src); !skip[name] {
+			b.ref(id, name, "references", false, line(t))
+		}
+	case "generic_type":
+		if base := t.ChildByFieldName("type"); base != nil && base.Kind() == "type_identifier" {
+			b.scalaTypeRefs(id, base, skip, src)
+		}
+		for i := uint(0); i < t.NamedChildCount(); i++ {
+			if args := t.NamedChild(i); args.Kind() == "type_arguments" {
+				for j := uint(0); j < args.NamedChildCount(); j++ {
+					b.scalaTypeRefs(id, args.NamedChild(j), skip, src)
+				}
+			}
+		}
+	case "compound_type", "infix_type", "function_type", "tuple_type", "annotated_type",
+		"projected_type", "match_type", "type_case_clause":
+		for i := uint(0); i < t.NamedChildCount(); i++ {
+			b.scalaTypeRefs(id, t.NamedChild(i), skip, src)
+		}
+	}
 }

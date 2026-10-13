@@ -88,9 +88,10 @@ func TestPythonInherits(t *testing.T) {
 	}, [3]string{"Sub", "inherits", "Meta"})
 }
 
-// A base class outside the corpus drops rather than creating a stub node.
+// A qualified Python base outside the corpus drops; a plain one gets a stub
+// (TestPythonReferences).
 func TestUnresolvedBaseDrops(t *testing.T) {
-	got := extractAll(t, map[string]string{"sub.py": "class Sub(SomeLibBase):\n    pass\n"})
+	got := extractAll(t, map[string]string{"sub.py": "class Sub(lib.SomeLibBase):\n    pass\n"})
 	for _, e := range got {
 		if e.Rel == "inherits" {
 			t.Errorf("unexpected inherits edge for out-of-corpus base: %v", e)

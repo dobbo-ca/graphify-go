@@ -82,13 +82,20 @@ type ImportAlias struct {
 	InFunc                      bool `json:",omitempty"`
 }
 
-// TypeRef is an unresolved supertype reference: the type FromID declared Name
-// as a parent, with Relation "inherits" (extends / base class) or "implements"
-// (interface conformance). Resolve binds Name to a definition the same way a
+// TypeRef is an unresolved type reference: FromID declared Name as a parent,
+// with Relation "inherits" (extends / base class) or "implements" (interface
+// conformance), or named it in a signature, a field or a decorator, with
+// Relation "references". Resolve binds Name to a definition the same way a
 // call is bound.
 type TypeRef struct {
 	FromID, Name, Relation, File string
 	Loc                          model.Loc
+	// Stub makes Resolve point the edge at a sourceless node named Name when
+	// no definition binds. Deco marks a decorator, which a function can be.
+	Stub bool `json:",omitempty"`
+	Deco bool `json:",omitempty"`
+	// Qual is the qualifier Name was written with (`ns` in `ns.Name`).
+	Qual string `json:",omitempty"`
 }
 
 // Imp is an unresolved import: File imported the module named Spec. TypeOnly
@@ -168,6 +175,10 @@ type Result struct {
 	// Exports are the "local" or "local as exported" entries of its JS/TS
 	// `export { ... }` statements without a source.
 	Exports []string `json:",omitempty"`
+	// TypeAliases are the "name tag" pairs of its C typedefs: the struct,
+	// union or enum tag that name stands for (`typedef struct _kv kv;`), or
+	// "name " when it stands for no tag.
+	TypeAliases []string `json:",omitempty"`
 	// OverBudget: ts.Budget stopped the parse, only the file node is here.
 	OverBudget bool `json:",omitempty"`
 }
@@ -326,15 +337,20 @@ func itoa(i int) string {
 
 // builder accumulates nodes/edges/defs for one file, de-duplicating node IDs.
 type builder struct {
-	file     string
-	src      model.File // file, as edges hold it
-	fileID   string
-	stem     string // id prefix of the symbols: the file path
-	res      Result
-	seen     map[string]bool
-	pyMods   map[string]string // local name -> what a module-level import binds it to
-	pyOwn    map[string]bool   // names a module-level def, class or from-import binds
-	pyBodies []pyBody          // function bodies awaiting the Python call walk
+	file       string
+	src        model.File // file, as edges hold it
+	fileID     string
+	stem       string // id prefix of the symbols: the file path
+	res        Result
+	seen       map[string]bool
+	pyMods     map[string]string // local name -> what a module-level import binds it to
+	pyOwn      map[string]bool   // names a module-level def, class or from-import binds
+	pyBodies   []pyBody          // function bodies awaiting the Python call walk
+	pyTypeVars map[string]bool   // module names bound by TypeVar
+	goPkgs     map[string]string // import name -> import path
+	cppTParams map[string]bool   // template parameters in scope
+	rsTParams  map[string]bool   // Rust type parameters in scope
+	rsLocal    map[string]bool   // Rust types the file defines
 	// rubyMethods holds method names defined in the file (bare self-sends).
 	rubyMethods map[string]bool
 	jsBodies    []jsBody             // function bodies awaiting the JS call walk
@@ -463,6 +479,24 @@ func (b *builder) typeRef(fromID, name, relation string, loc model.Loc) {
 		return
 	}
 	b.res.TypeRefs = append(b.res.TypeRefs, TypeRef{FromID: fromID, Name: name, Relation: relation, File: b.file, Loc: loc})
+}
+
+// ref records a name FromID mentions in a type position or as a decorator.
+// Resolve binds it, or points the edge at a stub node.
+func (b *builder) ref(fromID, name, relation string, deco bool, loc model.Loc) {
+	if fromID == "" || name == "" {
+		return
+	}
+	b.res.TypeRefs = append(b.res.TypeRefs, TypeRef{FromID: fromID, Name: name, Relation: relation, File: b.file, Loc: loc, Stub: true, Deco: deco})
+}
+
+// refQ is ref for a name written with the qualifier q (`q.Name`, `q\Name`).
+func (b *builder) refQ(fromID, name, relation, q string, loc model.Loc) {
+	before := len(b.res.TypeRefs)
+	b.ref(fromID, name, relation, false, loc)
+	if len(b.res.TypeRefs) > before {
+		b.res.TypeRefs[before].Qual = q
+	}
 }
 
 // baseTypeName reduces a supertype's source text to the bare name Resolve can

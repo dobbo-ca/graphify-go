@@ -291,8 +291,8 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 
 	// Inheritance: a declared supertype name binds the same way a call does —
 	// same file first, then disambiguated among the definitions sharing the name.
-	// An unresolvable base (a library type outside the corpus) drops rather than
-	// creating a stub node. Resolved ahead of the calls so a self/super call can
+	// An unresolvable name (a library type outside the corpus) drops, or binds to
+	// a sourceless stub node when the reference asks for one. Resolved ahead of the calls so a self/super call can
 	// walk the chain; the edges are appended after them.
 	var inherit []model.Edge
 	imported := importedSet{targets: impTargets}
@@ -300,33 +300,200 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	openSuper := map[string]bool{}  // type id with a base outside the corpus
 	jm := newJSMods(results, corpus, local, idFile)
 	jsAlias := jm.aliases()
+	// Every node id, true for a function; made for the first reference.
+	var nodeFn map[string]bool
+	node := func(id string) (fn, ok bool) {
+		if nodeFn == nil {
+			nodeFn = map[string]bool{}
+			for _, r := range results {
+				for _, n := range r.Nodes {
+					nodeFn[n.ID] = strings.HasSuffix(n.Label, ")")
+				}
+			}
+		}
+		fn, ok = nodeFn[id]
+		return
+	}
+	isType := func(id string) bool {
+		fn, _ := node(id)
+		return !fn && !value[id]
+	}
+	stubSeen := map[string]bool{}
+	var stubs []model.Node
+	// C typedef name -> each tag it stands for and the file that says so.
+	ctags := map[string][][2]string{}
+	for _, r := range results {
+		for _, a := range r.TypeAliases {
+			name, tag, _ := strings.Cut(a, " ")
+			ctags[name] = append(ctags[name], [2]string{tag, r.File})
+		}
+	}
+	// ctag returns the tag a C file means by a typedef name: what the
+	// typedefs it can see say, else what all of the corpus say. ok is false
+	// when they disagree or say that name stands for no tag.
+	ctag := func(file, name string) (tag string, ok bool) {
+		recs := ctags[name]
+		seen := imported.of(file)
+		if vis := keep2(recs, func(r [2]string) bool { return r[1] == file || seen[r[1]] }); len(vis) > 0 {
+			recs = vis
+		}
+		for _, r := range recs {
+			if r[0] == "" || r[0] != recs[0][0] {
+				return "", false
+			}
+		}
+		return recs[0][0], true
+	}
 	for _, r := range results {
 		js := len(r.TypeRefs) > 0 && jsLike(r.File)
 		var bound map[string]string
 		if js {
 			bound = jm.bound(&r)
 		}
-		for _, t := range r.TypeRefs {
-			tgt := ""
-			if js {
-				tgt = jm.supertype(t, &r, bound)
-			} else if ids := typeDefs(local[[2]string{t.File, t.Name}], t.Name, idFile); len(ids) == 1 {
-				tgt = ids[0]
+		var alias map[string][]ImportAlias // local name -> its imports
+		for _, a := range r.ImportAliases {
+			// An import inside a function binds no module-level name.
+			if len(r.TypeRefs) > 0 && !a.InFunc {
+				if alias == nil {
+					alias = map[string][]ImportAlias{}
+				}
+				alias[a.Local] = append(alias[a.Local], a)
 			}
-			if tgt == "" && !js {
-				tgt = disambiguate(typeDefs(global[t.Name], t.Name, idFile), t.File, idFile, &imported)
+		}
+		for _, t := range r.TypeRefs {
+			ref := t.Relation == "references"
+			name := t.Name
+			noTag, viaTag := false, false
+			if ext := path.Ext(t.File); ref && (ext == ".c" || ext == ".h") && len(ctags[name]) > 0 && len(typeDefs(local[[2]string{t.File, name}], name, idFile)) == 0 {
+				tag, ok := ctag(t.File, name)
+				if noTag, viaTag = !ok, ok; ok {
+					name = tag
+				}
+			}
+			ext := strings.ToLower(path.Ext(t.File))
+			qualFiles := ext == ".java" || ext == ".php"
+			cFam := cSource[ext] || cHeader[ext]
+			// A supertype or a type position names a type; a decorator can
+			// name a function.
+			cands := func(ids []string, name string) []string {
+				ids = typeDefs(ids, name, idFile)
+				if ref && !t.Deco {
+					ids = keep(ids, isType)
+				}
+				// `org.x.Bar`, `\\Ext\\Lib\\Base`: only a type whose file or
+				// directory has the name of the last qualifier is meant.
+				// ponytail: by name only; a package table per language
+				// would know more.
+				if qualFiles && t.Qual != "" {
+					q := strings.ToLower(t.Qual[strings.LastIndexAny(t.Qual, ".\\")+1:])
+					ids = keep(ids, func(id string) bool {
+						f := idFile[id]
+						return strings.ToLower(stemName(f)) == q || strings.ToLower(path.Base(path.Dir(f))) == q
+					})
+				}
+				// A type of another C or C++ source file is not in scope,
+				// but for one this file includes and for the struct behind
+				// a typedef.
+				if cFam && !viaTag {
+					inc := imported.of(t.File)
+					ids = keep(ids, func(id string) bool {
+						f := idFile[id]
+						return f == t.File || inc[f] || !cSource[strings.ToLower(path.Ext(f))]
+					})
+				}
+				return ids
+			}
+			tgt, stubOnly := "", noTag
+			own := local[[2]string{t.File, name}]
+			goQual := t.Qual != "" && strings.HasSuffix(t.File, ".go")
+			if js && ref && !t.Deco {
+				// A type position binds a type the file imports by name.
+				if tgt = bound[t.Name]; tgt != "" && !isType(tgt) {
+					tgt = ""
+				}
+			} else if js && ref {
+				// A decorator: the file's own name, an import, or the one
+				// definition of the corpus.
+				if ids := typeDefs(own, name, idFile); len(ids) > 0 {
+					tgt = ids[0]
+				} else if tgt = bound[t.Name]; tgt == "" {
+					// A definition in a namespace of the file is no Def.
+					for _, n := range r.Nodes {
+						if (n.Label == name || n.Label == name+"()") && n.ID != t.FromID {
+							tgt = n.ID
+							break
+						}
+					}
+					if ids := typeDefs(global[name], name, idFile); tgt == "" && len(ids) == 1 {
+						tgt = ids[0]
+					}
+				}
+			} else if js {
+				tgt = jm.supertype(t, &r, bound)
+			} else if goQual {
+				// pkg.T names T in the package of that import path only.
+				files := importTargets(Imp{File: t.File, Spec: t.Qual}, corpus, goPkgs, goMods, goTargets)
+				tgt = unique(cands(global[name], name), func(id string) bool { return contains(files, idFile[id]) })
+				stubOnly = true
+			} else if ids := cands(own, name); len(ids) == 1 {
+				tgt = ids[0]
+			} else if len(typeDefs(own, name, idFile)) > 0 {
+				// The file's own N is no type: N names nothing elsewhere.
+				stubOnly = len(ids) == 0
+			} else if t.Qual == "" {
+				// `from m import Real as R`: R names Real in the files that
+				// import statement resolved to, or nothing. The last import
+				// of R that binds wins; a plain import of R that does not
+				// bind there leaves R to the lookup by name.
+				as := alias[name]
+				for i := len(as) - 1; i >= 0 && tgt == ""; i-- {
+					a := as[i]
+					for _, im := range r.Imps {
+						if im.Loc != a.Loc || pySpecStem(im.Spec) != a.ModuleStem || !contains(im.Names, a.Imported) {
+							continue
+						}
+						files := importTargets(im, corpus, goPkgs, goMods, goTargets)
+						tgt = unique(cands(global[a.Imported], a.Imported), func(id string) bool { return contains(files, idFile[id]) })
+					}
+					if stubOnly = a.Imported != name; !stubOnly {
+						break
+					}
+				}
+			}
+			if tgt == "" && !stubOnly && ref && strings.HasSuffix(t.File, ".go") {
+				// A Go package is a directory: its own T comes first.
+				dir := path.Dir(filepath.ToSlash(t.File))
+				tgt = unique(cands(global[name], name), func(id string) bool { return path.Dir(idFile[id]) == dir })
+			}
+			if tgt == "" && !js && !stubOnly {
+				tgt = disambiguate(cands(global[name], name), t.File, idFile, &imported)
 			}
 			if tgt == "" || tgt == t.FromID || langfamily.Cross(t.File, idFile[tgt]) {
 				if t.Relation == "inherits" {
 					openSuper[t.FromID] = true
 				}
-				continue
-			}
-			if t.Relation == "inherits" {
+				if !t.Stub || tgt == t.FromID {
+					continue
+				}
+				// The stub id is the id a definition of Name in this file
+				// has; a node that already has that id owns it.
+				label := t.Name
+				if goQual {
+					label = t.Qual + "." + t.Name
+				}
+				tgt = idutil.MakeID(t.File, label)
+				if _, taken := node(tgt); taken {
+					continue
+				}
+				if !stubSeen[tgt] {
+					stubSeen[tgt] = true
+					stubs = append(stubs, model.Node{ID: tgt, Label: label, FileType: "code"})
+				}
+			} else if t.Relation == "inherits" {
 				supers[t.FromID] = append(supers[t.FromID], tgt)
 			}
 			conf := model.ConfInferred
-			if js {
+			if js || ref {
 				conf = model.ConfExtracted
 			}
 			inherit = append(inherit, model.Edge{
@@ -600,7 +767,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		edges = append(edges, part)
 	}
 	// From here out holds what the passes below add.
-	out.Nodes, out.Edges = impNodes, nil
+	out.Nodes, out.Edges = append(impNodes, stubs...), nil
 
 	// Terraform module sources: a local source resolves to the target directory
 	// node (created once, with contains edges to that directory's files so the
@@ -1243,6 +1410,23 @@ func (s *importedSet) of(file string) map[string]bool {
 	}
 	s.file = file
 	return s.set
+}
+
+// The extensions of C and C++ source files and headers.
+var (
+	cSource = set(".c", ".cc", ".cpp", ".cxx", ".c++", ".m", ".mm")
+	cHeader = set(".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp", ".tcc")
+)
+
+// keep2 is keep for pairs.
+func keep2(in [][2]string, pred func([2]string) bool) [][2]string {
+	var out [][2]string
+	for _, r := range in {
+		if pred(r) {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // contains reports whether ids already holds id.

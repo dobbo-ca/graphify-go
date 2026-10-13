@@ -49,6 +49,7 @@ func (b *builder) phpFunc(n *ts.Node, src []byte) {
 	}
 	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
+	b.phpSignature(id, "", n, src)
 	b.phpCalls(n.ChildByFieldName("body"), id, src)
 }
 
@@ -61,6 +62,7 @@ func (b *builder) phpType(n *ts.Node, src []byte) {
 	}
 	typeID := b.id(name)
 	b.def(typeID, name, name, line(n))
+	b.phpBases(typeID, n, src)
 
 	body := n.ChildByFieldName("body")
 	if body == nil {
@@ -68,6 +70,9 @@ func (b *builder) phpType(n *ts.Node, src []byte) {
 	}
 	for i := uint(0); i < body.ChildCount(); i++ {
 		m := body.Child(i)
+		if m.Kind() == "property_declaration" {
+			b.phpTypeRefs(typeID, m.ChildByFieldName("type"), src)
+		}
 		if m.Kind() != "method_declaration" {
 			continue
 		}
@@ -83,6 +88,7 @@ func (b *builder) phpType(n *ts.Node, src []byte) {
 		})
 		// Register under the bare method name so `$x->method()` call sites resolve.
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
+		b.phpSignature(mid, typeID, m, src)
 		b.phpCalls(m.ChildByFieldName("body"), mid, src)
 	}
 }
@@ -152,4 +158,83 @@ func phpName(n *ts.Node, src []byte) string {
 		return last
 	}
 	return ""
+}
+
+// phpBases records extends as inherits, implements, and trait use as
+// mixes_in.
+func (b *builder) phpBases(typeID string, n *ts.Node, src []byte) {
+	base := func(list *ts.Node, rel string) {
+		for i := uint(0); i < list.NamedChildCount(); i++ {
+			if c := list.NamedChild(i); c.Kind() == "name" || c.Kind() == "qualified_name" {
+				b.refQ(typeID, phpLast(c, src), rel, phpQual(c, src), line(list))
+			}
+		}
+	}
+	for i := uint(0); i < n.NamedChildCount(); i++ {
+		switch c := n.NamedChild(i); c.Kind() {
+		case "base_clause":
+			base(c, "inherits")
+		case "class_interface_clause":
+			base(c, "implements")
+		}
+	}
+	if body := n.ChildByFieldName("body"); body != nil {
+		for i := uint(0); i < body.NamedChildCount(); i++ {
+			if c := body.NamedChild(i); c.Kind() == "use_declaration" {
+				base(c, "mixes_in")
+			}
+		}
+	}
+}
+
+// phpSignature records the parameter and return types of a function. A
+// promoted constructor parameter is also a field of ownerID.
+func (b *builder) phpSignature(id, ownerID string, n *ts.Node, src []byte) {
+	if params := n.ChildByFieldName("parameters"); params != nil {
+		for i := uint(0); i < params.NamedChildCount(); i++ {
+			p := params.NamedChild(i)
+			switch p.Kind() {
+			case "simple_parameter":
+			case "property_promotion_parameter":
+				b.phpTypeRefs(ownerID, p.ChildByFieldName("type"), src)
+			default:
+				continue
+			}
+			b.phpTypeRefs(id, p.ChildByFieldName("type"), src)
+		}
+	}
+	b.phpTypeRefs(id, n.ChildByFieldName("return_type"), src)
+}
+
+// phpTypeRefs records a reference from id to each class t names. Builtin
+// types and the self, static and parent keywords give nothing.
+func (b *builder) phpTypeRefs(id string, t *ts.Node, src []byte) {
+	if t == nil || id == "" {
+		return
+	}
+	switch t.Kind() {
+	case "primitive_type":
+	case "name", "qualified_name":
+		switch name := phpLast(t, src); strings.ToLower(name) {
+		case "self", "static", "parent":
+		default:
+			b.refQ(id, name, "references", phpQual(t, src), line(t))
+		}
+	default:
+		for i := uint(0); i < t.NamedChildCount(); i++ {
+			b.phpTypeRefs(id, t.NamedChild(i), src)
+		}
+	}
+}
+
+// phpQual returns the namespace a qualified name is written with, or "".
+func phpQual(n *ts.Node, src []byte) string {
+	t := n.Utf8Text(src)
+	return strings.Trim(t[:strings.LastIndexByte(t, '\\')+1], "\\")
+}
+
+// phpLast returns the last segment of a possibly qualified name.
+func phpLast(n *ts.Node, src []byte) string {
+	t := n.Utf8Text(src)
+	return t[strings.LastIndexByte(t, '\\')+1:]
 }

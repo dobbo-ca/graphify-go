@@ -337,14 +337,45 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 		}
 	}
 
+	// `@D export class X {}` hangs the decorator on the export statement.
+	b.jsDecorators(classID, n, src)
+	if p := n.Parent(); p != nil && p.Kind() == "export_statement" {
+		b.jsDecorators(classID, p, src)
+	}
+
 	body := n.ChildByFieldName("body")
 	if body == nil {
 		return
 	}
+	var pending []*ts.Node // decorators written before the next member
+	var overloads []*ts.Node
 	for i := uint(0); i < body.ChildCount(); i++ {
 		m := body.Child(i)
 		if m.Kind() == "class_static_block" {
 			b.jsChildren(m, src, "")
+			continue
+		}
+		if m.Kind() == "decorator" {
+			pending = append(pending, m)
+			continue
+		}
+		// A comment or a `;` does not part a decorator from its member.
+		if !m.IsNamed() || m.Kind() == "comment" {
+			continue
+		}
+		// An overload signature adds its types to the method it overloads.
+		if m.Kind() == "method_signature" {
+			overloads = append(overloads, m)
+		}
+		decos := pending
+		pending = nil
+		if m.Kind() == "public_field_definition" || m.Kind() == "field_definition" {
+			// A field is no node: its type and its decorators are the class's.
+			b.jsTypeNames(classID, m.ChildByFieldName("type"), src, line(m))
+			b.jsDecorators(classID, m, src)
+			for _, d := range decos {
+				b.jsDecorator(classID, d, src)
+			}
 			continue
 		}
 		if m.Kind() != "method_definition" && m.Kind() != "abstract_method_signature" {
@@ -361,7 +392,78 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
 		})
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file, Abstract: m.Kind() == "abstract_method_signature"})
+		b.jsDecorators(mid, m, src)
+		for _, d := range decos {
+			b.jsDecorator(mid, d, src)
+		}
+		b.jsSignature(mid, m, src)
 		b.jsFnBody(m.ChildByFieldName("body"), mid, src)
+	}
+	for _, m := range overloads {
+		if mid := b.id(name, fieldText(m, "name", src)); b.seen[mid] {
+			b.jsSignature(mid, m, src)
+		}
+	}
+}
+
+// jsPrimitive holds the type names that are no symbols.
+var jsPrimitive = set("string", "number", "boolean", "any", "unknown", "void", "never", "object",
+	"null", "undefined", "bigint", "symbol", "this")
+
+// jsSignature records the types the parameters and the return type of the
+// method m name, and the decorators of its parameters.
+func (b *builder) jsSignature(id string, m *ts.Node, src []byte) {
+	if ps := m.ChildByFieldName("parameters"); ps != nil {
+		for i := uint(0); i < ps.NamedChildCount(); i++ {
+			p := ps.NamedChild(i)
+			b.jsTypeNames(id, p.ChildByFieldName("type"), src, line(m))
+			b.jsDecorators(id, p, src)
+		}
+	}
+	b.jsTypeNames(id, m.ChildByFieldName("return_type"), src, line(m))
+}
+
+// jsTypeNames records each name under the type annotation n as a type
+// reference of id. Resolve keeps only the names the file imports.
+func (b *builder) jsTypeNames(id string, n *ts.Node, src []byte, loc model.Loc) {
+	walk(n, func(cv ts.Node) bool {
+		c := &cv
+		switch c.Kind() {
+		case "nested_type_identifier":
+			if name := fieldText(c, "name", src); !jsPrimitive[name] {
+				b.typeRef(id, name, "references", loc)
+			}
+			return false
+		case "type_identifier", "identifier":
+			if name := c.Utf8Text(src); !jsPrimitive[name] {
+				b.typeRef(id, name, "references", loc)
+			}
+		}
+		return true
+	})
+}
+
+// jsDecorators records the decorators that are children of n.
+func (b *builder) jsDecorators(id string, n *ts.Node, src []byte) {
+	for i := uint(0); i < n.ChildCount(); i++ {
+		if d := n.Child(i); d.Kind() == "decorator" {
+			b.jsDecorator(id, d, src)
+		}
+	}
+}
+
+// jsDecorator records a references edge from id to the name of decorator d:
+// `@D`, `@D(x)`, and the last name of `@ns.D`.
+func (b *builder) jsDecorator(id string, d *ts.Node, src []byte) {
+	e := firstNamed(d)
+	if e != nil && e.Kind() == "call_expression" {
+		e = e.ChildByFieldName("function")
+	}
+	if e != nil && e.Kind() == "member_expression" {
+		e = e.ChildByFieldName("property")
+	}
+	if e != nil && (e.Kind() == "identifier" || e.Kind() == "property_identifier") {
+		b.ref(id, e.Utf8Text(src), "references", true, line(d))
 	}
 }
 
@@ -374,6 +476,15 @@ func (b *builder) jsNamedType(n *ts.Node, src []byte) {
 	b.def(id, name, name, line(n))
 	if c := jsChild(n, "extends_type_clause"); c != nil {
 		b.jsHeritage(id, c, src)
+	}
+	// An interface references its property types; its method signatures
+	// wait for their nodes (graphify-go-vi5.9).
+	if body := n.ChildByFieldName("body"); body != nil && n.Kind() == "interface_declaration" {
+		for i := uint(0); i < body.NamedChildCount(); i++ {
+			if m := body.NamedChild(i); m.Kind() == "property_signature" {
+				b.jsTypeNames(id, m.ChildByFieldName("type"), src, line(m))
+			}
+		}
 	}
 }
 
