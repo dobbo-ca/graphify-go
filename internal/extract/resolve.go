@@ -100,17 +100,16 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		}
 		for _, r := range results {
 			for _, d := range r.Defs {
-				global[d.Name] = append(global[d.Name], d.ID)
 				key := [2]string{d.File, d.Name}
+				// One definition in both branches of an #ifdef is one candidate.
 				if !contains(local[key], d.ID) {
+					global[d.Name] = append(global[d.Name], d.ID)
 					local[key] = append(local[key], d.ID)
 				}
 				idFile[d.ID] = d.File
-				if !d.Abstract && abstract[d.Name] {
+				if !d.Abstract && abstract[d.Name] && !contains(localC[key], d.ID) {
 					globalC[d.Name] = append(globalC[d.Name], d.ID)
-					if !contains(localC[key], d.ID) {
-						localC[key] = append(localC[key], d.ID)
-					}
+					localC[key] = append(localC[key], d.ID)
 				}
 			}
 		}
