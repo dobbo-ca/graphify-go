@@ -360,7 +360,8 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					name = tag
 				}
 			}
-			cFam := cSource[path.Ext(t.File)] || cHeader[path.Ext(t.File)]
+			ext := strings.ToLower(path.Ext(t.File))
+			cFam := cSource[ext] || cHeader[ext]
 			// A supertype or a type position names a type; a decorator can
 			// name a function.
 			cands := func(ids []string, name string) []string {
@@ -369,9 +370,14 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					ids = keep(ids, isType)
 				}
 				// A type of another C or C++ source file is not in scope,
-				// but for the struct behind a typedef of a header.
+				// but for one this file includes and for the struct behind
+				// a typedef.
 				if cFam && !viaTag {
-					ids = keep(ids, func(id string) bool { return idFile[id] == t.File || !cSource[path.Ext(idFile[id])] })
+					inc := imported.of(t.File)
+					ids = keep(ids, func(id string) bool {
+						f := idFile[id]
+						return f == t.File || inc[f] || !cSource[strings.ToLower(path.Ext(f))]
+					})
 				}
 				return ids
 			}
