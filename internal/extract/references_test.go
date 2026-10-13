@@ -499,3 +499,71 @@ function top(a: Point): Box { return null as any; }
 		}
 	}
 }
+
+// Upstream 0.9.88 on fixtures java1 to java5: field, parameter, return,
+// record component and annotation-element types, generic arguments and
+// annotations give references; an unresolved base gets a stub. Not copied:
+// a stub for a type parameter, a type position bound to an enum constant.
+func TestJavaReferences(t *testing.T) {
+	nodes, edges := resolveSrc(t, [][2]string{
+		{"a/Base.java", "package a;\npublic class Base {}\n"},
+		{"a/Dep.java", "package a;\npublic class Dep {}\n"},
+		{"a/Anno.java", "package a;\npublic @interface Anno {}\n"},
+		{"a/St.java", "package a;\npublic enum St { OK, NO }\n"},
+		{"a/Svc.java", `package a;
+import java.util.List;
+@Anno @Deprecated @org.x.Foo(Cls.class)
+public class Svc<T extends Num> extends Base implements Gone, Iface<Dep> {
+  Dep dep;
+  List<Later[]> arr;
+  java.util.Map<String, Dep> mp;
+  OK ok;
+  T tt;
+  int prim;
+  Svc(Hidden h, Ghost9... va) {}
+  @Override Base get(Ghost g, T t, List<Dep> l) { return null; }
+  <U> Svc<Dep> gen(U u, Svc s) { return null; }
+}
+class Later {}
+record Rec(Base a, Ghost3 g) {}
+enum En { A { Ghost15 f; }, B; Dep f; }
+@interface Anno2 { Dep q(); Class<?> v(); }
+`},
+	})
+	for _, w := range [][3]string{
+		{"a/Svc.java:Svc", "inherits", "a/Base.java:Base"},
+		{"a/Svc.java:Svc", "implements", ":Gone"},
+		{"a/Svc.java:Svc", "implements", ":Iface"},
+		{"a/Svc.java:Svc", "references", "a/Dep.java:Dep"},
+		{"a/Svc.java:Svc", "references", "a/Anno.java:Anno"},
+		{"a/Svc.java:Svc", "references", ":Deprecated"},
+		{"a/Svc.java:Svc", "references", ":org.x.Foo"},
+		{"a/Svc.java:Svc", "references", ":Cls"},
+		{"a/Svc.java:Svc", "references", "a/Svc.java:Later"},
+		{"a/Svc.java:Svc", "references", ":OK"},
+		{"a/Svc.java:Svc.Svc()", "references", ":Hidden"},
+		{"a/Svc.java:Svc.get()", "references", "a/Base.java:Base"},
+		{"a/Svc.java:Svc.get()", "references", ":Override"},
+		{"a/Svc.java:Svc.get()", "references", ":Ghost"},
+		{"a/Svc.java:Svc.gen()", "references", "a/Svc.java:Svc"},
+		{"a/Svc.java:Rec", "references", ":Ghost3"},
+		{"a/Svc.java:En", "references", "a/Dep.java:Dep"},
+		{"a/Svc.java:A", "references", ":Ghost15"},
+		{"a/Svc.java:Anno2", "references", "a/Dep.java:Dep"},
+	} {
+		if !edges[w] {
+			t.Errorf("missing edge %v", w)
+		}
+	}
+	for _, label := range []string{"T", "U", "Num", "String", "List", "Map", "Class", "int"} {
+		if nodes[[2]string{"", label}] {
+			t.Errorf("unexpected stub %q", label)
+		}
+	}
+	if edges[[3]string{"a/Svc.java:Svc", "references", "a/St.java:OK"}] {
+		t.Error("type bound to an enum constant")
+	}
+	if nodes[[2]string{"", "Ghost9"}] {
+		t.Error("varargs parameter gave a stub")
+	}
+}
