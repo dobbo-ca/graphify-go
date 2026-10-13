@@ -649,7 +649,15 @@ sites:
 			// A builtin names nothing of another file unless an import or a
 			// def of this file has its name. A star import can bind any name.
 			if val == "" && pyBuiltins[c.callee] && b.pyMods != nil && !b.pyOwn[c.callee] {
-				continue
+				// An import of a function around the call can name it even
+				// when another binding hides which one does.
+				own := false
+				for s, ok := c.caller, true; ok && !own; s, ok = parent[s] {
+					_, own = mods[[2]string{s, c.callee}]
+				}
+				if !own {
+					continue
+				}
 			}
 			b.call(c.caller, c.callee, c.loc)
 			if mod = val; !strings.Contains(val, ":") {

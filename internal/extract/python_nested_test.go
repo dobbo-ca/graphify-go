@@ -520,6 +520,14 @@ func TestPythonBuiltinCalls(t *testing.T) {
 			"b.py": "def open(p): pass\n",
 			"a.py": "def g():\n    from b import open\nclass K:\n    from b import open\n    def m(self):\n        return open('x')\ndef f():\n    return open('x')\n",
 		}, nil},
+		{"an import inside the function beside another binding", map[string]string{
+			"b.py": "def open(p): pass\n",
+			"a.py": "def f():\n    try:\n        from b import open\n    except ImportError:\n        open = None\n    return open('x')\n",
+		}, []string{"f() -calls-> open()"}},
+		{"an import of the function around beside a parameter of a def", map[string]string{
+			"b.py": "def open(p): pass\n",
+			"a.py": "def f():\n    from b import open\n    def cb(open): pass\n    def g():\n        return open('x')\n",
+		}, []string{"g() -calls-> open()"}},
 		{"exit of the site module", map[string]string{
 			"b.py": "class App:\n    def exit(self): pass\n",
 			"a.py": "def f():\n    exit(1)\n",
