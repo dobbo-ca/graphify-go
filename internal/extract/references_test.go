@@ -277,3 +277,73 @@ func TestPythonPlainImportAndQualifiedName(t *testing.T) {
 		}
 	}
 }
+
+// Upstream 0.9.88 on fixture gox: signature and struct field types give
+// references; pkg.T binds through the import path or gets a stub labelled
+// with it. Not copied: the same-package Dup left on a stub, no edge for a
+// variadic parameter.
+func TestGoReferences(t *testing.T) {
+	nodes, edges := resolveSrc(t, [][2]string{
+		{"go.mod", "example.com/m"},
+		{"lib/t.go", "package lib\n\ntype Thing struct{}\n\ntype Dup struct{}\n"},
+		{"app/b.go", "package app\n\nfunc G(l Local, d Dup) Inner { return 0 }\n"},
+		{"app/a.go", `package app
+
+import (
+	"context"
+	"io"
+
+	lb "example.com/m/lib"
+)
+
+type Dup struct{}
+
+type Inner int
+
+type Gen[T any] struct{ V T }
+
+type Num interface{ ~int | Inner }
+
+type Local struct {
+	A lb.Thing
+	B Gen[io.Reader]
+	C struct{ In Inner }
+	D func(ctx context.Context) (*Local, error)
+	E []*lb.Dup
+	F Dup
+	G unknownpkg.T
+	Inner
+}
+
+func (g *Gen[T]) Get(d Dup, x T) lb.Dup { return lb.Dup{} }
+
+func F[U any](l *Local, u U, vs ...Inner) (n int, err error) { return }
+`},
+	})
+	for _, w := range [][3]string{
+		{"app/a.go:Local", "references", "lib/t.go:Thing"},
+		{"app/a.go:Local", "references", "app/a.go:Gen"},
+		{"app/a.go:Local", "references", ":io.Reader"},
+		{"app/a.go:Local", "references", "app/a.go:Inner"}, // field C; the embedded Inner is no reference
+		{"app/a.go:Local", "references", ":context.Context"},
+		{"app/a.go:Local", "references", "lib/t.go:Dup"},
+		{"app/a.go:Local", "references", "app/a.go:Dup"},
+		{"app/a.go:Local", "references", ":unknownpkg.T"},
+		{"app/a.go:Num", "references", "app/a.go:Inner"},
+		{"app/a.go:Gen.Get()", "references", "app/a.go:Dup"},
+		{"app/a.go:Gen.Get()", "references", "lib/t.go:Dup"},
+		{"app/a.go:F()", "references", "app/a.go:Local"},
+		{"app/a.go:F()", "references", "app/a.go:Inner"},
+		{"app/b.go:G()", "references", "app/a.go:Dup"},
+		{"app/b.go:G()", "references", "app/a.go:Local"},
+	} {
+		if !edges[w] {
+			t.Errorf("missing edge %v", w)
+		}
+	}
+	for _, label := range []string{"T", "U", "int", "error", "Dup", "Reader", "Context"} {
+		if nodes[[2]string{"", label}] {
+			t.Errorf("unexpected stub %q", label)
+		}
+	}
+}

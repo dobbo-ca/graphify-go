@@ -343,6 +343,7 @@ type builder struct {
 	pyOwn      map[string]bool   // names a module-level def, class or from-import binds
 	pyBodies   []pyBody          // function bodies awaiting the Python call walk
 	pyTypeVars map[string]bool   // module names bound by TypeVar
+	goPkgs     map[string]string // import name -> import path
 	// rubyMethods holds method names defined in the file (bare self-sends).
 	rubyMethods map[string]bool
 	jsBodies    []jsBody             // function bodies awaiting the JS call walk

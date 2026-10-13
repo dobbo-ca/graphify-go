@@ -349,8 +349,14 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 			}
 			tgt, stubOnly := "", false
 			own := local[[2]string{t.File, name}]
+			goQual := t.Qual != "" && strings.HasSuffix(t.File, ".go")
 			if js {
 				tgt = jm.supertype(t, &r, bound)
+			} else if goQual {
+				// pkg.T names T in the package of that import path only.
+				files := importTargets(Imp{File: t.File, Spec: t.Qual}, corpus, goPkgs, goMods, goTargets)
+				tgt = unique(cands(global[name], name), func(id string) bool { return contains(files, idFile[id]) })
+				stubOnly = true
 			} else if ids := cands(own, name); len(ids) == 1 {
 				tgt = ids[0]
 			} else if len(typeDefs(own, name, idFile)) > 0 {
@@ -376,6 +382,11 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					}
 				}
 			}
+			if tgt == "" && !stubOnly && ref && strings.HasSuffix(t.File, ".go") {
+				// A Go package is a directory: its own T comes first.
+				dir := path.Dir(filepath.ToSlash(t.File))
+				tgt = unique(cands(global[name], name), func(id string) bool { return path.Dir(idFile[id]) == dir })
+			}
 			if tgt == "" && !js && !stubOnly {
 				tgt = disambiguate(cands(global[name], name), t.File, idFile, &imported)
 			}
@@ -388,13 +399,17 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				}
 				// The stub id is the id a definition of Name in this file
 				// has; a node that already has that id owns it.
-				tgt = idutil.MakeID(t.File, t.Name)
+				label := t.Name
+				if goQual {
+					label = t.Qual + "." + t.Name
+				}
+				tgt = idutil.MakeID(t.File, label)
 				if _, taken := node(tgt); taken {
 					continue
 				}
 				if !stubSeen[tgt] {
 					stubSeen[tgt] = true
-					stubs = append(stubs, model.Node{ID: tgt, Label: t.Name, FileType: "code"})
+					stubs = append(stubs, model.Node{ID: tgt, Label: label, FileType: "code"})
 				}
 			} else if t.Relation == "inherits" {
 				supers[t.FromID] = append(supers[t.FromID], tgt)
