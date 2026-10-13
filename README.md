@@ -38,6 +38,10 @@ Or from source (pure Go, no C toolchain needed):
 go install github.com/dobbo-ca/graphify-go/cmd/graphify@latest
 ```
 
+The parser is [gositter](https://github.com/dobbo-ca/gositter), a Go port of
+the tree-sitter runtime. `go install` and `go build` work with `CGO_ENABLED=0`
+and cross-compile every target from one host.
+
 Releases are cut automatically from conventional commits (Uplift) and published
 as GitHub releases + a Homebrew formula on every merge to `main`.
 
@@ -96,6 +100,13 @@ detect → extract → build → cluster → analyze → report → export
 
 ### Performance notes
 
+Cold build of the Kubernetes source tree (M4 Pro, 14 cores):
+
+| Version | Wall time | Peak memory |
+|---------|-----------|-------------|
+| v0.10.1 (cgo tree-sitter) | 13.1 s | 3.3 GB |
+| now (gositter) | 1.5 s | 0.5 GB |
+
 Two places spend CPU to keep peak memory down, both on purpose:
 
 - Parsers are pooled, and each one hands its subtree heap chunks back to a
@@ -147,7 +158,7 @@ go tool pprof -sample_index=alloc_space -top mem.pprof
 
 Languages today: **Go, JavaScript, TypeScript, Terraform/HCL, Python, Rust, C,
 C++, Java, C#, Ruby, PHP, Bash, Scala, Julia, Verilog/SystemVerilog, Kotlin,
-Lua, Zig** — every grammar with a Go tree-sitter binding. `detect` also honours
+Lua, Zig**. Each one has a grammar package in gositter. `detect` also honours
 `.gitignore`.
 
 The original's LLM-based semantic extraction, video/image/Office ingest,
