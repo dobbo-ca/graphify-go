@@ -22,6 +22,7 @@ func extractPython(rel string, src []byte) Result {
 	defer done()
 	b := newBuilder(rel)
 	b.pyMods = pyModules(root, src)
+	b.pyTypeVars = pyTypeVarNames(root, src)
 
 	for i := uint(0); i < root.ChildCount(); i++ {
 		b.pyStatement(root.Child(i), src)
@@ -50,13 +51,15 @@ func extractPython(rel string, src []byte) Result {
 func (b *builder) pyStatement(n *ts.Node, src []byte) {
 	switch n.Kind() {
 	case "decorated_definition":
-		if d := n.ChildByFieldName("definition"); d != nil {
-			b.pyStatement(d, src)
+		if d := n.ChildByFieldName("definition"); d != nil && d.Kind() == "function_definition" {
+			b.pyFunc(d, n, src)
+		} else if d != nil && d.Kind() == "class_definition" {
+			b.pyClass(d, n, src)
 		}
 	case "function_definition":
-		b.pyFunc(n, src)
+		b.pyFunc(n, nil, src)
 	case "class_definition":
-		b.pyClass(n, src)
+		b.pyClass(n, nil, src)
 	case "import_statement", "import_from_statement", "if_statement", "try_statement", "with_statement",
 		"for_statement", "while_statement", "match_statement":
 		b.pyNestedImports(n, src, false)
@@ -86,23 +89,26 @@ func (b *builder) pyNestedImports(n *ts.Node, src []byte, typeOnly bool) {
 	}
 }
 
-func (b *builder) pyFunc(n *ts.Node, src []byte) {
+// pyFunc and pyClass take the decorated_definition around n, or nil.
+func (b *builder) pyFunc(n, deco *ts.Node, src []byte) {
 	name := fieldText(n, "name", src)
 	if name == "" {
 		return
 	}
 	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
+	b.pyRefs(id, n, deco, src)
 	b.pyBodies = append(b.pyBodies, pyBody{*n, id, false})
 }
 
-func (b *builder) pyClass(n *ts.Node, src []byte) {
+func (b *builder) pyClass(n, deco *ts.Node, src []byte) {
 	name := fieldText(n, "name", src)
 	if name == "" {
 		return
 	}
 	classID := b.id(name)
 	b.def(classID, name, name, line(n))
+	b.pyDecorators(classID, deco, src)
 	b.pySuperclasses(classID, n, src)
 
 	body := n.ChildByFieldName("body")
@@ -111,7 +117,9 @@ func (b *builder) pyClass(n *ts.Node, src []byte) {
 	}
 	for i := uint(0); i < body.ChildCount(); i++ {
 		m := body.Child(i)
+		var mdeco *ts.Node
 		if m.Kind() == "decorated_definition" {
+			mdeco = m
 			m = m.ChildByFieldName("definition")
 			if m == nil {
 				continue
@@ -132,6 +140,7 @@ func (b *builder) pyClass(n *ts.Node, src []byte) {
 			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
 		})
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
+		b.pyRefs(mid, m, mdeco, src)
 		b.pyBodies = append(b.pyBodies, pyBody{*m, mid, true})
 	}
 }
@@ -857,6 +866,129 @@ func (b *builder) pySuperclasses(classID string, n *ts.Node, src []byte) {
 		if arg.Kind() == "keyword_argument" {
 			continue
 		}
+		// Only a plain name gets a stub when no definition binds it.
+		if arg.Kind() == "identifier" {
+			b.ref(classID, arg.Utf8Text(src), "inherits", false, line(n))
+			continue
+		}
 		b.typeRef(classID, baseTypeName(arg.Utf8Text(src)), "inherits", line(n))
 	}
+}
+
+// pyTypeSkip holds the names an annotation mentions that are not corpus
+// symbols: typing containers, scalar builtins and unittest.mock.
+var pyTypeSkip = set("list", "dict", "set", "tuple", "frozenset", "type",
+	"List", "Dict", "Set", "Tuple", "FrozenSet", "Type",
+	"Optional", "Union", "Sequence", "Iterable", "Mapping", "MutableMapping",
+	"Iterator", "Callable", "Awaitable", "AsyncIterable", "AsyncIterator", "Coroutine",
+	"Generator", "AsyncGenerator", "ContextManager", "AsyncContextManager",
+	"Annotated", "ClassVar", "Final", "Literal", "Concatenate", "ParamSpec", "TypeVar",
+	"None", "Ellipsis", "Self",
+	"str", "int", "float", "bool", "bytes", "bytearray", "complex", "object", "True", "False",
+	"MagicMock", "Mock", "AsyncMock", "NonCallableMock", "NonCallableMagicMock", "PropertyMock", "patch", "sentinel")
+
+// pyDecoSkip holds the builtin and stdlib decorators.
+var pyDecoSkip = set("property", "staticmethod", "classmethod", "abstractmethod",
+	"abstractproperty", "cached_property", "wraps", "lru_cache", "cache",
+	"singledispatch", "singledispatchmethod", "total_ordering",
+	"contextmanager", "asynccontextmanager", "overload", "override",
+	"final", "no_type_check", "runtime_checkable", "dataclass")
+
+func set(names ...string) map[string]bool {
+	m := make(map[string]bool, len(names))
+	for _, n := range names {
+		m[n] = true
+	}
+	return m
+}
+
+// pyRefs records a references edge from the function or method id to each
+// type its parameter and return annotations name, and to its decorators.
+func (b *builder) pyRefs(id string, fn, deco *ts.Node, src []byte) {
+	b.pyDecorators(id, deco, src)
+	if params := fn.ChildByFieldName("parameters"); params != nil {
+		for i := uint(0); i < params.NamedChildCount(); i++ {
+			if p := params.NamedChild(i); p.Kind() == "typed_parameter" || p.Kind() == "typed_default_parameter" {
+				b.pyTypeNames(id, p.ChildByFieldName("type"), src, line(fn))
+			}
+		}
+	}
+	b.pyTypeNames(id, fn.ChildByFieldName("return_type"), src, line(fn))
+}
+
+// pyTypeNames walks an annotation. A string annotation names nothing.
+func (b *builder) pyTypeNames(id string, n *ts.Node, src []byte, loc model.Loc) {
+	if n == nil {
+		return
+	}
+	switch n.Kind() {
+	case "identifier", "attribute":
+		// A module variable made by TypeVar is a type parameter, not a type.
+		if name := baseTypeName(n.Utf8Text(src)); !pyTypeSkip[name] && !b.pyTypeVars[name] {
+			b.ref(id, name, "references", false, loc)
+		}
+		return
+	}
+	for i := uint(0); i < n.NamedChildCount(); i++ {
+		b.pyTypeNames(id, n.NamedChild(i), src, loc)
+	}
+}
+
+// pyDecorators records a references edge from id to each decorator of the
+// decorated_definition n.
+func (b *builder) pyDecorators(id string, n *ts.Node, src []byte) {
+	if n == nil {
+		return
+	}
+	for i := uint(0); i < n.NamedChildCount(); i++ {
+		d := n.NamedChild(i)
+		if d.Kind() != "decorator" || d.NamedChildCount() == 0 {
+			continue
+		}
+		expr := d.NamedChild(0)
+		// @x.setter is the property protocol.
+		text := expr.Utf8Text(src)
+		if strings.HasSuffix(text, ".setter") || strings.HasSuffix(text, ".getter") || strings.HasSuffix(text, ".deleter") {
+			continue
+		}
+		if expr.Kind() == "call" {
+			if f := expr.ChildByFieldName("function"); f != nil {
+				expr = f
+			}
+		}
+		if expr.Kind() == "attribute" {
+			expr = expr.ChildByFieldName("attribute")
+		}
+		if expr == nil || expr.Kind() != "identifier" {
+			continue
+		}
+		if name := expr.Utf8Text(src); !pyDecoSkip[name] {
+			b.ref(id, name, "references", true, line(d))
+		}
+	}
+}
+
+// pyTypeVarNames returns the module-level names bound by `T = TypeVar(...)`,
+// ParamSpec or TypeVarTuple.
+func pyTypeVarNames(root *ts.Node, src []byte) map[string]bool {
+	var out map[string]bool
+	for i := uint(0); i < root.NamedChildCount(); i++ {
+		a := root.NamedChild(i)
+		if a.Kind() != "expression_statement" || a.NamedChildCount() != 1 {
+			continue
+		}
+		a = a.NamedChild(0)
+		l, r := a.ChildByFieldName("left"), a.ChildByFieldName("right")
+		if a.Kind() != "assignment" || l == nil || r == nil || l.Kind() != "identifier" || r.Kind() != "call" {
+			continue
+		}
+		switch baseTypeName(fieldText(r, "function", src)) {
+		case "TypeVar", "ParamSpec", "TypeVarTuple":
+			if out == nil {
+				out = map[string]bool{}
+			}
+			out[l.Utf8Text(src)] = true
+		}
+	}
+	return out
 }

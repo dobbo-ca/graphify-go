@@ -122,3 +122,63 @@ func TestUnresolvedBaseWithoutStubDrops(t *testing.T) {
 		}
 	}
 }
+
+// Upstream 0.9.88 on the same two files (fixtures pyx, py1): parameter and
+// return annotations and decorators give references; a plain unresolved base
+// and an unresolved name give a sourceless stub.
+func TestPythonReferences(t *testing.T) {
+	nodes, edges := resolveSrc(t, [][2]string{
+		{"pkg/m.py", "class Real:\n    pass\n\n\ndef traced(f):\n    return f\n"},
+		{"pkg/a.py", `from typing import Optional, TypeVar
+from .m import Real, traced
+
+T = TypeVar("T")
+
+
+class K(Exception, Generic[T], em.Base):
+    @staticmethod
+    @traced
+    def run(self, x: T, y: "Real", *a: Va, k: Optional[Real] = None) -> Later:
+        return None
+
+    @property
+    def p(self) -> int:
+        return 1
+
+    @p.setter
+    def p(self, v: em.Thing):
+        pass
+
+
+class Later:
+    pass
+
+
+@other.deco(1)
+@functools.wraps(K)
+async def f(a: list[Real], b: traced) -> dict[str, Gone]:
+    return {}
+`},
+	})
+	for _, w := range [][3]string{
+		{"pkg/a.py:K", "inherits", ":Exception"},
+		{"pkg/a.py:K.run()", "references", "pkg/m.py:traced()"},
+		{"pkg/a.py:K.run()", "references", ":Va"},
+		{"pkg/a.py:K.run()", "references", "pkg/m.py:Real"},
+		{"pkg/a.py:K.run()", "references", "pkg/a.py:Later"},
+		{"pkg/a.py:K.p()", "references", ":Thing"},
+		{"pkg/a.py:f()", "references", ":deco"},
+		{"pkg/a.py:f()", "references", "pkg/m.py:Real"},
+		{"pkg/a.py:f()", "references", ":Gone"},
+		{"pkg/a.py:f()", "references", ":traced"}, // a function is not a type
+	} {
+		if !edges[w] {
+			t.Errorf("missing edge %v", w)
+		}
+	}
+	for _, label := range []string{"T", "Generic", "Base", "Optional", "int", "str", "dict", "list", "staticmethod", "property", "setter", "wraps", "p"} {
+		if nodes[[2]string{"", label}] {
+			t.Errorf("unexpected stub %q", label)
+		}
+	}
+}
