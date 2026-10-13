@@ -442,3 +442,60 @@ geo::Point Shape::far(Other o) { return geo::Point(); }
 		}
 	}
 }
+
+// Upstream 0.9.88 on fixtures ts1, tsdeco, tsdeco2, tsshape: a class or
+// interface member references the types the file imports by name, never a
+// stub; a decorator binds or gets a stub. Not copied: a type position bound
+// to a function, an aliased decorator left on a stub.
+func TestTSReferences(t *testing.T) {
+	nodes, edges := resolveSrc(t, [][2]string{
+		{"models.ts", "export interface Point {}\nexport class Box {}\nexport function traced(t: any) {}\nexport function helper() {}\n"},
+		{"svc.ts", `import { Point, Box, traced as tr, helper } from './models';
+import { Remote } from 'pkg';
+class Local {}
+interface Shape { origin: Point; area(p: Box): Local; }
+@tr
+@Injectable()
+export class Svc<T extends Point> {
+  private box: Box;
+  @Input() tags: Array<Point | Local>;
+  bad: helper;
+  constructor(private r: Remote, @Inject('x') p: Map<string, Box>) {}
+  @ng.HostListener('x')
+  run(b: Box, u: Unknown): Promise<Point> { return null as any; }
+}
+function top(a: Point): Box { return null as any; }
+`},
+	})
+	for _, w := range [][3]string{
+		{"svc.ts:Shape", "references", "models.ts:Point"},
+		{"svc.ts:Svc", "references", "models.ts:Box"},
+		{"svc.ts:Svc", "references", "models.ts:Point"},
+		{"svc.ts:Svc", "references", "models.ts:traced()"},
+		{"svc.ts:Svc", "references", ":Injectable"},
+		{"svc.ts:Svc", "references", ":Input"},
+		{"svc.ts:Svc.constructor()", "references", "models.ts:Box"},
+		{"svc.ts:Svc.constructor()", "references", ":Inject"},
+		{"svc.ts:Svc.run()", "references", "models.ts:Box"},
+		{"svc.ts:Svc.run()", "references", "models.ts:Point"},
+		{"svc.ts:Svc.run()", "references", ":HostListener"},
+	} {
+		if !edges[w] {
+			t.Errorf("missing edge %v", w)
+		}
+	}
+	for _, w := range [][3]string{
+		{"svc.ts:Svc", "references", "svc.ts:Local"},       // a same-file type gives nothing upstream
+		{"svc.ts:Svc", "references", "models.ts:helper()"}, // a function is no type
+		{"svc.ts:top()", "references", "models.ts:Point"},  // a top-level function gives nothing upstream
+	} {
+		if edges[w] {
+			t.Errorf("unexpected edge %v", w)
+		}
+	}
+	for _, label := range []string{"Unknown", "Remote", "Map", "Promise", "Array", "T", "helper"} {
+		if nodes[[2]string{"", label}] {
+			t.Errorf("unexpected stub %q", label)
+		}
+	}
+}

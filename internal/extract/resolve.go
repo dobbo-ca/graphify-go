@@ -393,7 +393,22 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 			tgt, stubOnly := "", noTag
 			own := local[[2]string{t.File, name}]
 			goQual := t.Qual != "" && strings.HasSuffix(t.File, ".go")
-			if js {
+			if js && ref && !t.Deco {
+				// A type position binds a type the file imports by name.
+				if tgt = bound[t.Name]; tgt != "" && !isType(tgt) {
+					tgt = ""
+				}
+			} else if js && ref {
+				// A decorator: the file's own name, an import, or the one
+				// definition of the corpus.
+				if ids := typeDefs(own, name, idFile); len(ids) > 0 {
+					tgt = ids[0]
+				} else if tgt = bound[t.Name]; tgt == "" {
+					if ids := typeDefs(global[name], name, idFile); len(ids) == 1 {
+						tgt = ids[0]
+					}
+				}
+			} else if js {
 				tgt = jm.supertype(t, &r, bound)
 			} else if goQual {
 				// pkg.T names T in the package of that import path only.
