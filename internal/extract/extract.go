@@ -148,9 +148,11 @@ type Result struct {
 	// File is the file the Calls were made in.
 	File string
 	// CallMods runs beside Calls, as far as the last entry set (Python only):
-	// the module Recv names by an unshadowed import, or for a bare call
-	// "module:name", the `from module import name` that binds its callee. A
-	// module that ends in ":" binds in the corpus alone, never as external.
+	// what an unshadowed import binds Recv, or the callee of a bare call, to.
+	// "module" is a plain import and "module:name" a `from module import name`.
+	// A last ":" marks a binding that never falls back: a receiver is then no
+	// external module, and a bare callee of an import inside the function
+	// binds to nothing else (":" alone when that import names no definition).
 	CallMods      []string
 	TypeRefs      []TypeRef
 	Imps          []Imp

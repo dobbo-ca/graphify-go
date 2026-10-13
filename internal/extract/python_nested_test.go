@@ -343,6 +343,60 @@ def f():
 			"mod.py": "def top(): pass\n",
 			"cb.py":  "class Cls:\n    from mod import top\n",
 		}, []model.Relation{model.RelImports}, []string{"cb.py -imports-> top()"}},
+		// Round 2.
+		{"two nested defs of one id are one node that both names reach", map[string]string{
+			"other.py": "def helper(): pass\n",
+			"m.py": `def under():
+    def _helper(): pass
+    def helper():
+        return _helper()
+    return helper()
+`}, []model.Relation{model.RelCalls}, []string{"under() -calls-> _helper()"}},
+		{"an import in the body of a local class is no name of its methods", map[string]string{
+			"a.py": "def dumps(): pass\n", "b.py": "def dumps(): pass\n",
+			"m.py": `from a import dumps
+def local_cls():
+    class C:
+        from b import dumps
+        def m(self):
+            return dumps()
+    dumps()
+`}, []model.Relation{model.RelCalls}, []string{"local_cls() -calls-> a.py:dumps()", "m() -calls-> a.py:dumps()"}},
+		{"a name the function imports twice or as a module binds nothing", map[string]string{
+			"a.py": "def f(): pass\n", "b.py": "def f(): pass\n", "c.py": "def f(): pass\n",
+			"app.py": `from a import f
+def cond(x):
+    if x:
+        from b import f
+    else:
+        from c import f
+    f()
+def plain():
+    import b as f
+    f()
+def ext():
+    from extlib import f
+    f()
+`}, []model.Relation{model.RelCalls}, nil},
+		{"the path of the import binds before the stem of its module", map[string]string{
+			"a/util.py": "def fmt(): pass\n",
+			"b/core.py": "def fmt(): pass\n",
+			"b/util.py": "from .core import fmt\n",
+			"main.py":   "from b.util import fmt\ndef main():\n    fmt()\n",
+		}, []model.Relation{model.RelCalls}, []string{"main() -calls-> b/core.py:fmt()"}},
+		{"a name the package binds is not its submodule", map[string]string{
+			"pkg/__init__.py": "from .config import config\n",
+			"pkg/config.py":   "class Config:\n    def load(self): pass\ndef load(): pass\ndef config(): pass\n",
+			"main.py":         "from pkg import config\ndef main():\n    config.load()\n",
+		}, []model.Relation{model.RelCalls}, nil},
+		{"a from-import of a bare relative module", map[string]string{
+			"pkg/__init__.py":     "def top(): pass\n",
+			"pkg/a.py":            "from . import top\n",
+			"pkg/sub/__init__.py": "from .. import top\n",
+			"far.py":              "from pkg.sub import top\n",
+		}, []model.Relation{model.RelImports}, []string{
+			"far.py -imports-> top()", "pkg/a.py -imports-> top()", "pkg/sub/__init__.py -imports-> top()",
+		}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

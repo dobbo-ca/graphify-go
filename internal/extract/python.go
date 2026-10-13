@@ -168,9 +168,6 @@ func (b *builder) pyImports(n *ts.Node, src []byte, typeOnly bool) {
 // (wildcard_import, no name field) carries no usable alias and is skipped.
 func (b *builder) pyImportAliases(n, mod *ts.Node, src []byte) {
 	stem := pyModuleStem(mod, src)
-	if stem == "" {
-		return
-	}
 	loc := line(n)
 	for i := uint(0); i < n.ChildCount(); i++ {
 		if n.FieldNameForChild(uint32(i)) != "name" {
@@ -337,15 +334,6 @@ func pyImportNames(st *ts.Node, src []byte, fn func(local, val string)) bool {
 	return true
 }
 
-// pyModuleOf returns the module a receiver bound to val names: the module of
-// a plain import, or the name of a from-import taken as a submodule.
-func pyModuleOf(val string) string {
-	if mod, name, ok := strings.Cut(val, ":"); ok {
-		return strings.TrimSuffix(mod, ".") + "." + name
-	}
-	return val
-}
-
 // The kinds pyBind acts on, then those of the pyCalls walk: pyBind's, the
 // local typer's and the call itself.
 var (
@@ -503,6 +491,10 @@ func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
 		in := scopes[len(scopes)-1]
 		if within(c, body) && pyImportNames(c, src, func(local, val string) {
 			b.pyInFuncAlias(local, val, line(c))
+			// A name of a class body is no name of the functions.
+			if in.id != in.fn {
+				return
+			}
 			key := [2]string{in.fn, local}
 			if old, dup := mods[key]; dup && old != val {
 				val = ""
@@ -538,14 +530,15 @@ func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
 						Source: in.fn, Target: sc.id, Relation: model.RelContains,
 						Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(c),
 					})
-					// A method of a local class is no name of the scope around
-					// it: the empty name keeps it out of the lookups.
-					scoped := name
-					if in.id != in.fn {
-						scoped = ""
-					}
-					b.jsScope(in.fn, scoped, sc.id)
 				}
+				// A method of a local class is no name of the scope around it:
+				// the empty name keeps it out of the lookups. Two names of
+				// one id (`_f`, `f`) both reach its node.
+				scoped := name
+				if in.id != in.fn {
+					scoped = ""
+				}
+				b.jsScope(in.fn, scoped, sc.id)
 			}
 			scopes = append(scopes, sc)
 			return true
@@ -600,8 +593,14 @@ sites:
 				}
 			}
 			b.call(c.caller, c.callee, c.loc)
-			if mod, _ = imported(c.caller, c.callee); !strings.Contains(mod, ":") {
+			val, inFn := imported(c.caller, c.callee)
+			if mod = val; !strings.Contains(val, ":") {
 				mod = ""
+			}
+			// An import in the function binds the callee to that and to
+			// nothing else, even when it names no definition.
+			if inFn {
+				mod += ":"
 			}
 		} else {
 			recv := c.recv
@@ -612,7 +611,7 @@ sites:
 			val, inFn := imported(c.caller, recv)
 			// Upstream gives a call on an external module to a top-level
 			// function, and to a plain module-level import, alone.
-			if mod = pyModuleOf(val); mod != "" && (inFn || c.caller != callerID || strings.Contains(val, ":")) {
+			if mod = val; mod != "" && (inFn || c.caller != callerID || strings.Contains(val, ":")) {
 				mod += ":"
 			}
 			if t := types[recv]; t != "" {

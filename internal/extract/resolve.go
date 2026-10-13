@@ -278,7 +278,16 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	// resolves a call to the unique (module_stem, symbol) definition with
 	// EXTRACTED confidence. Runs before the generic name pass and marks each
 	// resolved call site so the weaker name pass leaves it alone.
-	resolved := resolveImportGuided(results, idFile, &out)
+	// A Python module gives a name it imports to its own importers.
+	reexports := map[[2]string]*ImportAlias{} // file, local name
+	for _, r := range results {
+		for k := range r.ImportAliases {
+			if a := &r.ImportAliases[k]; !a.InFunc {
+				reexports[[2]string{r.File, a.Local}] = a
+			}
+		}
+	}
+	resolved := resolveImportGuided(results, idFile, &out, corpus, local, owner, reexports)
 
 	// Inheritance: a declared supertype name binds the same way a call does —
 	// same file first, then disambiguated among the definitions sharing the name.
@@ -327,15 +336,6 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		}
 	}
 
-	// A Python module gives a name it imports to its own importers.
-	reexports := map[[2]string]*ImportAlias{} // file, local name
-	for _, r := range results {
-		for k := range r.ImportAliases {
-			if a := &r.ImportAliases[k]; !a.InFunc {
-				reexports[[2]string{r.File, a.Local}] = a
-			}
-		}
-	}
 	// A Python file imports each top-level definition its from-imports name.
 	var pySyms []model.Edge
 	pyMod := map[[2]string]string{}
@@ -400,12 +400,22 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				// A Python import names the module of the receiver, or the
 				// module and name of a bare callee.
 				if i < len(r.CallMods) && r.CallMods[i] != "" {
-					spec, name := strings.TrimSuffix(r.CallMods[i], ":"), c.Callee
-					if c.Recv == "" {
-						spec, name, _ = strings.Cut(spec, ":")
+					cm := r.CallMods[i]
+					spec, name, from := strings.Cut(strings.TrimSuffix(cm, ":"), ":")
+					switch {
+					case c.Recv == "" && from:
+						tgt = pySymbol(r.File, spec, name, corpus, local, owner, reexports, pyMod)
+					case c.Recv == "":
+					case !from:
+						tgt = pySymbol(r.File, spec, c.Callee, corpus, local, owner, reexports, pyMod)
+					case pySymbol(r.File, spec, name, corpus, local, owner, reexports, pyMod) == "" && reexports[[2]string{pyMod[[2]string{r.File, spec}], name}] == nil:
+						// The name is the submodule unless the package binds it.
+						tgt = pySymbol(r.File, strings.TrimSuffix(spec, ".")+"."+name, c.Callee, corpus, local, owner, reexports, pyMod)
 					}
-					if tgt = pySymbol(r.File, spec, name, corpus, local, owner, reexports, pyMod); tgt != "" {
+					if tgt != "" {
 						conf = model.ConfExtracted
+					} else if c.Recv == "" && strings.HasSuffix(cm, ":") {
+						continue
 					}
 				}
 				if tgt != "" {
@@ -1038,7 +1048,8 @@ type callSite struct {
 // bare call to the unique definition. Member calls and self-edges are skipped.
 // It returns the set of call sites it resolved so the generic name pass leaves
 // them alone.
-func resolveImportGuided(results []Result, idFile map[string]string, out *model.Extraction) map[callSite]bool {
+func resolveImportGuided(results []Result, idFile map[string]string, out *model.Extraction, corpus map[string]bool, local map[[2]string][]string, owner map[string]string, reexports map[[2]string]*ImportAlias) map[callSite]bool {
+	pyMod := map[[2]string]string{}
 	// (module_stem, symbol) -> def ids, used only when an import names that symbol.
 	// Only a stem some import names is ever looked up.
 	want := map[string]bool{}
@@ -1084,8 +1095,10 @@ func resolveImportGuided(results []Result, idFile map[string]string, out *model.
 			if !ok {
 				continue
 			}
-			// An import inside the function binds the callee to another name.
-			if i < len(r.CallMods) && r.CallMods[i] != "" && r.CallMods[i] != a.Spec+":"+a.Imported {
+			// The call walk binds the callee to an import inside the function,
+			// or to this one by the path of its module: both go before the stem.
+			if i < len(r.CallMods) && r.CallMods[i] != "" &&
+				(r.CallMods[i] != a.Spec+":"+a.Imported || pySymbol(r.File, a.Spec, a.Imported, corpus, local, owner, reexports, pyMod) != "") {
 				continue
 			}
 			ids := index[a.ModuleStem+"\x00"+a.Imported]
