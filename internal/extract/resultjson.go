@@ -159,14 +159,14 @@ func appendJSONNode(b []byte, n *model.Node) ([]byte, error) {
 
 func appendJSONEdge(b []byte, e *model.Edge) ([]byte, error) {
 	b = appendJSONFields(b, `{"source":`, e.Source, `,"target":`, e.Target, `,"relation":`, e.Relation.String(), `,"confidence":`, e.Confidence.String())
-	if e.TypeOnly {
+	if e.TypeOnly() {
 		b = append(b, `,"type_only":true`...)
 	}
 	if e.SourceFile != 0 {
 		b = appendJSONFields(b, `,"source_file":`, e.SourceFile.String())
 	}
-	if e.SourceLocation != 0 {
-		b = e.SourceLocation.AppendJSON(append(b, `,"source_location":`...))
+	if l := e.Loc(); l != 0 {
+		b = l.AppendJSON(append(b, `,"source_location":`...))
 	}
 	var err error
 	if e.Weight != 0 {

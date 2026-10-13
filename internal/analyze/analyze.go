@@ -178,7 +178,7 @@ func ImportCycles(g *model.Graph, maxLen, topN int) []Cycle {
 	for _, e := range g.Edges() {
 		// Type-only imports are erased at compile time, so they cannot form a
 		// runtime cycle (upstream find_import_cycles skips them too).
-		if e.Relation != model.RelImportsFrom || e.TypeOnly {
+		if e.Relation != model.RelImportsFrom || e.TypeOnly() {
 			continue
 		}
 		uf, vf := g.Nodes[e.Source].SourceFile, g.Nodes[e.Target].SourceFile

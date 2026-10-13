@@ -308,7 +308,7 @@ func toJSONLink(e *model.Edge) jsonLink {
 	return jsonLink{
 		Source: e.Source, Target: e.Target, Relation: e.Relation.String(),
 		Confidence: e.Confidence.String(), SourceFile: e.SourceFile.String(),
-		SourceLocation: e.SourceLocation, Weight: e.Weight, ConfidenceScore: score,
+		SourceLocation: e.Loc(), Weight: e.Weight, ConfidenceScore: score,
 	}
 }
 

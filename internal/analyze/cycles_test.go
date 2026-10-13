@@ -17,7 +17,7 @@ import (
 func importCyclesOracle(g *model.Graph, maxLen, topN int) []Cycle {
 	adj := map[string][]string{}
 	for _, e := range g.Edges() {
-		if e.Relation != model.RelImportsFrom || e.TypeOnly {
+		if e.Relation != model.RelImportsFrom || e.TypeOnly() {
 			continue
 		}
 		uf, vf := g.Nodes[e.Source].SourceFile, g.Nodes[e.Target].SourceFile
@@ -144,8 +144,10 @@ func TestImportCyclesMatchesOracle(t *testing.T) {
 		}
 		// Density cycles from sparse up to several edges per ordered pair.
 		for i, m := 0, r.Intn(n*(1+trial%12)); i < m; i++ {
-			g.AddEdge(model.Edge{Source: fmt.Sprint("n", r.Intn(n)), Target: fmt.Sprint("n", r.Intn(n)),
-				Relation: model.Rel([]string{"imports_from", "imports_from", "calls"}[r.Intn(3)]), TypeOnly: r.Intn(8) == 0})
+			e := model.Edge{Source: fmt.Sprint("n", r.Intn(n)), Target: fmt.Sprint("n", r.Intn(n)),
+				Relation: model.Rel([]string{"imports_from", "imports_from", "calls"}[r.Intn(3)])}
+			e.SetTypeOnly(r.Intn(8) == 0)
+			g.AddEdge(e)
 		}
 		maxLen, topN := 1+r.Intn(6), 1+r.Intn(4)
 		want, got := importCyclesOracle(g, maxLen, topN), ImportCycles(g, maxLen, topN)

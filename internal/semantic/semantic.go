@@ -188,7 +188,9 @@ func sanitize(note Note, nodes []model.Node, edges []model.Edge) ([]model.Node, 
 		}
 		// Strip any source-file provenance a backend invented — these are
 		// model inferences, not file-located facts.
+		typeOnly := e.TypeOnly()
 		e.SourceFile, e.SourceLocation = 0, 0
+		e.SetTypeOnly(typeOnly)
 		outE = append(outE, e)
 	}
 	return outN, outE

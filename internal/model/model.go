@@ -4,9 +4,11 @@
 package model
 
 import (
+	"encoding/json"
 	"slices"
 	"sort"
 	"strings"
+	"unsafe"
 )
 
 // Node is a single entity in the graph (a file, function, type, or method).
@@ -31,14 +33,56 @@ type Edge struct {
 	Target     string     `json:"target"`
 	Relation   Relation   `json:"relation"`
 	Confidence Confidence `json:"confidence"`
-	// TypeOnly marks an import edge erased at compile time (TypeScript
-	// `import type`), which cannot form a runtime import cycle. It costs a
-	// word next to the four codes: an Edge is 72 bytes.
-	TypeOnly        bool    `json:"type_only,omitempty"`
-	SourceFile      File    `json:"source_file,omitempty"`
+	// Zero size: where json reads "type_only".
+	TypeOnlyJSON typeOnlyJSON `json:"type_only"`
+	SourceFile   File         `json:"source_file,omitempty"`
+	// Bit 30 is the type-only flag: read with Loc.
 	SourceLocation  Loc     `json:"source_location,omitempty"`
 	Weight          float64 `json:"weight,omitempty"`
 	ConfidenceScore float64 `json:"confidence_score,omitempty"`
+}
+
+// Loc returns the edge's source location.
+func (e Edge) Loc() Loc { return e.SourceLocation &^ locTypeOnly }
+
+// TypeOnly reports an import edge erased at compile time (TypeScript
+// `import type`), which cannot form a runtime import cycle.
+func (e Edge) TypeOnly() bool { return e.SourceLocation&locTypeOnly != 0 }
+
+// SetTypeOnly marks the edge type-only, or not.
+func (e *Edge) SetTypeOnly(on bool) {
+	e.SourceLocation &^= locTypeOnly
+	if on {
+		e.SourceLocation |= locTypeOnly
+	}
+}
+
+// MarshalJSON writes the flag as "type_only".
+func (e Edge) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Source          string     `json:"source"`
+		Target          string     `json:"target"`
+		Relation        Relation   `json:"relation"`
+		Confidence      Confidence `json:"confidence"`
+		TypeOnly        bool       `json:"type_only,omitempty"`
+		SourceFile      File       `json:"source_file,omitempty"`
+		SourceLocation  Loc        `json:"source_location,omitempty"`
+		Weight          float64    `json:"weight,omitempty"`
+		ConfidenceScore float64    `json:"confidence_score,omitempty"`
+	}{e.Source, e.Target, e.Relation, e.Confidence, e.TypeOnly(), e.SourceFile, e.Loc(), e.Weight, e.ConfidenceScore})
+}
+
+// typeOnlyJSON is the type of Edge.TypeOnlyJSON only. An UnmarshalJSON on
+// Edge itself decodes edges 1.7x slower.
+type typeOnlyJSON struct{}
+
+// UnmarshalJSON sets the flag of the Edge around t.
+func (t *typeOnlyJSON) UnmarshalJSON(b []byte) error {
+	e := (*Edge)(unsafe.Add(unsafe.Pointer(t), -int(unsafe.Offsetof(Edge{}.TypeOnlyJSON))))
+	on := e.TypeOnly() // a null leaves it
+	err := json.Unmarshal(b, &on)
+	e.SetTypeOnly(on)
+	return err
 }
 
 // Extraction is one extractor's output for one file.

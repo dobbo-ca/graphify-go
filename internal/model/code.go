@@ -45,7 +45,7 @@ var (
 )
 
 // codeTable gives each string a number. Lookups by number take no lock.
-// No cap: a code wraps past 2^31 strings (Loc), a table over 40 GB.
+// No cap: a code wraps past 2^30 strings (Loc), a table over 20 GB.
 type codeTable struct {
 	mu    sync.RWMutex
 	ids   map[string]uint32
@@ -110,15 +110,19 @@ func (c *Confidence) UnmarshalText(b []byte) error {
 // Loc is a source location. A line "L<n>" is held as the number n+1 and any
 // other text as locText plus a code into a process-wide table; 0 is none.
 // It takes 4 bytes of an Edge or a call record, not 16 and a string.
+// Bit 30 is an Edge's type-only flag, which the methods ignore.
 type Loc uint32
 
-const locText = 1 << 31
+const (
+	locText     = 1 << 31
+	locTypeOnly = 1 << 30
+)
 
 var locTable = newCodeTable("")
 
 // Line returns the location of line n.
 func Line(n int) Loc {
-	if n < 0 || n > locText-2 {
+	if n < 0 || n > locTypeOnly-2 {
 		return LocOf("L" + strconv.Itoa(n))
 	}
 	return Loc(n + 1)
@@ -139,14 +143,15 @@ func LocOf(s string) Loc {
 			}
 			n = n*10 + int(s[i]-'0')
 		}
-		if n >= 0 && n <= locText-2 {
+		if n >= 0 && n <= locTypeOnly-2 {
 			return Loc(n + 1)
 		}
 	}
-	return locText | Loc(locTable.code(s))
+	return locText | Loc(locTable.code(s))&(locTypeOnly-1)
 }
 
 func (l Loc) String() string {
+	l &^= locTypeOnly
 	if l == 0 || l >= locText {
 		return locTable.name(uint32(l &^ locText))
 	}
@@ -155,6 +160,7 @@ func (l Loc) String() string {
 
 // AppendJSON appends l as a JSON string.
 func (l Loc) AppendJSON(b []byte) []byte {
+	l &^= locTypeOnly
 	if l == 0 || l >= locText {
 		return AppendJSONString(b, l.String())
 	}
@@ -165,8 +171,9 @@ func (l Loc) AppendJSON(b []byte) []byte {
 
 func (l Loc) MarshalText() ([]byte, error) { return []byte(l.String()), nil }
 
+// Keeps bit 30: "type_only" may come first.
 func (l *Loc) UnmarshalText(b []byte) error {
-	*l = LocOf(string(b))
+	*l = *l&locTypeOnly | LocOf(string(b))
 	return nil
 }
 

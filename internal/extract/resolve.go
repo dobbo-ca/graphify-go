@@ -471,8 +471,8 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 			part = append(part, model.Edge{
 				Source: e.imp.FileID, Target: e.tgt, Relation: rel,
 				Confidence: model.ConfExtracted, SourceFile: fc.of(e.imp.File), SourceLocation: e.imp.Loc,
-				TypeOnly: e.typeOnly,
 			})
+			part[len(part)-1].SetTypeOnly(e.typeOnly)
 		}
 		edges = append(edges, part)
 	}

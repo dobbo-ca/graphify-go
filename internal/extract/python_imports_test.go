@@ -21,7 +21,7 @@ func pyResolve(srcs map[string]string) ([]string, map[string]bool) {
 			continue
 		}
 		s := e.Source + " " + e.Relation.String() + " " + e.Target
-		if e.TypeOnly {
+		if e.TypeOnly() {
 			s += " type"
 		}
 		edges = append(edges, s)
