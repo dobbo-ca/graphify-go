@@ -166,7 +166,7 @@ func (b *builder) phpBases(typeID string, n *ts.Node, src []byte) {
 	base := func(list *ts.Node, rel string) {
 		for i := uint(0); i < list.NamedChildCount(); i++ {
 			if c := list.NamedChild(i); c.Kind() == "name" || c.Kind() == "qualified_name" {
-				b.ref(typeID, phpLast(c, src), rel, false, line(list))
+				b.refQ(typeID, phpLast(c, src), rel, phpQual(c, src), line(list))
 			}
 		}
 	}
@@ -218,13 +218,19 @@ func (b *builder) phpTypeRefs(id string, t *ts.Node, src []byte) {
 		switch name := phpLast(t, src); strings.ToLower(name) {
 		case "self", "static", "parent":
 		default:
-			b.ref(id, name, "references", false, line(t))
+			b.refQ(id, name, "references", phpQual(t, src), line(t))
 		}
 	default:
 		for i := uint(0); i < t.NamedChildCount(); i++ {
 			b.phpTypeRefs(id, t.NamedChild(i), src)
 		}
 	}
+}
+
+// phpQual returns the namespace a qualified name is written with, or "".
+func phpQual(n *ts.Node, src []byte) string {
+	t := n.Utf8Text(src)
+	return strings.Trim(t[:strings.LastIndexByte(t, '\\')+1], "\\")
 }
 
 // phpLast returns the last segment of a possibly qualified name.

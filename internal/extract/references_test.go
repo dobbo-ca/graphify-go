@@ -1040,3 +1040,28 @@ func TestRubyReferences(t *testing.T) {
 		}
 	}
 }
+
+// Upstream fixtures java5, scphv2-qual: a qualified name binds only a type
+// whose file or directory has the name of its last qualifier. Not copied:
+// upstream drops the qualifier and binds any corpus class of that name.
+func TestQualifiedNameNeedsItsQualifier(t *testing.T) {
+	_, edges := resolveSrc(t, [][2]string{
+		{"p2/Entry.java", "package p2;\npublic class Entry {}\n"},
+		{"p2/Bar.java", "package p2;\npublic class Bar {}\n"},
+		{"p1/A.java", "package p1;\nclass A {\n  Map.Entry e;\n  org.x.Bar b;\n  p2.Bar ok;\n}\n"},
+		{"lib/Base.php", "<?php\nnamespace App\\Lib;\nclass Base {}\n"},
+		{"app/K.php", "<?php\nclass K extends \\Ext\\Other\\Base {}\nclass L extends \\App\\Lib\\Base {}\n"},
+	})
+	for w, want := range map[[3]string]bool{
+		{"p1/A.java:A", "references", "p2/Entry.java:Entry"}: false,
+		{"p1/A.java:A", "references", ":Entry"}:              true,
+		{"p1/A.java:A", "references", "p2/Bar.java:Bar"}:     true, // p2.Bar
+		{"p1/A.java:A", "references", ":Bar"}:                true, // org.x.Bar
+		{"app/K.php:K", "inherits", "lib/Base.php:Base"}:     false,
+		{"app/K.php:L", "inherits", "lib/Base.php:Base"}:     true,
+	} {
+		if edges[w] != want {
+			t.Errorf("edge %v: got %v, want %v", w, edges[w], want)
+		}
+	}
+}

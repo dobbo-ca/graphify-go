@@ -370,6 +370,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				}
 			}
 			ext := strings.ToLower(path.Ext(t.File))
+			qualFiles := ext == ".java" || ext == ".php"
 			cFam := cSource[ext] || cHeader[ext]
 			// A supertype or a type position names a type; a decorator can
 			// name a function.
@@ -377,6 +378,17 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				ids = typeDefs(ids, name, idFile)
 				if ref && !t.Deco {
 					ids = keep(ids, isType)
+				}
+				// `org.x.Bar`, `\\Ext\\Lib\\Base`: only a type whose file or
+				// directory has the name of the last qualifier is meant.
+				// ponytail: by name only; a package table per language
+				// would know more.
+				if qualFiles && t.Qual != "" {
+					q := strings.ToLower(t.Qual[strings.LastIndexAny(t.Qual, ".\\")+1:])
+					ids = keep(ids, func(id string) bool {
+						f := idFile[id]
+						return strings.ToLower(stemName(f)) == q || strings.ToLower(path.Base(path.Dir(f))) == q
+					})
 				}
 				// A type of another C or C++ source file is not in scope,
 				// but for one this file includes and for the struct behind

@@ -74,8 +74,11 @@ func (b *builder) scalaType(n *ts.Node, src []byte) {
 	for i := uint(0); i < body.ChildCount(); i++ {
 		m := body.Child(i)
 		switch m.Kind() {
-		case "val_definition", "var_definition", "type_definition":
+		case "val_definition", "var_definition":
 			b.scalaTypeRefs(typeID, m.ChildByFieldName("type"), skip, src)
+		case "type_definition":
+			// `type F[A] = Map[A, B]`: A is the alias's own parameter.
+			b.scalaTypeRefs(typeID, m.ChildByFieldName("type"), scalaTypeParams(m, skip, src), src)
 		}
 		if m.Kind() != "function_definition" && m.Kind() != "function_declaration" {
 			continue

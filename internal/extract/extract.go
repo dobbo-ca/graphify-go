@@ -490,6 +490,15 @@ func (b *builder) ref(fromID, name, relation string, deco bool, loc model.Loc) {
 	b.res.TypeRefs = append(b.res.TypeRefs, TypeRef{FromID: fromID, Name: name, Relation: relation, File: b.file, Loc: loc, Stub: true, Deco: deco})
 }
 
+// refQ is ref for a name written with the qualifier q (`q.Name`, `q\Name`).
+func (b *builder) refQ(fromID, name, relation, q string, loc model.Loc) {
+	before := len(b.res.TypeRefs)
+	b.ref(fromID, name, relation, false, loc)
+	if len(b.res.TypeRefs) > before {
+		b.res.TypeRefs[before].Qual = q
+	}
+}
+
 // baseTypeName reduces a supertype's source text to the bare name Resolve can
 // look up: generic/constructor arguments are cut (`Foo<Bar>`, `A[int]`, `P(x)`
 // -> `Foo`, `A`, `P`) and a qualified path keeps its last segment (`p.q.A` -> `A`).

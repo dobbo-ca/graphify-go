@@ -343,7 +343,8 @@ func (b *builder) javaScoped(id string, t *ts.Node, qual bool, src []byte) {
 		return
 	}
 	if !qual {
-		raw = simple
+		b.refQ(id, simple, "references", strings.TrimSuffix(raw, "."+simple), line(t))
+		return
 	}
 	b.ref(id, raw, "references", false, line(t))
 }
