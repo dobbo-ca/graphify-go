@@ -261,10 +261,12 @@ func assemble(root string, files []string, prev cache.Cache, prevStat cache.Stat
 	}
 	close(bigIdx)
 	idx := make(chan int)
+	var gate bigGate
+	gate.free.L = &gate.mu
 	var wg sync.WaitGroup
 	for w := 0; w < workers; w++ {
-		// One worker takes the large files, one at a time, while the rest
-		// start on the others; side by side their parsers would add up.
+		// One worker starts on the large files while the rest start on the
+		// others; the gate keeps their parsers from adding up side by side.
 		lanes := [2]chan int{idx, bigIdx}
 		if w == 0 {
 			lanes = [2]chan int{bigIdx, idx}
@@ -296,7 +298,13 @@ func assemble(root string, files []string, prev cache.Cache, prevStat cache.Stat
 						}
 						src = b
 					}
-					res := extract.FileFromBytes(files[i], src)
+					if isBig[i] {
+						gate.enter(len(src))
+					}
+					res := parseFile(files[i], src)
+					if isBig[i] {
+						gate.leave(len(src))
+					}
 					slots[i] = slot{entry: cache.Entry{Hash: h, Result: res}, stat: statEntry, ok: true}
 				}
 			}
@@ -348,6 +356,36 @@ func cacheStamp() string {
 
 // bigFile is the size from which a file is parsed ahead of the rest.
 const bigFile = 256 << 10
+
+// bigInFlight is how many bytes of large files parse at once. A file over
+// it parses alone.
+const bigInFlight = 8 << 20
+
+// parseFile is a variable so a test can watch what parses side by side.
+var parseFile = extract.FileFromBytes
+
+// bigGate holds the large files back to bigInFlight source bytes in flight.
+type bigGate struct {
+	mu   sync.Mutex
+	free sync.Cond
+	held int
+}
+
+func (g *bigGate) enter(n int) {
+	g.mu.Lock()
+	for g.held > 0 && g.held+n > bigInFlight {
+		g.free.Wait()
+	}
+	g.held += n
+	g.mu.Unlock()
+}
+
+func (g *bigGate) leave(n int) {
+	g.mu.Lock()
+	g.held -= n
+	g.mu.Unlock()
+	g.free.Broadcast()
+}
 
 // largeFirst returns the indexes of the files of bigFile bytes or more,
 // largest first. A parser holds about 30 times its source while it runs, so a
