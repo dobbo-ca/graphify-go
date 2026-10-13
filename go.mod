@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/BurntSushi/toml v1.4.0
 	github.com/anthropics/anthropic-sdk-go v1.51.0
-	github.com/dobbo-ca/gositter v0.0.0-20261013050941-9b8f955efc34
+	github.com/dobbo-ca/gositter v0.1.0
 	golang.org/x/exp v0.0.0-20260603202125-055de637280b
 	golang.org/x/text v0.27.0
 )
