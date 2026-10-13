@@ -372,3 +372,31 @@ func TestUpdateSaysStaleCacheIsRebuilt(t *testing.T) {
 		t.Errorf("second update: stdout = %q, stderr = %q, want all reused and no notice", stdout, stderr)
 	}
 }
+
+// TestReportTitleMatchesBetweenBuildAndUpdate checks that a bare `update`
+// titles the report like a bare `build` when the root is the cwd.
+func TestReportTitleMatchesBetweenBuildAndUpdate(t *testing.T) {
+	dir, _ := filepath.EvalSymlinks(t.TempDir())
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package p\n\nfunc A() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GRAPHIFY_OUT", "")
+	t.Chdir(dir)
+	title := func() string {
+		b, err := os.ReadFile(filepath.Join(dir, "graphify-out", "GRAPH_REPORT.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.SplitN(string(b), "\n", 2)[0]
+	}
+	if err := cmdBuild(nil); err != nil {
+		t.Fatal(err)
+	}
+	built := title()
+	if err := cmdUpdate(nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := title(); got != built {
+		t.Errorf("update title %q, build title %q", got, built)
+	}
+}

@@ -744,7 +744,12 @@ func updateRoot(root string, rootSet bool) string {
 	if !rootSet {
 		// No explicit target: update the graph the read commands would load,
 		// not a new one rooted at the cwd.
-		return scanRoot()
+		sr := scanRoot()
+		// Build titles the cwd ".", so update does too.
+		if wd, err := os.Getwd(); err == nil && sr == wd {
+			return "."
+		}
+		return sr
 	}
 	if _, err := os.Stat(filepath.Join(root, "graphify-out", "graph.json")); err != nil {
 		// An explicit path inside the recorded scan root must not fork a
