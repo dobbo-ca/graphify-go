@@ -265,11 +265,12 @@ func TestPythonPlainImportAndQualifiedName(t *testing.T) {
 		{"p1.py", "class Config:\n    pass\n"},
 		{"p2.py", "class Config:\n    pass\n\n\nclass R:\n    pass\n\n\ndef load():\n    pass\n"},
 		{"lib.py", "class Real:\n    pass\n"},
-		{"user.py", "import p2\nfrom p1 import Config\nfrom p2 import load\nfrom lib import Real as R\n\n\nclass Mine(Config):\n    pass\n\n\nclass KQ(p2.R):\n    pass\n"},
+		{"user.py", "import p2\nfrom p1 import Config\nfrom p2 import load\nfrom lib import Real as R\n\n\nclass Mine(Config):\n    pass\n\n\nclass KQ(p2.R):\n    pass\n\n\nclass KS(p2.R[int]):\n    pass\n"},
 	})
 	for _, w := range [][3]string{
 		{"user.py:Mine", "inherits", "p1.py:Config"},
 		{"user.py:KQ", "inherits", "p2.py:R"},
+		{"user.py:KS", "inherits", "p2.py:R"},
 	} {
 		if !edges[w] {
 			t.Errorf("missing edge %v", w)

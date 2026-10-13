@@ -649,8 +649,9 @@ func (b *builder) pySuperclasses(classID string, n *ts.Node, src []byte) {
 			b.ref(classID, arg.Utf8Text(src), "inherits", false, line(n))
 			continue
 		}
+		before := len(b.res.TypeRefs)
 		b.typeRef(classID, baseTypeName(arg.Utf8Text(src)), "inherits", line(n))
-		b.pyQual(arg, src)
+		b.pyQual(before, arg, src)
 	}
 }
 
@@ -704,8 +705,9 @@ func (b *builder) pyTypeNames(id string, n *ts.Node, src []byte, loc model.Loc) 
 	case "identifier", "attribute":
 		// A module variable made by TypeVar is a type parameter, not a type.
 		if name := baseTypeName(n.Utf8Text(src)); !pyTypeSkip[name] && !b.pyTypeVars[name] {
+			before := len(b.res.TypeRefs)
 			b.ref(id, name, "references", false, loc)
-			b.pyQual(n, src)
+			b.pyQual(before, n, src)
 		}
 		return
 	case "keyword_argument":
@@ -718,9 +720,19 @@ func (b *builder) pyTypeNames(id string, n *ts.Node, src []byte, loc model.Loc) 
 	}
 }
 
-// pyQual marks the last type reference as qualified when n is `q.Name`.
-func (b *builder) pyQual(n *ts.Node, src []byte) {
-	if o := n.ChildByFieldName("object"); n.Kind() == "attribute" && o != nil && len(b.res.TypeRefs) > 0 {
+// pyQual marks the type reference added since before as qualified when n is
+// `q.Name`, `q.Name[...]` or `q.Name(...)`.
+func (b *builder) pyQual(before int, n *ts.Node, src []byte) {
+	switch n.Kind() {
+	case "subscript":
+		n = n.ChildByFieldName("value")
+	case "call":
+		n = n.ChildByFieldName("function")
+	}
+	if n == nil || n.Kind() != "attribute" || len(b.res.TypeRefs) == before {
+		return
+	}
+	if o := n.ChildByFieldName("object"); o != nil {
 		b.res.TypeRefs[len(b.res.TypeRefs)-1].Qual = o.Utf8Text(src)
 	}
 }
@@ -755,8 +767,9 @@ func (b *builder) pyDecorators(id string, n *ts.Node, src []byte) {
 			continue
 		}
 		if name := expr.Utf8Text(src); !pyDecoSkip[name] {
+			before := len(b.res.TypeRefs)
 			b.ref(id, name, "references", true, line(d))
-			b.pyQual(attr, src)
+			b.pyQual(before, attr, src)
 		}
 	}
 }
