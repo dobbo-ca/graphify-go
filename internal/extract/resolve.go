@@ -317,52 +317,55 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		if js {
 			bound = jm.bound(&r)
 		}
-		var alias map[string]ImportAlias // local name -> its last import
+		var alias map[string][]ImportAlias // local name -> its imports
 		for _, a := range r.ImportAliases {
 			if len(r.TypeRefs) > 0 {
 				if alias == nil {
-					alias = map[string]ImportAlias{}
+					alias = map[string][]ImportAlias{}
 				}
-				alias[a.Local] = a
+				alias[a.Local] = append(alias[a.Local], a)
 			}
 		}
 		for _, t := range r.TypeRefs {
 			ref := t.Relation == "references"
-			// `from m import Real as R`: R names Real of another file.
-			name, aliased := t.Name, false
-			if a := alias[name]; a.Imported != "" && a.Imported != name && len(typeDefs(local[[2]string{t.File, name}], name, idFile)) == 0 {
-				name, aliased = a.Imported, true
-			}
+			name := t.Name
 			// A supertype or a type position names a type; a decorator can
 			// name a function.
-			cands := func(ids []string) []string {
+			cands := func(ids []string, name string) []string {
 				ids = typeDefs(ids, name, idFile)
 				if ref && !t.Deco {
 					ids = keep(ids, isType)
 				}
-				if aliased {
-					ids = keep(ids, func(id string) bool { return idFile[id] != t.File })
-				}
 				return ids
 			}
-			tgt := ""
+			tgt, stubOnly := "", false
+			own := local[[2]string{t.File, name}]
 			if js {
 				tgt = jm.supertype(t, &r, bound)
-			} else if ids := cands(local[[2]string{t.File, name}]); len(ids) == 1 && !aliased {
+			} else if ids := cands(own, name); len(ids) == 1 {
 				tgt = ids[0]
-			}
-			if aliased {
-				// Only the files its import statement resolved to hold it.
-				a := alias[t.Name]
-				for _, im := range r.Imps {
-					if im.Loc != a.Loc || !contains(im.Names, name) {
-						continue
+			} else if len(typeDefs(own, name, idFile)) == 0 {
+				// `from m import Real as R`: R names Real in the files that
+				// import statement resolved to, or nothing. The last import
+				// of R that binds wins; a plain import of R among them
+				// leaves R to the lookup by name.
+				as := alias[name]
+				for i := len(as) - 1; i >= 0 && tgt == ""; i-- {
+					a := as[i]
+					if stubOnly = a.Imported != name; !stubOnly {
+						break
 					}
-					files := importTargets(im, corpus, goPkgs, goMods, goTargets)
-					tgt = unique(cands(global[name]), func(id string) bool { return contains(files, idFile[id]) })
+					for _, im := range r.Imps {
+						if im.Loc != a.Loc || pySpecStem(im.Spec) != a.ModuleStem || !contains(im.Names, a.Imported) {
+							continue
+						}
+						files := importTargets(im, corpus, goPkgs, goMods, goTargets)
+						tgt = unique(cands(global[a.Imported], a.Imported), func(id string) bool { return contains(files, idFile[id]) })
+					}
 				}
-			} else if tgt == "" && !js {
-				tgt = disambiguate(cands(global[name]), t.File, idFile, &imported)
+			}
+			if tgt == "" && !js && !stubOnly {
+				tgt = disambiguate(cands(global[name], name), t.File, idFile, &imported)
 			}
 			if tgt == "" || tgt == t.FromID || langfamily.Cross(t.File, idFile[tgt]) {
 				if t.Relation == "inherits" {

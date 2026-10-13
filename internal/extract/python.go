@@ -172,10 +172,7 @@ func (b *builder) pyImports(n *ts.Node, src []byte, typeOnly bool) {
 // each imported name records local -> imported under that stem. `import *`
 // (wildcard_import, no name field) carries no usable alias and is skipped.
 func (b *builder) pyImportAliases(n, mod *ts.Node, src []byte) {
-	stem := pyModuleStem(mod, src)
-	if stem == "" {
-		return
-	}
+	stem := pyModuleStem(mod, src) // "" for `from . import N`
 	loc := line(n)
 	for i := uint(0); i < n.ChildCount(); i++ {
 		if n.FieldNameForChild(uint32(i)) != "name" {
@@ -206,8 +203,10 @@ func (b *builder) pyImportAliases(n, mod *ts.Node, src []byte) {
 
 // pyModuleStem returns the final component of a `from ... import` module name,
 // mirroring upstream _module_stem: `util.math` -> `math`, `.helper` -> `helper`.
-func pyModuleStem(mod *ts.Node, src []byte) string {
-	text := strings.Trim(mod.Utf8Text(src), ".")
+func pyModuleStem(mod *ts.Node, src []byte) string { return pySpecStem(mod.Utf8Text(src)) }
+
+func pySpecStem(spec string) string {
+	text := strings.Trim(spec, ".")
 	if i := strings.LastIndex(text, "."); i >= 0 {
 		return text[i+1:]
 	}
