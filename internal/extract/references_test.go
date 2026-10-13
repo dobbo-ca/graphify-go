@@ -131,6 +131,7 @@ func TestPythonReferences(t *testing.T) {
 		{"pkg/m.py", "class Real:\n    pass\n\n\ndef traced(f):\n    return f\n"},
 		{"pkg/a.py", `from typing import Optional, TypeVar
 from .m import Real, traced
+from .m import Real as R
 
 T = TypeVar("T")
 
@@ -158,6 +159,11 @@ class Later:
 @functools.wraps(K)
 async def f(a: list[Real], b: traced) -> dict[str, Gone]:
     return {}
+
+
+class S(R):
+    def m(self, x: Annotated[R, Field(gt=0)], y: _):
+        pass
 `},
 	})
 	for _, w := range [][3]string{
@@ -170,13 +176,19 @@ async def f(a: list[Real], b: traced) -> dict[str, Gone]:
 		{"pkg/a.py:f()", "references", ":deco"},
 		{"pkg/a.py:f()", "references", "pkg/m.py:Real"},
 		{"pkg/a.py:f()", "references", ":Gone"},
-		{"pkg/a.py:f()", "references", ":traced"}, // a function is not a type
+		{"pkg/a.py:f()", "references", ":traced"},   // a function is not a type
+		{"pkg/a.py:S", "inherits", "pkg/m.py:Real"}, // through the import alias
+		{"pkg/a.py:S.m()", "references", "pkg/m.py:Real"},
+		{"pkg/a.py:S.m()", "references", ":Field"},
 	} {
 		if !edges[w] {
 			t.Errorf("missing edge %v", w)
 		}
 	}
-	for _, label := range []string{"T", "Generic", "Base", "Optional", "int", "str", "dict", "list", "staticmethod", "property", "setter", "wraps", "p"} {
+	if edges[[3]string{"pkg/a.py:S.m()", "references", "pkg/a.py:a.py"}] {
+		t.Error("the name _ folds onto the file id and must give no edge")
+	}
+	for _, label := range []string{"T", "Generic", "Base", "Optional", "int", "str", "dict", "list", "staticmethod", "property", "setter", "wraps", "p", "R", "gt", "_"} {
 		if nodes[[2]string{"", label}] {
 			t.Errorf("unexpected stub %q", label)
 		}
