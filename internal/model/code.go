@@ -7,11 +7,11 @@ import (
 )
 
 // Relation and Confidence are codes for strings kept in two process-wide
-// tables: together they take 8 bytes of an Edge with TypeOnly, not 32. Any
-// string is a valid value; Rel and Conf give its code, String the text.
+// tables: together they take 8 bytes of an Edge, not 32. Any string is a
+// valid value; Rel and Conf give its code, String the text.
 type (
 	Relation   uint32
-	Confidence uint16
+	Confidence uint32
 )
 
 // The values the pipeline itself writes or tests. The order is the order of
@@ -45,6 +45,7 @@ var (
 )
 
 // codeTable gives each string a number. Lookups by number take no lock.
+// No cap: a code wraps past 2^31 strings (Loc), a table over 40 GB.
 type codeTable struct {
 	mu    sync.RWMutex
 	ids   map[string]uint32
@@ -60,7 +61,7 @@ func newCodeTable(names ...string) *codeTable {
 	return t
 }
 
-func (t *codeTable) code(s string, max uint32) uint32 {
+func (t *codeTable) code(s string) uint32 {
 	t.mu.RLock()
 	id, ok := t.ids[s]
 	t.mu.RUnlock()
@@ -73,9 +74,6 @@ func (t *codeTable) code(s string, max uint32) uint32 {
 		return id
 	}
 	old := *t.names.Load()
-	if uint32(len(old)) > max {
-		panic("model: too many distinct edge relation or confidence strings")
-	}
 	id = uint32(len(old))
 	// append copies only when it grows, and readers never look past their own length
 	names := append(old, s)
@@ -87,10 +85,10 @@ func (t *codeTable) code(s string, max uint32) uint32 {
 func (t *codeTable) name(id uint32) string { return (*t.names.Load())[id] }
 
 // Rel returns the code of a relation.
-func Rel(s string) Relation { return Relation(relTable.code(s, 1<<32-1)) }
+func Rel(s string) Relation { return Relation(relTable.code(s)) }
 
 // Conf returns the code of a confidence.
-func Conf(s string) Confidence { return Confidence(confTable.code(s, 1<<16-1)) }
+func Conf(s string) Confidence { return Confidence(confTable.code(s)) }
 
 func (r Relation) String() string   { return relTable.name(uint32(r)) }
 func (c Confidence) String() string { return confTable.name(uint32(c)) }
@@ -145,7 +143,7 @@ func LocOf(s string) Loc {
 			return Loc(n + 1)
 		}
 	}
-	return locText | Loc(locTable.code(s, locText-1))
+	return locText | Loc(locTable.code(s))
 }
 
 func (l Loc) String() string {
@@ -179,7 +177,7 @@ type File uint32
 var fileTable = newCodeTable("")
 
 // FileOf returns the code of a path.
-func FileOf(s string) File { return File(fileTable.code(s, 1<<32-1)) }
+func FileOf(s string) File { return File(fileTable.code(s)) }
 
 func (f File) String() string               { return fileTable.name(uint32(f)) }
 func (f File) MarshalText() ([]byte, error) { return []byte(f.String()), nil }

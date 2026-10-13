@@ -32,8 +32,8 @@ type Edge struct {
 	Relation   Relation   `json:"relation"`
 	Confidence Confidence `json:"confidence"`
 	// TypeOnly marks an import edge erased at compile time (TypeScript
-	// `import type`), which cannot form a runtime import cycle. It sits here
-	// to share two words with the four codes: an Edge is 64 bytes.
+	// `import type`), which cannot form a runtime import cycle. It costs a
+	// word next to the four codes: an Edge is 72 bytes.
 	TypeOnly        bool    `json:"type_only,omitempty"`
 	SourceFile      File    `json:"source_file,omitempty"`
 	SourceLocation  Loc     `json:"source_location,omitempty"`
