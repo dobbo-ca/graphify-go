@@ -567,3 +567,16 @@ enum En { A { Ghost15 f; }, B; Dep f; }
 		t.Error("varargs parameter gave a stub")
 	}
 }
+
+// A type nested in the file must not bind to a top-level namesake elsewhere.
+func TestJavaNestedTypeNoBind(t *testing.T) {
+	_, edges := resolveSrc(t, [][2]string{
+		{"b/Config.java", "package b;\npublic class Config {}\n"},
+		{"a/Svc.java", "package a;\npublic class Svc {\n  static class Config {}\n  Config c;\n  Config get() { return null; }\n}\n"},
+	})
+	for e := range edges {
+		if e[1] == "references" && e[2] == "b/Config.java:Config" {
+			t.Errorf("bound to unrelated class: %v", e)
+		}
+	}
+}

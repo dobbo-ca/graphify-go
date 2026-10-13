@@ -41,7 +41,7 @@ func (b *builder) javaType(n *ts.Node, src []byte) {
 	}
 	typeID := b.id(name)
 	b.def(typeID, name, name, line(n))
-	skip := javaTypeParams(n, src, nil)
+	skip := javaTypeParams(n, src, javaNestedTypes(n, src, map[string]bool{}))
 	b.javaSupertypes(typeID, n, skip, src)
 	b.javaAnnotations(typeID, n, skip, src)
 	if n.Kind() == "record_declaration" {
@@ -259,6 +259,23 @@ func init() {
 	} {
 		javaBuiltin[n] = true
 	}
+}
+
+// javaNestedTypes adds the names of the types nested in n to out. They have
+// no node, so a ref to one must not bind to a namesake elsewhere.
+func javaNestedTypes(n *ts.Node, src []byte, out map[string]bool) map[string]bool {
+	if body := n.ChildByFieldName("body"); body != nil {
+		for i := uint(0); i < body.NamedChildCount(); i++ {
+			c := body.NamedChild(i)
+			switch c.Kind() {
+			case "class_declaration", "interface_declaration", "enum_declaration",
+				"record_declaration", "annotation_type_declaration":
+				out[fieldText(c, "name", src)] = true
+				javaNestedTypes(c, src, out)
+			}
+		}
+	}
+	return out
 }
 
 // javaTypeParams returns skip plus the type parameters n declares.
