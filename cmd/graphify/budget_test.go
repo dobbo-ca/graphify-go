@@ -15,7 +15,7 @@ import (
 const stallJulia = "@testset \"t0\" begin\n    @testset \"t1\" begin\n        l2"
 
 const (
-	budgetWarning = "  warning: skipped s.jl (parser made no progress in 65536 steps; GRAPHIFY_PARSE_BUDGET=0 turns the limit off)\n"
+	budgetWarning = "  warning: skipped s.jl (parser made no progress, GRAPHIFY_PARSE_BUDGET=65536; 0 turns the limit off)\n"
 	budgetLine    = "- 1 file(s) skipped: parser made no progress (GRAPHIFY_PARSE_BUDGET)\n"
 )
 
@@ -86,7 +86,7 @@ func TestParseBudgetEndToEnd(t *testing.T) {
 	// Another limit is another cache.
 	ts.Budget = 70000
 	stdout, stderr, graph2, _ = runOut(t, root, cmdUpdate)
-	if !strings.Contains(stdout, "(2 reparsed, 0 reused") || !strings.Contains(stderr, "in 70000 steps") || !strings.Contains(stderr, "rebuilding it once") {
+	if !strings.Contains(stdout, "(2 reparsed, 0 reused") || !strings.Contains(stderr, "GRAPHIFY_PARSE_BUDGET=70000") || !strings.Contains(stderr, "rebuilding it once") {
 		t.Errorf("changed budget: stdout = %q, stderr = %q, want a full reparse with a note", stdout, stderr)
 	}
 	if graph2 != graph {

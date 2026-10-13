@@ -4,6 +4,7 @@ package ts
 
 import (
 	"errors"
+	"math"
 	"os"
 	"strconv"
 	"sync"
@@ -81,7 +82,8 @@ var parsers = sync.Pool{New: func() any { return gositter.NewParser() }}
 // ErrBudget is the panic value of a Parse stopped by Budget.
 var ErrBudget = errors.New("ts: parse budget exceeded")
 
-// Budget is the most parser steps in a row without progress; 0 is no limit.
+// Budget is the most parser steps in a row without progress for a source of
+// up to 4 KB; 0 is no limit.
 var Budget = budget()
 
 func budget() uint32 {
@@ -91,13 +93,20 @@ func budget() uint32 {
 	return 65536
 }
 
+// limit scales Budget by the source size, up to 4 times at 16 KB. A broken
+// region can cost steps without progress for each byte and still end: 8.5
+// for kotlin "<<<<". The cap bounds an endless retry in a large file.
+func limit(n int) uint32 {
+	return uint32(min(uint64(Budget)*uint64(min(max(n, 4096), 16384))/4096, math.MaxUint32))
+}
+
 // Parse returns the root node and a release func. The tree lives in the
 // parser's arenas: no node may be used after release. A parse stopped by
 // Budget panics with ErrBudget.
 func Parse(src []byte, lang *gositter.Language) (*Node, func()) {
 	p := parsers.Get().(*gositter.Parser)
 	_ = p.SetLanguage(lang)
-	tree := p.ParseBudget(src, Budget)
+	tree := p.ParseBudget(src, limit(len(src)))
 	if tree == nil {
 		parsers.Put(p)
 		panic(ErrBudget)

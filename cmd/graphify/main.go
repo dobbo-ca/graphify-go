@@ -450,7 +450,7 @@ func writeOutputs(root string, walk detect.WalkReport, results []extract.Result,
 	for i := range results {
 		if results[i].OverBudget {
 			overBudget++
-			fmt.Fprintf(os.Stderr, "  warning: skipped %s (parser made no progress in %d steps; GRAPHIFY_PARSE_BUDGET=0 turns the limit off)\n", results[i].File, ts.Budget)
+			fmt.Fprintf(os.Stderr, "  warning: skipped %s (parser made no progress, GRAPHIFY_PARSE_BUDGET=%d; 0 turns the limit off)\n", results[i].File, ts.Budget)
 		}
 	}
 	nodes, edges := extract.ResolveParts(results, files)

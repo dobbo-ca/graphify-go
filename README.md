@@ -125,15 +125,20 @@ another graphify version is dropped and rebuilt once, with a note on stderr.
 
 A few inputs make a tree-sitter grammar retry the same byte without end: 54
 bytes of Julia can take 14 seconds and 1.4 GB. graphify stops a parse after
-65,536 parser steps in a row without progress. The file keeps its file node
-and nothing else, a warning on stderr names it on every build and update, and
-`GRAPH_REPORT.md` counts such files in its Summary.
+65,536 parser steps in a row without progress. A file over 4 KB gets 16 more
+steps for each byte past that, up to 262,144 steps at 16 KB: after a broken
+region the parser can spend several such steps per byte and still finish. The
+file keeps its file node and nothing else, a warning on stderr names it on
+every build and update, and `GRAPH_REPORT.md` counts such files in its
+Summary.
 
-`GRAPHIFY_PARSE_BUDGET` sets the limit: a whole number of steps, `0` for no
-limit. The largest count in eight real repositories (about 71,000 parsed
-files) is 588. The count can grow with the size of a broken region, so a
-file of several KB of one repeated bad token can reach the limit although it
-parses in under a second; raise the limit if a file you need is skipped. The
+`GRAPHIFY_PARSE_BUDGET` sets the limit for a file of up to 4 KB: a whole
+number of steps, `0` for no limit. Larger files scale it the same way, up to
+4 times. The largest count in eight real repositories (about 71,000 parsed
+files) is 588, and no file there uses more than 1/283 of its limit. A file
+over about 31 KB of one repeated bad token can still reach the limit; raise
+the limit if a file you need is skipped. The limit does not bound time: some
+broken inputs keep making progress and still take seconds per 10 KB. The
 parse cache is kept per limit, so the first `update` after
 a change parses every file again; a git hook must see the same value as your
 shell, or each of the two rebuilds the cache.
