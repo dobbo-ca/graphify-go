@@ -7,6 +7,7 @@ import (
 	tstsx "github.com/dobbo-ca/gositter/grammars/tsx"
 	tsts "github.com/dobbo-ca/gositter/grammars/typescript"
 	"regexp"
+	"slices"
 	"strings"
 
 	ts "github.com/dobbo-ca/graphify-go/internal/ts"
@@ -19,6 +20,7 @@ import (
 func init() {
 	for _, l := range []*gositter.Language{tsjs.Language(), tsts.Language(), tstsx.Language()} {
 		l.KindMask("call_expression")
+		l.KindMask("export_statement")
 	}
 }
 
@@ -31,35 +33,91 @@ func extractJS(rel string, src []byte, langPtr *gositter.Language) Result {
 	b := newBuilder(rel)
 
 	for i := uint(0); i < root.ChildCount(); i++ {
-		b.jsStatement(root.Child(i), src)
+		b.jsStatement(root.Child(i), src, "")
 	}
 	// One walk serves the import calls and every body jsCalls registered. The
-	// bodies are disjoint and in source order, as the walk is, so next only
-	// moves forward and the calls come out in the order per-body walks gave.
+	// bodies are in source order and nest, so a stack holds the open ones and
+	// its top is the innermost body of the call.
 	next := 0
+	var open []jsBody
 	walkKinds(root, langPtr.KindMask("call_expression"), func(cv ts.Node) bool {
 		c := &cv
 		b.jsCallImport(c, src)
-		for next < len(b.jsBodies) && c.StartByte() >= b.jsBodies[next].end {
+		for len(open) > 0 && c.StartByte() >= open[len(open)-1].end {
+			open = open[:len(open)-1]
+		}
+		for next < len(b.jsBodies) && c.StartByte() >= b.jsBodies[next].start {
+			if c.StartByte() < b.jsBodies[next].end {
+				open = append(open, b.jsBodies[next])
+			}
 			next++
 		}
-		if next < len(b.jsBodies) && c.StartByte() >= b.jsBodies[next].start {
-			b.jsCall(c, b.jsBodies[next].callerID, src)
+		if len(open) > 0 {
+			b.jsCall(c, open[len(open)-1], src)
 		}
 		return true
 	})
+	// An exported namespace member is no call target of plain code when the file has a plain one.
+	for _, d := range b.jsNSDefs {
+		if b.jsExp[d.ID] && !slices.ContainsFunc(b.res.Defs, func(p Def) bool { return p.Name == d.Name }) {
+			b.res.Defs = append(b.res.Defs, d)
+		}
+	}
+	b.jsExportOrphans(root, src, langPtr)
 	b.jsRationale(src)
 	return b.res
 }
 
-// jsStatement handles one top-level statement, unwrapping `export ...` first.
-func (b *builder) jsStatement(n *ts.Node, src []byte) {
+// jsExportOrphans gives every exported declarator that has no node yet a
+// node with no edge, as upstream's export facts do. Any export statement
+// counts, nested or under a parse error. A const or let with an identifier
+// value also names its whole pattern.
+func (b *builder) jsExportOrphans(root *ts.Node, src []byte, lang *gositter.Language) {
+	walkKinds(root, lang.KindMask("export_statement"), func(ev ts.Node) bool {
+		d := ev.ChildByFieldName("declaration")
+		if d == nil || d.Kind() != "lexical_declaration" && d.Kind() != "variable_declaration" {
+			return true
+		}
+		for i := uint(0); i < d.NamedChildCount(); i++ {
+			dc := d.NamedChild(i)
+			nm, val := dc.ChildByFieldName("name"), dc.ChildByFieldName("value")
+			if dc.Kind() != "variable_declarator" || nm == nil {
+				continue
+			}
+			alias := val != nil && d.Kind() == "lexical_declaration" && (val.Kind() == "identifier" || val.Kind() == "type_identifier")
+			if !alias && nm.Kind() != "identifier" {
+				continue
+			}
+			name := nm.Utf8Text(src)
+			if id := idutil.MakeID(b.stem, name); !degenerateName(name) && !b.seen[id] {
+				b.addNode(id, name, line(&ev))
+			}
+		}
+		return true
+	})
+}
+
+// jsStatement handles one node, unwrapping `export ...` first, and recurses
+// into anything it has no case for: a declaration in an IIFE, a callback or an
+// `if` is a file-level one. owner is the caller of the closures met on the
+// way, empty for none.
+func (b *builder) jsStatement(n *ts.Node, src []byte, owner string) {
 	switch n.Kind() {
 	case "export_statement":
-		if d := n.ChildByFieldName("declaration"); d != nil {
-			b.jsStatement(d, src)
+		d := n.ChildByFieldName("declaration")
+		s := n.ChildByFieldName("source")
+		if d != nil {
+			b.jsStatement(d, src, owner)
+			if len(b.jsNS) > 0 {
+				if b.jsExp == nil {
+					b.jsExp = map[string]bool{}
+				}
+				b.jsExp[b.id(fieldText(d, "name", src))] = true
+			}
+		} else if s == nil {
+			b.jsChildren(n, src, owner)
 		}
-		if s := n.ChildByFieldName("source"); s != nil {
+		if s != nil {
 			b.impTyped(unquote(s.Utf8Text(src)), line(n), jsTypeOnlyImport(n))
 		}
 	case "import_statement":
@@ -73,9 +131,45 @@ func (b *builder) jsStatement(n *ts.Node, src []byte) {
 	case "interface_declaration", "type_alias_declaration", "enum_declaration":
 		b.jsNamedType(n, src)
 	case "lexical_declaration", "variable_declaration":
-		b.jsVarFuncs(n, src)
+		b.jsVarFuncs(n, src, owner)
 	case "expression_statement":
-		b.jsMemberAssign(n, src)
+		if p := n.Parent(); p == nil || p.Kind() != "program" || !b.jsMemberAssign(n, src) {
+			// Only a closure in a call statement is the file's call.
+			for i := uint(0); i < n.ChildCount(); i++ {
+				if k := n.Child(i).Kind(); k == "call_expression" || k == "new_expression" {
+					owner = b.fileID
+				}
+			}
+			b.jsChildren(n, src, owner)
+		}
+	case "internal_module", "module":
+		b.jsNamespace(n, src, owner)
+	case "method_definition":
+	case "arrow_function", "function_expression", "function", "generator_function":
+		if owner != "" {
+			b.jsCalls(n.ChildByFieldName("body"), owner)
+		}
+		b.jsChildren(n, src, owner)
+	default:
+		b.jsChildren(n, src, owner)
+	}
+}
+
+// jsNamespace makes a node for a namespace or module and walks its body with
+// the name in member ids, so equal names in two namespaces both survive.
+func (b *builder) jsNamespace(n *ts.Node, src []byte, owner string) {
+	name := unquote(fieldText(n, "name", src))
+	if !degenerateName(name) {
+		b.constNode(b.id(name), name, line(n))
+	}
+	b.jsNS = append(b.jsNS, name)
+	b.jsChildren(n, src, owner)
+	b.jsNS = b.jsNS[:len(b.jsNS)-1]
+}
+
+func (b *builder) jsChildren(n *ts.Node, src []byte, owner string) {
+	for i := uint(0); i < n.ChildCount(); i++ {
+		b.jsStatement(n.Child(i), src, owner)
 	}
 }
 
@@ -123,7 +217,7 @@ func (b *builder) jsFunc(n *ts.Node, src []byte) {
 	}
 	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
-	b.jsCalls(n.ChildByFieldName("body"), id)
+	b.jsFnBody(n.ChildByFieldName("body"), id, src)
 }
 
 func (b *builder) jsClass(n *ts.Node, src []byte) {
@@ -140,6 +234,10 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 	}
 	for i := uint(0); i < body.ChildCount(); i++ {
 		m := body.Child(i)
+		if m.Kind() == "class_static_block" {
+			b.jsChildren(m, src, "")
+			continue
+		}
 		if m.Kind() != "method_definition" && m.Kind() != "abstract_method_signature" {
 			continue
 		}
@@ -154,7 +252,7 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
 		})
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file, Abstract: m.Kind() == "abstract_method_signature"})
-		b.jsCalls(m.ChildByFieldName("body"), mid)
+		b.jsFnBody(m.ChildByFieldName("body"), mid, src)
 	}
 }
 
@@ -167,15 +265,45 @@ func (b *builder) jsNamedType(n *ts.Node, src []byte) {
 }
 
 // jsVarFuncs captures `const foo = () => {}` and `const foo = function() {}`,
-// the dominant way functions are defined in modern JS/TS.
-func (b *builder) jsVarFuncs(n *ts.Node, src []byte) {
+// the dominant way functions are defined in modern JS/TS. Below module level
+// it makes no node and only walks the value, as upstream's #1077 guard.
+func (b *builder) jsVarFuncs(n *ts.Node, src []byte, owner string) {
+	p := n.Parent()
+	exported := p != nil && p.Kind() == "export_statement"
+	if exported {
+		p = p.Parent()
+	}
+	top := p != nil && p.Kind() == "program"
+	// An exported variable of a namespace body is an orphan node.
+	inNS := false
+	if exported && p != nil && p.Kind() == "statement_block" {
+		if g := p.Parent(); g != nil {
+			inNS = g.Kind() == "internal_module" || g.Kind() == "module"
+		}
+	}
 	for i := uint(0); i < n.ChildCount(); i++ {
 		d := n.Child(i)
 		if d.Kind() != "variable_declarator" {
 			continue
 		}
+		if nm := d.ChildByFieldName("name"); inNS && nm != nil && nm.Kind() == "identifier" && !degenerateName(nm.Utf8Text(src)) {
+			id := b.id(nm.Utf8Text(src))
+			b.addNode(id, nm.Utf8Text(src), line(d))
+			if b.jsBare == nil {
+				b.jsBare = map[string]bool{}
+			}
+			b.jsBare[id] = true
+		}
 		val := d.ChildByFieldName("value")
-		if val == nil || (val.Kind() != "arrow_function" && val.Kind() != "function_expression" && val.Kind() != "function") {
+		if val == nil {
+			continue
+		}
+		fn := val.Kind() == "arrow_function" || val.Kind() == "function_expression" || val.Kind() == "function" || val.Kind() == "generator_function" && n.Kind() == "lexical_declaration"
+		if top && !fn && n.Kind() == "lexical_declaration" && b.jsConst(d, val, exported, src) {
+			continue
+		}
+		if !top || !fn {
+			b.jsStatement(val, src, owner)
 			continue
 		}
 		name := fieldText(d, "name", src)
@@ -184,40 +312,174 @@ func (b *builder) jsVarFuncs(n *ts.Node, src []byte) {
 		}
 		id := b.id(name)
 		b.def(id, name, name+"()", line(d))
-		b.jsCalls(val.ChildByFieldName("body"), id)
+		b.jsFnBody(val.ChildByFieldName("body"), id, src)
+	}
+}
+
+// jsConst makes a node for a module-level const or let that is no function:
+// an object, array, cast, call or new value, or any value of an exported
+// plain name. A closure in a call is called by the const. It reports
+// whether the value was taken.
+func (b *builder) jsConst(d, val *ts.Node, exported bool, src []byte) bool {
+	nm := d.ChildByFieldName("name")
+	if nm == nil {
+		return false
+	}
+	switch val.Kind() {
+	case "object", "array", "as_expression", "satisfies_expression", "call_expression", "new_expression":
+	default:
+		if !exported || nm.Kind() != "identifier" {
+			return false
+		}
+	}
+	if nm.Kind() == "object_pattern" && exported {
+		for i := uint(0); i < nm.NamedChildCount(); i++ {
+			pr := nm.NamedChild(i)
+			name := ""
+			switch pr.Kind() {
+			case "shorthand_property_identifier_pattern":
+				name = pr.Utf8Text(src)
+			case "pair_pattern":
+				if k := pr.ChildByFieldName("key"); k != nil {
+					name = k.Utf8Text(src)
+				}
+			}
+			if !degenerateName(name) {
+				b.constDef(b.id(name), name, line(d))
+			}
+		}
+		return true
+	}
+	name := nm.Utf8Text(src)
+	if degenerateName(name) {
+		return true
+	}
+	id := b.id(name)
+	b.constDef(id, name, line(d))
+	in := val
+	for in.Kind() == "as_expression" || in.Kind() == "satisfies_expression" {
+		if in.NamedChildCount() == 0 {
+			return true
+		}
+		in = in.NamedChild(0)
+	}
+	if k := in.Kind(); k == "call_expression" || k == "new_expression" {
+		b.jsClosures(in, id)
+	}
+	return true
+}
+
+// constNode adds a node the file contains, with no Def: a namespace marker
+// is no call target.
+func (b *builder) constNode(id, name string, loc model.Loc) {
+	b.addNode(id, name, loc)
+	b.contains(id, loc)
+}
+
+// constDef is constNode for a const, which a call can bind.
+func (b *builder) constDef(id, name string, loc model.Loc) {
+	b.constNode(id, name, loc)
+	// Abstract: a function of the same name wins the call.
+	b.res.Defs = append(b.res.Defs, Def{ID: id, Name: name, File: b.file, Abstract: true, Value: true})
+}
+
+// jsClosures registers the outermost closures under n as bodies of id.
+func (b *builder) jsClosures(n *ts.Node, id string) {
+	for i := uint(0); i < n.ChildCount(); i++ {
+		c := n.Child(i)
+		switch c.Kind() {
+		case "arrow_function", "function_expression", "function", "generator_function":
+			b.jsCalls(c.ChildByFieldName("body"), id)
+		default:
+			b.jsClosures(c, id)
+		}
 	}
 }
 
 // jsMemberAssign captures `obj.name = function () {}` / `() => {}`, named by
-// the property.
-func (b *builder) jsMemberAssign(n *ts.Node, src []byte) {
+// the property. It reports whether the statement was one.
+func (b *builder) jsMemberAssign(n *ts.Node, src []byte) bool {
 	if n.NamedChildCount() == 0 {
-		return
+		return false
 	}
 	a := n.NamedChild(0)
 	if a.Kind() != "assignment_expression" {
-		return
+		return false
 	}
 	l, r := a.ChildByFieldName("left"), a.ChildByFieldName("right")
 	if l == nil || r == nil || l.Kind() != "member_expression" {
-		return
+		return false
 	}
-	if k := r.Kind(); k != "arrow_function" && k != "function_expression" && k != "function" {
-		return
+	if k := r.Kind(); k != "arrow_function" && k != "function_expression" && k != "function" && k != "generator_function" {
+		return false
 	}
 	name := fieldText(l, "property", src)
 	if degenerateName(name) {
-		return
+		return true
 	}
 	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
 	b.jsCalls(r.ChildByFieldName("body"), id)
+	return true
 }
 
 // jsBody is a function body whose calls belong to callerID.
 type jsBody struct {
 	start, end uint
 	callerID   string
+	ns         []string // namespaces around the body
+}
+
+// jsFnBody registers a function body and the functions declared inside it.
+func (b *builder) jsFnBody(body *ts.Node, callerID string, src []byte) {
+	b.jsCalls(body, callerID)
+	b.jsNestedFuncs(body, callerID, src)
+}
+
+// jsNestedFuncs makes a node for each function declared inside n, under
+// parent; a closure passes through, so its declarations keep the parent.
+// A method of a class or object met here is no tracked body: its calls drop.
+func (b *builder) jsNestedFuncs(n *ts.Node, parent string, src []byte) {
+	if n == nil {
+		return
+	}
+	for i := uint(0); i < n.ChildCount(); i++ {
+		c := n.Child(i)
+		switch c.Kind() {
+		case "function_declaration", "generator_function_declaration":
+			name := fieldText(c, "name", src)
+			if degenerateName(name) {
+				continue
+			}
+			id := idutil.MakeID(parent, name)
+			if !b.seen[id] {
+				b.addNode(id, name+"()", line(c))
+				b.res.Edges = append(b.res.Edges, model.Edge{
+					Source: parent, Target: id, Relation: model.RelContains,
+					Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(c),
+				})
+				b.jsScope(parent, name, id)
+			}
+			b.jsFnBody(c.ChildByFieldName("body"), id, src)
+		case "method_definition":
+			b.jsCalls(c.ChildByFieldName("body"), "")
+			b.jsNestedFuncs(c, parent, src)
+		default:
+			b.jsNestedFuncs(c, parent, src)
+		}
+	}
+}
+
+// jsScope records that id is the function name declared inside parent. Such
+// a function stays out of the global index: only calls from inside parent
+// bind to it.
+func (b *builder) jsScope(parent, name, id string) {
+	if b.jsNested == nil {
+		b.jsNested = map[[2]string]string{}
+		b.jsParent = map[string]string{}
+	}
+	b.jsNested[[2]string{parent, name}] = id
+	b.jsParent[id] = parent
 }
 
 // jsCalls registers a function body; extractJS records its call sites in the
@@ -226,23 +488,85 @@ func (b *builder) jsCalls(body *ts.Node, callerID string) {
 	if body == nil {
 		return
 	}
-	b.jsBodies = append(b.jsBodies, jsBody{body.StartByte(), body.EndByte(), callerID})
+	b.jsBodies = append(b.jsBodies, jsBody{body.StartByte(), body.EndByte(), callerID, slices.Clone(b.jsNS)})
 }
 
-// jsCall records the call site c, a call_expression, for callerID.
-func (b *builder) jsCall(c *ts.Node, callerID string, src []byte) {
+// jsCall records the call site c, a call_expression, for the body's caller.
+func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte) {
+	callerID := body.callerID
 	fn := c.ChildByFieldName("function")
-	if fn == nil {
+	if fn == nil || callerID == "" {
 		return
+	}
+	// A method body is a boundary: its calls are no caller's.
+	for p := c; p != nil && (p.StartByte() != body.start || p.EndByte() != body.end); p = p.Parent() {
+		if p.Kind() == "method_definition" {
+			return
+		}
 	}
 	switch fn.Kind() {
 	case "identifier":
-		b.call(callerID, fn.Utf8Text(src), line(c))
+		name := fn.Utf8Text(src)
+		for s := callerID; s != ""; s = b.jsParent[s] {
+			if id, ok := b.jsNested[[2]string{s, name}]; ok {
+				b.jsNestedCall(callerID, id, line(c))
+				return
+			}
+		}
+		// Innermost namespace first; a name in none is a plain global call.
+		for k := len(body.ns); k > 0; k-- {
+			id := idutil.MakeID(append(append([]string{b.stem, "ns"}, body.ns[:k]...), name)...)
+			if b.seen[id] && !b.jsBare[id] {
+				b.jsNestedCall(callerID, id, line(c))
+				return
+			}
+		}
+		// The file's contains edge to its own function hides this call upstream.
+		if callerID == b.fileID && b.jsFileOwns(name) {
+			return
+		}
+		b.call(callerID, name, line(c))
 	case "member_expression":
 		if p := fn.ChildByFieldName("property"); p != nil {
 			b.callRecv(callerID, p.Utf8Text(src), recvText(fn, p, src), line(c))
 		}
 	}
+}
+
+// jsFileOwns reports whether the file contains a definition called name.
+func (b *builder) jsFileOwns(name string) bool {
+	if b.jsOwned == nil {
+		own := map[string]bool{}
+		for _, e := range b.res.Edges {
+			if e.Source == b.fileID && e.Relation == model.RelContains {
+				own[e.Target] = true
+			}
+		}
+		b.jsOwned = map[string]bool{}
+		for _, ds := range [][]Def{b.res.Defs, b.jsNSDefs} {
+			for _, d := range ds {
+				if own[d.ID] {
+					b.jsOwned[d.Name] = true
+				}
+			}
+		}
+	}
+	return b.jsOwned[name]
+}
+
+// jsNestedCall binds a call to a nested function seen from its scope.
+func (b *builder) jsNestedCall(callerID, id string, loc model.Loc) {
+	if callerID == id || b.jsLinked[[2]string{callerID, id}] {
+		return
+	}
+	if b.jsLinked == nil {
+		b.jsLinked = map[[2]string]bool{}
+	}
+	b.jsLinked[[2]string{callerID, id}] = true
+	b.res.Edges = append(b.res.Edges, model.Edge{
+		Source: callerID, Target: id, Relation: model.RelCalls,
+		Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: loc,
+	})
 }
 
 // jsRationalePrefixes are the leading comment tokens that mark an explanatory

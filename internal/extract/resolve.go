@@ -88,6 +88,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	// which is what a miss falls back to.
 	localC := map[[2]string][]string{}
 	globalC := map[string][]string{}
+	value := map[string]bool{} // def ids of consts
 	// Filled beside the import targets below, which do not read them.
 	defsDone.Go(func() {
 		abstract := map[string]bool{}
@@ -107,6 +108,9 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					local[key] = append(local[key], d.ID)
 				}
 				idFile[d.ID] = d.File
+				if d.Value {
+					value[d.ID] = true
+				}
 				if !d.Abstract && abstract[d.Name] && !contains(localC[key], d.ID) {
 					globalC[d.Name] = append(globalC[d.Name], d.ID)
 					localC[key] = append(localC[key], d.ID)
@@ -268,7 +272,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	// It reads the indexes alone, so it runs beside the calls.
 	var md model.Extraction
 	var mdDone sync.WaitGroup
-	mdDone.Go(func() { resolveMarkdown(results, files, corpus, quals, global, &md) })
+	mdDone.Go(func() { resolveMarkdown(results, files, corpus, quals, global, value, &md) })
 
 	// Python import-guided calls: explicit `from M import N [as L]` evidence
 	// resolves a call to the unique (module_stem, symbol) definition with
@@ -336,6 +340,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		imported := importedSet{targets: impTargets}
 		kept := map[string][]string{}      // callee\x00qualifier -> the definitions it qualifies
 		allQuals := map[string][]qualSet{} // callee -> quals of each id in its global list
+		bareJS := map[string][]string{}    // callee -> its global list without class members
 		for _, r := range results {
 			rf := model.FileOf(r.File)
 			for i, n := range r.Calls {
@@ -355,6 +360,16 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					here, all := localC[lkey], globalC[c.Callee]
 					if len(all) == 0 {
 						here, all = local[lkey], global[c.Callee]
+					}
+					if c.Recv == "" && langfamily.Of(r.File) == "jsts" {
+						// A bare JS/TS call names no class method.
+						here = keep(here, func(id string) bool { return owner[id] == "" })
+						ids, done := bareJS[c.Callee]
+						if !done {
+							ids = keep(all, func(id string) bool { return owner[id] == "" })
+							bareJS[c.Callee] = ids
+						}
+						all = ids
 					}
 					if c.Recv != "" {
 						q := recvTail(c.Recv)
@@ -590,7 +605,7 @@ var mdCodeSep = regexp.MustCompile(`::|\.`)
 // file. Defs are exactly the code definitions, so markdown concept/heading nodes
 // never appear there; a name mapping to more than one definition is ambiguous
 // and drops (no map iteration feeds this).
-func resolveMarkdown(results []Result, files []string, corpus map[string]bool, quals map[string]qualSet, symDefs map[string][]string, out *model.Extraction) {
+func resolveMarkdown(results []Result, files []string, corpus map[string]bool, quals map[string]qualSet, symDefs map[string][]string, value map[string]bool, out *model.Extraction) {
 	var fc fileMemo
 	seenSym := map[string]bool{} // FromID\x00defID, to not emit a symbol edge twice
 	for _, r := range results {
@@ -606,7 +621,7 @@ func resolveMarkdown(results []Result, files []string, corpus map[string]bool, q
 			// Not a markdown link: a backtick `symbol` matching a unique code
 			// definition becomes a references edge to that definition. Drop on
 			// ambiguity (0 or >1 candidates) and on non-identifier noise.
-			id := uniqueCodeDef(m.Target, symDefs, quals)
+			id := uniqueCodeDef(m.Target, symDefs, quals, value)
 			if id == "" {
 				continue
 			}
@@ -841,7 +856,7 @@ func keep(ids []string, pred func(string) bool) []string {
 // zero/several definitions survive (drop-on-ambiguity). For a qualified span
 // (`pkg.Widget`, `Widget::render`) the last segment is the name and every
 // preceding segment must be a qualifier the candidate answers to.
-func uniqueCodeDef(sym string, index map[string][]string, quals map[string]qualSet) string {
+func uniqueCodeDef(sym string, index map[string][]string, quals map[string]qualSet, value map[string]bool) string {
 	if !mdCodeSymbol.MatchString(sym) {
 		return ""
 	}
@@ -849,6 +864,9 @@ func uniqueCodeDef(sym string, index map[string][]string, quals map[string]qualS
 	name, prefix := segs[len(segs)-1], segs[:len(segs)-1]
 	var hit string
 	for _, id := range index[name] {
+		if value[id] {
+			continue
+		}
 		ok := true
 		for _, q := range prefix {
 			if !quals[id].has(q) {

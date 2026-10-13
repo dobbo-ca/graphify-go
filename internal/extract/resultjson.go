@@ -25,7 +25,8 @@ func (r *Result) AppendJSON(b []byte) ([]byte, error) {
 	b = append(b, `,"Defs":`...)
 	b, _ = appendJSONArr(b, r.Defs, func(b []byte, d *Def) ([]byte, error) {
 		b = appendJSONFields(b, `{"ID":`, d.ID, `,"Name":`, d.Name, `,"File":`, d.File, `,"Owner":`, d.Owner)
-		return appendJSONBool(append(b, `,"Abstract":`...), d.Abstract, '}'), nil
+		b = appendJSONBool(append(b, `,"Abstract":`...), d.Abstract, ',')
+		return appendJSONBool(append(b, `"Value":`...), d.Value, '}'), nil
 	})
 	b = append(b, `,"Calls":`...)
 	b, _ = appendJSONArr(b, r.Calls, func(b []byte, c *Call) ([]byte, error) {

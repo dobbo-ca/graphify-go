@@ -32,6 +32,7 @@ type Def struct {
 	ID, Name, File string
 	Owner          string
 	Abstract       bool // bodiless declaration
+	Value          bool // a const: no markdown span names it
 }
 
 // Call is an unresolved call site: CallerID invoked a symbol named Callee.
@@ -318,8 +319,16 @@ type builder struct {
 	pyMods map[string]string // local name -> plainly imported module
 	// rubyMethods holds method names defined in the file (bare self-sends).
 	rubyMethods map[string]bool
-	jsBodies    []jsBody          // function bodies awaiting the JS call walk
-	strs        map[string]uint32 // text -> its number in res.CallText
+	jsBodies    []jsBody             // function bodies awaiting the JS call walk
+	jsNested    map[[2]string]string // parent id, name -> nested function id
+	jsParent    map[string]string    // nested function id -> parent id
+	jsLinked    map[[2]string]bool   // nested calls already linked
+	jsNS        []string             // enclosing namespace names
+	jsNSDefs    []Def                // namespace members, kept if no plain def has the name
+	jsExp       map[string]bool      // exported namespace member ids
+	jsBare      map[string]bool      // namespace variables: nodes, no call targets
+	jsOwned     map[string]bool      // names the file contains, built on first use
+	strs        map[string]uint32    // text -> its number in res.CallText
 }
 
 func newBuilder(rel string) *builder {
@@ -344,6 +353,10 @@ func (b *builder) addNode(id, label string, loc model.Loc) {
 // (`_`, `__`) must not take the id of the file.
 func (b *builder) id(parts ...string) string {
 	id := idutil.MakeID(append([]string{b.stem}, parts...)...)
+	if len(b.jsNS) > 0 {
+		// ponytail: the "ns" part keeps members off plain ids, a name "ns_x" still collides
+		id = idutil.MakeID(append(append([]string{b.stem, "ns"}, b.jsNS...), parts...)...)
+	}
 	if id == b.fileID {
 		// ponytail: every such name in a file shares one node, as before
 		return b.id("blank")
@@ -363,7 +376,12 @@ func (b *builder) contains(childID string, loc model.Loc) {
 func (b *builder) def(id, name, displayLabel string, loc model.Loc) {
 	b.addNode(id, displayLabel, loc)
 	b.contains(id, loc)
-	b.res.Defs = append(b.res.Defs, Def{ID: id, Name: name, File: b.file})
+	d := Def{ID: id, Name: name, File: b.file}
+	if len(b.jsNS) > 0 {
+		b.jsNSDefs = append(b.jsNSDefs, d)
+		return
+	}
+	b.res.Defs = append(b.res.Defs, d)
 }
 
 func (b *builder) call(callerID, callee string, loc model.Loc) {
