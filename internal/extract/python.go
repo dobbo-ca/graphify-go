@@ -472,6 +472,9 @@ func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
 	types, bound := map[string]string{}, map[string]bool{}
 	mods := map[[2]string]string{} // function, name -> what an import inside it binds
 	made := map[string]bool{}      // ids of the defs inside fn
+	// The defs inside fn by function and name, and the function around each.
+	// They are of this walk alone: a later function can have the id of fn.
+	nested, parent := map[[2]string]string{}, map[string]string{}
 	localType := pyLocalTyper(types, src)
 	// Types and bound names cover the whole function, so a receiver is
 	// resolved only after the walk.
@@ -531,14 +534,12 @@ func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
 						Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(c),
 					})
 				}
-				// A method of a local class is no name of the scope around it:
-				// the empty name keeps it out of the lookups. Two names of
-				// one id (`_f`, `f`) both reach its node.
-				scoped := name
-				if in.id != in.fn {
-					scoped = ""
+				// A method of a local class is no name of the scope around
+				// it. Two names of one id (`_f`, `f`) both reach its node.
+				parent[sc.id] = in.fn
+				if in.id == in.fn {
+					nested[[2]string{in.fn, name}] = sc.id
 				}
-				b.jsScope(in.fn, scoped, sc.id)
 			}
 			scopes = append(scopes, sc)
 			return true
@@ -574,7 +575,7 @@ func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
 		if bound[name] {
 			return "", false
 		}
-		for s, ok := caller, true; ok; s, ok = b.jsParent[s] {
+		for s, ok := caller, true; ok; s, ok = parent[s] {
 			if val, ok := mods[[2]string{s, name}]; ok {
 				return val, true
 			}
@@ -586,8 +587,8 @@ sites:
 		n, mod := len(b.res.Calls), ""
 		if !c.member {
 			// A def of an enclosing function hides every other of its name.
-			for s, ok := c.caller, true; ok; s, ok = b.jsParent[s] {
-				if id, ok := b.jsNested[[2]string{s, c.callee}]; ok {
+			for s, ok := c.caller, true; ok; s, ok = parent[s] {
+				if id, ok := nested[[2]string{s, c.callee}]; ok {
 					b.jsNestedCall(c.caller, id, c.loc)
 					continue sites
 				}

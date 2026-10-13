@@ -26,9 +26,17 @@ func pyEdges(srcs map[string]string, rels ...model.Relation) []string {
 		}
 		files[n.Label] = n.SourceFile
 	}
+	inFile := map[[2]string]int{}
+	for _, n := range ext.Nodes {
+		inFile[[2]string{n.SourceFile, n.Label}]++
+	}
 	for _, n := range ext.Nodes {
 		if dup[n.Label] {
 			label[n.ID] = n.SourceFile + ":" + n.Label
+		}
+		// Two nodes of one label in a file show as their ids.
+		if inFile[[2]string{n.SourceFile, n.Label}] > 1 {
+			label[n.ID] = n.ID
 		}
 	}
 	for f := range srcs {
@@ -396,6 +404,44 @@ def ext():
 			"far.py":              "from pkg.sub import top\n",
 		}, []model.Relation{model.RelImports}, []string{
 			"far.py -imports-> top()", "pkg/a.py -imports-> top()", "pkg/sub/__init__.py -imports-> top()",
+		}},
+		// Round 3.
+		{"a package that imports its own submodule still gives it", map[string]string{
+			"p/__init__.py": "from . import core\n",
+			"p/core.py":     "def run(): pass\n",
+			"x/core.py":     "def run(): pass\n",
+			"main.py": `from p import core as cc
+def m3():
+    from p import core
+    core.run()
+def m4():
+    cc.run()
+`}, []model.Relation{model.RelCalls}, []string{"m3() -calls-> p/core.py:run()", "m4() -calls-> p/core.py:run()"}},
+		{"an import in the function binds by the stem of a module off the path", map[string]string{
+			"src/pkg/m.py": "def gsrc(): pass\n",
+			"tests/u.py": `def gsrc(): pass
+def test_fn():
+    from pkg.m import gsrc as g
+    g()
+`}, []model.Relation{model.RelCalls}, []string{"test_fn() -calls-> src/pkg/m.py:gsrc()"}},
+		{"a def nested in one function is no name of a later function of its id", map[string]string{"m.py": `def dup():
+    def helper(): pass
+    return helper()
+def dup():
+    return helper()
+def helper(): pass
+class P:
+    @property
+    def val(self):
+        def calc(): pass
+        return calc()
+    @val.setter
+    def val(self, v):
+        calc()
+def calc(): pass
+`}, []model.Relation{model.RelCalls}, []string{
+			"P.val() -calls-> m_py_calc", "P.val() -calls-> m_py_p_val_calc",
+			"dup() -calls-> m_py_dup_helper", "dup() -calls-> m_py_helper",
 		}},
 	}
 	for _, c := range cases {

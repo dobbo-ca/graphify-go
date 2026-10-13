@@ -408,14 +408,27 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					case c.Recv == "":
 					case !from:
 						tgt = pySymbol(r.File, spec, c.Callee, corpus, local, owner, reexports, pyMod)
-					case pySymbol(r.File, spec, name, corpus, local, owner, reexports, pyMod) == "" && reexports[[2]string{pyMod[[2]string{r.File, spec}], name}] == nil:
-						// The name is the submodule unless the package binds it.
-						tgt = pySymbol(r.File, strings.TrimSuffix(spec, ".")+"."+name, c.Callee, corpus, local, owner, reexports, pyMod)
+					case pySymbol(r.File, spec, name, corpus, local, owner, reexports, pyMod) == "":
+						// The name is the submodule unless the package binds
+						// it to anything but that submodule.
+						sub := strings.TrimSuffix(spec, ".") + "." + name
+						pkg := pyMod[[2]string{r.File, spec}]
+						if a := reexports[[2]string{pkg, name}]; a == nil || resolvePyModule(pkg, strings.TrimSuffix(a.Spec, ".")+"."+a.Imported, corpus) == resolvePyModule(r.File, sub, corpus) {
+							tgt = pySymbol(r.File, sub, c.Callee, corpus, local, owner, reexports, pyMod)
+						}
 					}
 					if tgt != "" {
 						conf = model.ConfExtracted
 					} else if c.Recv == "" && strings.HasSuffix(cm, ":") {
-						continue
+						// An import in the function binds the callee to nothing
+						// else. A module off the import path binds by its stem,
+						// as the name alone did.
+						if stem := spec[strings.LastIndex(spec, ".")+1:]; from && stem != "" {
+							tgt = unique(global[name], func(id string) bool { return owner[id] == "" && defStem(idFile[id]) == stem })
+						}
+						if tgt == "" {
+							continue
+						}
 					}
 				}
 				if tgt != "" {
