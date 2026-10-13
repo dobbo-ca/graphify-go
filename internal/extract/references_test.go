@@ -882,6 +882,8 @@ case class CC(x: Early, y: Mis3)
 enum En { case A(x: EnumP) }
 class Dd extends p.Early
 def top(x: Early): Tp2 = null
+sealed trait Opt[+A] { def get: A }
+class Fn[-In, +Out, P] { def run(i: In, p: P): Out }
 `},
 	})
 	for _, w := range [][3]string{
@@ -933,7 +935,7 @@ def top(x: Early): Tp2 = null
 			t.Errorf("unexpected edge %v", e)
 		}
 	}
-	for _, label := range []string{"T", "U", "V", "A", "EnumP", "Nest1"} {
+	for _, label := range []string{"T", "U", "V", "A", "EnumP", "Nest1", "In", "Out", "P"} {
 		if nodes[[2]string{"", label}] {
 			t.Errorf("unexpected stub %q", label)
 		}
