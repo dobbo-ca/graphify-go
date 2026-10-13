@@ -79,7 +79,7 @@ func (r *Result) AppendJSON(b []byte) ([]byte, error) {
 	}
 	b = append(b, `,"ImportAliases":`...)
 	b, _ = appendJSONArr(b, r.ImportAliases, func(b []byte, a *ImportAlias) ([]byte, error) {
-		b = appendJSONFields(b, `{"Local":`, a.Local, `,"Imported":`, a.Imported, `,"ModuleStem":`, a.ModuleStem)
+		b = appendJSONFields(b, `{"Local":`, a.Local, `,"Imported":`, a.Imported, `,"ModuleStem":`, a.ModuleStem, `,"Spec":`, a.Spec)
 		return append(a.Loc.AppendJSON(append(b, `,"Loc":`...)), '}'), nil
 	})
 	b = append(b, `,"MDRefs":`...)

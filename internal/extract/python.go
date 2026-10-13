@@ -190,7 +190,7 @@ func (b *builder) pyImportAliases(n, mod *ts.Node, src []byte) {
 			continue
 		}
 		b.res.ImportAliases = append(b.res.ImportAliases, ImportAlias{
-			Local: local, Imported: imported, ModuleStem: stem, Loc: loc,
+			Local: local, Imported: imported, ModuleStem: stem, Spec: mod.Utf8Text(src), Loc: loc,
 		})
 	}
 }
@@ -269,35 +269,19 @@ func pyLocalTyper(types map[string]string, src []byte) func(c *ts.Node) bool {
 	}
 }
 
-// pyModules maps each local name bound by exactly one module-level `import x`
-// or `import x as y`, and bound nowhere else at module scope, to its module.
+// pyModules maps each local name bound by exactly one module-level import,
+// and bound nowhere else at module scope, to what it names (pyImportNames).
 func pyModules(root *ts.Node, src []byte) map[string]string {
 	mods, bound := map[string]string{}, map[string]bool{}
 	for i := uint(0); i < root.ChildCount(); i++ {
 		st := root.Child(i)
-		if st.Kind() != "import_statement" {
-			pyBinds(st, src, false, bound)
-			continue
-		}
-		for j := uint(0); j < st.ChildCount(); j++ {
-			c := st.Child(j)
-			local, spec := "", ""
-			switch c.Kind() {
-			case "dotted_name":
-				// `import a.b` binds a, which is not the module imported.
-				local = c.NamedChild(0).Utf8Text(src)
-				if c.NamedChildCount() == 1 {
-					spec = local
-				}
-			case "aliased_import":
-				local, spec = fieldText(c, "alias", src), fieldText(c, "name", src)
-			default:
-				continue
-			}
-			if _, dup := mods[local]; dup || spec == "" {
+		if !pyImportNames(st, src, func(local, val string) {
+			if _, dup := mods[local]; dup || val == "" {
 				bound[local] = true
 			}
-			mods[local] = spec
+			mods[local] = val
+		}) {
+			pyBinds(st, src, false, bound)
 		}
 	}
 	// `from m import *` can bind any name.
@@ -308,6 +292,54 @@ func pyModules(root *ts.Node, src []byte) map[string]string {
 		delete(mods, name)
 	}
 	return mods
+}
+
+// pyImportNames calls fn for each name the import statement st binds, with
+// what it names: "a.b" for the module of `import a.b as x`, "a.b:n" for the n
+// of `from a.b import n`, and "" for `import a.b`, which binds a alone. It
+// returns false, and calls nothing, for another statement or a star import.
+func pyImportNames(st *ts.Node, src []byte, fn func(local, val string)) bool {
+	from := ""
+	switch st.Kind() {
+	case "import_statement":
+	case "import_from_statement":
+		from = fieldText(st, "module_name", src) + ":"
+		for i := uint(0); i < st.ChildCount(); i++ {
+			if st.Child(i).Kind() == "wildcard_import" {
+				return false
+			}
+		}
+	default:
+		return false
+	}
+	for i := uint(0); i < st.ChildCount(); i++ {
+		if st.FieldNameForChild(uint32(i)) != "name" {
+			continue
+		}
+		c := st.Child(i)
+		switch c.Kind() {
+		case "dotted_name":
+			// `import a.b` binds a, which is not the module imported.
+			local, val := c.NamedChild(0).Utf8Text(src), ""
+			if c.NamedChildCount() == 1 || from != "" {
+				local = c.Utf8Text(src)
+				val = from + local
+			}
+			fn(local, val)
+		case "aliased_import":
+			fn(fieldText(c, "alias", src), from+fieldText(c, "name", src))
+		}
+	}
+	return true
+}
+
+// pyModuleOf returns the module a receiver bound to val names: the module of
+// a plain import, or the name of a from-import taken as a submodule.
+func pyModuleOf(val string) string {
+	if mod, name, ok := strings.Cut(val, ":"); ok {
+		return strings.TrimSuffix(mod, ".") + "." + name
+	}
+	return val
 }
 
 // The kinds pyBind acts on, then those of the pyCalls walk: pyBind's, the
@@ -426,6 +458,7 @@ func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
 		return of != nil && c.StartByte() >= of.StartByte() && c.EndByte() <= of.EndByte()
 	}
 	types, bound := map[string]string{}, map[string]bool{}
+	mods := map[string]string{} // names the imports inside fn bind
 	localType := pyLocalTyper(types, src)
 	// Types and bound names cover the whole function, so a receiver is
 	// resolved only after the walk.
@@ -439,6 +472,14 @@ func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
 	walkKinds(fn, pyCallKinds, func(cv ts.Node) bool {
 		c := &cv
 		localType(c)
+		if within(c, body) && pyImportNames(c, src, func(local, val string) {
+			if old, dup := mods[local]; dup && old != val {
+				val = ""
+			}
+			mods[local] = val
+		}) {
+			return true
+		}
 		if within(c, body) || within(c, params) {
 			pyBind(c, src, true, bound)
 		}
@@ -490,8 +531,21 @@ func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
 		}
 		return true
 	})
+	// imported is what name names by an import no other binding hides: one
+	// inside fn before one of the module.
+	imported := func(name string) (val string, inFn bool) {
+		val, inFn = mods[name]
+		if !inFn {
+			val = b.pyMods[name]
+		}
+		if bound[name] {
+			return "", false
+		}
+		return val, inFn
+	}
 sites:
 	for _, c := range sites {
+		n, mod := len(b.res.Calls), ""
 		if !c.member {
 			// A def of an enclosing function hides every other of its name.
 			for s, ok := c.caller, true; ok; s, ok = b.jsParent[s] {
@@ -501,19 +555,22 @@ sites:
 				}
 			}
 			b.call(c.caller, c.callee, c.loc)
-			continue
+			if mod, _ = imported(c.callee); !strings.Contains(mod, ":") {
+				mod = ""
+			}
+		} else {
+			recv := c.recv
+			val, inFn := imported(recv)
+			// Upstream gives a call on an external module to a top-level
+			// function, and to a module-level import, alone.
+			if mod = pyModuleOf(val); mod != "" && (inFn || c.caller != callerID) {
+				mod += ":"
+			}
+			if t := types[recv]; t != "" {
+				recv = t
+			}
+			b.callRecv(c.caller, c.callee, recv, c.loc)
 		}
-		recv := c.recv
-		mod := b.pyMods[recv]
-		// Upstream binds a module call of a top-level function alone.
-		if bound[recv] || c.caller != callerID {
-			mod = ""
-		}
-		if t := types[recv]; t != "" {
-			recv = t
-		}
-		n := len(b.res.Calls)
-		b.callRecv(c.caller, c.callee, recv, c.loc)
 		if len(b.res.Calls) > n && mod != "" {
 			for len(b.res.CallMods) < n {
 				b.res.CallMods = append(b.res.CallMods, "")

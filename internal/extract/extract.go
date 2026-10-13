@@ -72,9 +72,11 @@ func (r *Result) CallsOK() bool {
 }
 
 // ImportAlias is per-file evidence from a top-level `from M import N [as L]`:
-// the local name L (alias or N) resolves to symbol N in module-stem M.
+// the local name L (alias or N) resolves to symbol N in module-stem M. Spec
+// is M as written.
 type ImportAlias struct {
 	Local, Imported, ModuleStem string
+	Spec                        string
 	Loc                         model.Loc
 }
 
@@ -143,8 +145,10 @@ type Result struct {
 	CallText []string
 	// File is the file the Calls were made in.
 	File string
-	// CallMods runs beside Calls, as far as the last entry set: the import
-	// spec Recv names when it is an unshadowed `import x` binding (Python only).
+	// CallMods runs beside Calls, as far as the last entry set (Python only):
+	// the module Recv names by an unshadowed import, or for a bare call
+	// "module:name", the `from module import name` that binds its callee. A
+	// module that ends in ":" binds in the corpus alone, never as external.
 	CallMods      []string
 	TypeRefs      []TypeRef
 	Imps          []Imp
