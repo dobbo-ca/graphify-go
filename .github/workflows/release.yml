@@ -52,42 +52,7 @@ jobs:
           mode: ${{ inputs.mode || 'auto' }}
           dry-run: ${{ inputs.dry_run || false }}
 
-  # graphify uses cgo (tree-sitter), so binaries are built on native OS runners
-  # rather than cross-compiled from one host. Homebrew only needs darwin+linux.
-  build-darwin:
-    needs: version
-    if: needs.version.outputs.version_changed == 'true'
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - run: git fetch --tags --force
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.25"
-      - name: Build darwin archives
-        env:
-          VERSION: ${{ needs.version.outputs.new_version }}
-        run: |
-          for arch in arm64 amd64; do
-            CC="clang"
-            [ "$arch" = "amd64" ] && CC="clang -arch x86_64"
-            LDFLAGS="-X main.version=${VERSION} -X main.commit=${GITHUB_SHA} -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            CGO_ENABLED=1 GOOS=darwin GOARCH=$arch CC="$CC" \
-              go build -ldflags "$LDFLAGS" -o graphify ./cmd/graphify
-            tar czf "graphify-go-${VERSION}-darwin-${arch}.tar.gz" graphify
-            shasum -a 256 "graphify-go-${VERSION}-darwin-${arch}.tar.gz" | awk '{print $1}' \
-              > "graphify-go-${VERSION}-darwin-${arch}.tar.gz.sha256"
-            rm graphify
-          done
-      - uses: actions/upload-artifact@v4
-        with:
-          name: darwin
-          path: |
-            graphify-go-*.tar.gz
-            graphify-go-*.tar.gz.sha256
-
-  build-linux:
+  build:
     needs: version
     if: needs.version.outputs.version_changed == 'true'
     runs-on: ubuntu-latest
@@ -97,33 +62,31 @@ jobs:
       - run: git fetch --tags --force
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
-      - name: Install aarch64 cross toolchain
-        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
-      - name: Build linux archives
+          go-version: "1.27"
+      - name: Build archives
         env:
           VERSION: ${{ needs.version.outputs.new_version }}
         run: |
-          for arch in amd64 arm64; do
-            CC="gcc"
-            [ "$arch" = "arm64" ] && CC="aarch64-linux-gnu-gcc"
+          for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do
+            os="${target%/*}"
+            arch="${target#*/}"
             LDFLAGS="-X main.version=${VERSION} -X main.commit=${GITHUB_SHA} -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            CGO_ENABLED=1 GOOS=linux GOARCH=$arch CC="$CC" \
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch \
               go build -ldflags "$LDFLAGS" -o graphify ./cmd/graphify
-            tar czf "graphify-go-${VERSION}-linux-${arch}.tar.gz" graphify
-            shasum -a 256 "graphify-go-${VERSION}-linux-${arch}.tar.gz" | awk '{print $1}' \
-              > "graphify-go-${VERSION}-linux-${arch}.tar.gz.sha256"
+            tar czf "graphify-go-${VERSION}-${os}-${arch}.tar.gz" graphify
+            shasum -a 256 "graphify-go-${VERSION}-${os}-${arch}.tar.gz" | awk '{print $1}' \
+              > "graphify-go-${VERSION}-${os}-${arch}.tar.gz.sha256"
             rm graphify
           done
       - uses: actions/upload-artifact@v4
         with:
-          name: linux
+          name: archives
           path: |
             graphify-go-*.tar.gz
             graphify-go-*.tar.gz.sha256
 
   release:
-    needs: [version, build-darwin, build-linux]
+    needs: [version, build]
     if: ${{ needs.version.outputs.version_changed == 'true' && inputs.dry_run != true && !(github.ref_type == 'tag' && contains(github.ref_name, '-')) }}
     runs-on: ubuntu-latest
     steps:
