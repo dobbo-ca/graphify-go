@@ -333,6 +333,7 @@ type builder struct {
 	res      Result
 	seen     map[string]bool
 	pyMods   map[string]string // local name -> what a module-level import binds it to
+	pyOwn    map[string]bool   // names a module-level def, class or from-import binds
 	pyBodies []pyBody          // function bodies awaiting the Python call walk
 	// rubyMethods holds method names defined in the file (bare self-sends).
 	rubyMethods map[string]bool

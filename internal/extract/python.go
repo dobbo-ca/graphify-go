@@ -3,7 +3,6 @@ package extract
 import (
 	"bytes"
 	"regexp"
-	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -27,6 +26,18 @@ func extractPython(rel string, src []byte) Result {
 	for i := uint(0); i < root.ChildCount(); i++ {
 		b.pyStatement(root.Child(i), src)
 	}
+	// The names a module-level def, class or from-import of the file binds.
+	b.pyOwn = map[string]bool{}
+	for _, d := range b.res.Defs {
+		if d.ID == b.id(d.Name) {
+			b.pyOwn[d.Name] = true
+		}
+	}
+	for _, a := range b.res.ImportAliases {
+		if !a.InFunc {
+			b.pyOwn[a.Local] = true
+		}
+	}
 	dyn := pyDynamic(root, src)
 	for i := range b.pyBodies {
 		b.pyCalls(&b.pyBodies[i].fn, b.pyBodies[i].id, !dyn && !b.pyBodies[i].method, src)
@@ -46,7 +57,8 @@ func (b *builder) pyStatement(n *ts.Node, src []byte) {
 		b.pyFunc(n, src)
 	case "class_definition":
 		b.pyClass(n, src)
-	case "import_statement", "import_from_statement", "if_statement", "try_statement", "with_statement":
+	case "import_statement", "import_from_statement", "if_statement", "try_statement", "with_statement",
+		"for_statement", "while_statement", "match_statement":
 		b.pyNestedImports(n, src, false)
 	}
 }
@@ -636,8 +648,7 @@ sites:
 			val, inFn := imported(c.caller, c.callee)
 			// A builtin names nothing of another file unless an import or a
 			// def of this file has its name. A star import can bind any name.
-			if val == "" && pyBuiltins[c.callee] && b.pyMods != nil && !b.seen[b.id(c.callee)] &&
-				!slices.ContainsFunc(b.res.ImportAliases, func(a ImportAlias) bool { return a.Local == c.callee }) {
+			if val == "" && pyBuiltins[c.callee] && b.pyMods != nil && !b.pyOwn[c.callee] {
 				continue
 			}
 			b.call(c.caller, c.callee, c.loc)

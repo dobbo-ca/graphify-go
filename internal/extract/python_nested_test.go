@@ -507,6 +507,19 @@ func TestPythonBuiltinCalls(t *testing.T) {
 		{"a class of the same file", map[string]string{
 			"a.py": "class set: pass\ndef f():\n    return set()\n",
 		}, []string{"f() -calls-> set"}},
+		{"a def whose id is that of the name", map[string]string{
+			"b.py": "class Console:\n    def print(self, x): pass\n",
+			"a.py": "def _print(m): pass\nclass Input: pass\ndef f():\n    print('x')\n    input()\n",
+			"c.py": "def input(p): pass\n",
+		}, nil},
+		{"an import under a module-level for", map[string]string{
+			"b.py": "def open(p): pass\n",
+			"a.py": "for _ in (1,):\n    from b import open\ndef f():\n    return open('x')\n",
+		}, []string{"f() -calls-> open()"}},
+		{"an import inside another function or a class body", map[string]string{
+			"b.py": "def open(p): pass\n",
+			"a.py": "def g():\n    from b import open\nclass K:\n    from b import open\n    def m(self):\n        return open('x')\ndef f():\n    return open('x')\n",
+		}, nil},
 		{"exit of the site module", map[string]string{
 			"b.py": "class App:\n    def exit(self): pass\n",
 			"a.py": "def f():\n    exit(1)\n",
