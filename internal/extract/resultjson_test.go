@@ -67,7 +67,7 @@ func TestResultAppendJSONMatchesMarshal(t *testing.T) {
 		"omitted and escaped": {
 			Nodes: []model.Node{{ID: odd, Label: odd}, {Attributes: map[string]string{}}, {Attributes: map[string]string{"b": odd, "a": "1"}}},
 			Edges: []model.Edge{{Source: odd}, {Weight: 1e-7, ConfidenceScore: 1e21}, {Weight: math.Copysign(0, -1), ConfidenceScore: -2.5}, typeOnly, typeOnlyAt},
-			Defs:  []Def{{ID: odd, Abstract: true}, {}},
+			Defs:  []Def{{ID: odd, Abstract: true, Value: true}, {}},
 			Calls: []Call{{Callee: 1}}, CallText: []string{"", odd},
 			Imps: []Imp{{Spec: odd, Names: []string{odd, ""}}, {Rel: true}, {TypeOnly: true}},
 		},

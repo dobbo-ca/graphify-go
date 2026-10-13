@@ -30,6 +30,7 @@ const (
 	RelRationaleFor
 	RelCites
 	RelImplements
+	RelReExports
 )
 
 const (
@@ -40,7 +41,7 @@ const (
 
 var (
 	relTable = newCodeTable("", "contains", "calls", "imports", "imports_from", "references", "inherits",
-		"depends_on", "crate_depends_on", "case_of", "dispatches_to", "rationale_for", "cites", "implements")
+		"depends_on", "crate_depends_on", "case_of", "dispatches_to", "rationale_for", "cites", "implements", "re_exports")
 	confTable = newCodeTable("", "EXTRACTED", "INFERRED", "AMBIGUOUS")
 )
 
