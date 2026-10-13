@@ -853,3 +853,188 @@ val topProp: Tp3 = x
 		}
 	}
 }
+
+// Not copied from upstream: stubs for type parameters, nested types
+// binding to a namesake elsewhere.
+func TestScalaReferences(t *testing.T) {
+	nodes, edges := resolveSrc(t, [][2]string{
+		{"b.scala", "class Late\nclass Uniq\nclass Nest1\n"},
+		{"a.scala", `class Early
+class Foo[T, U: Ordering](val a: Early, b: Pb1, c: Map[String, Ext.Q], d: Option[T]) extends MissingBase[G1] with Early with IMiss {
+  class Nest1
+  val v: Late = null
+  var w: Lst[Early] = null
+  val tup: (Tup1, Tup2) = null
+  val fn: Fn1 => Fn2 = null
+  type Al = Alias1
+  val h: T = null
+  val q: a.b.Qual = null
+  val n: Nest1 = null
+  def m[V](x: Late, y: V, z: => ByName, w: Seq[Seq[Deep]])(implicit ev: Impl): Ret1 = null
+  def n2[A: Ctx](x: A): A = x
+  def p(u: Late with Other): Uniq = null
+  @Anno def q2(): Unit = ()
+  def r(): Unit = { val local: Loc1 = null }
+}
+trait Tr extends Early with Late { def g(x: Early): Rt1 }
+class Der[A] derives Show
+case class CC(x: Early, y: Mis3)
+enum En { case A(x: EnumP) }
+class Dd extends p.Early
+def top(x: Early): Tp2 = null
+`},
+	})
+	for _, w := range [][3]string{
+		{"a.scala:Foo", "inherits", ":MissingBase"},
+		{"a.scala:Foo", "mixes_in", "a.scala:Early"},
+		{"a.scala:Foo", "mixes_in", ":IMiss"},
+		{"a.scala:Foo", "references", ":Ordering"},
+		{"a.scala:Foo", "references", "a.scala:Early"},
+		{"a.scala:Foo", "references", ":Pb1"},
+		{"a.scala:Foo", "references", ":Map"},
+		{"a.scala:Foo", "references", ":String"},
+		{"a.scala:Foo", "references", ":Option"},
+		{"a.scala:Foo", "references", "b.scala:Late"},
+		{"a.scala:Foo", "references", ":Lst"},
+		{"a.scala:Foo", "references", ":Tup1"},
+		{"a.scala:Foo", "references", ":Fn2"},
+		{"a.scala:Foo", "references", ":Alias1"},
+		{"a.scala:Foo.m()", "references", "b.scala:Late"},
+		{"a.scala:Foo.m()", "references", ":Seq"},
+		{"a.scala:Foo.m()", "references", ":Deep"},
+		{"a.scala:Foo.m()", "references", ":Ret1"},
+		{"a.scala:Foo.n2()", "references", ":Ctx"},
+		{"a.scala:Foo.p()", "references", ":Other"},
+		{"a.scala:Foo.p()", "references", "b.scala:Uniq"},
+		{"a.scala:Tr", "inherits", "a.scala:Early"},
+		{"a.scala:Tr", "mixes_in", "b.scala:Late"},
+		{"a.scala:Tr.g()", "references", ":Rt1"},
+		{"a.scala:Der", "references", ":Show"},
+		{"a.scala:CC", "references", ":Mis3"},
+		{"a.scala:Dd", "inherits", "a.scala:Early"},
+		{"a.scala:top()", "references", ":Tp2"},
+	} {
+		if !edges[w] {
+			t.Errorf("missing edge %v", w)
+		}
+	}
+	for _, e := range [][3]string{
+		{"a.scala:Foo", "references", "b.scala:Nest1"},
+		{"a.scala:Foo", "references", ":G1"},
+		{"a.scala:Foo", "references", ":Q"},
+		{"a.scala:Foo", "references", ":Qual"},
+		{"a.scala:Foo", "references", ":Fn1"},
+		{"a.scala:Foo.m()", "references", ":ByName"},
+		{"a.scala:Foo.m()", "references", ":Impl"},
+		{"a.scala:Foo.q2()", "references", ":Anno"},
+		{"a.scala:Foo.r()", "references", ":Loc1"},
+	} {
+		if edges[e] {
+			t.Errorf("unexpected edge %v", e)
+		}
+	}
+	for _, label := range []string{"T", "U", "V", "A", "EnumP", "Nest1"} {
+		if nodes[[2]string{"", label}] {
+			t.Errorf("unexpected stub %q", label)
+		}
+	}
+}
+
+// Not copied from upstream: stubs for self, static and parent.
+func TestPHPReferences(t *testing.T) {
+	nodes, edges := resolveSrc(t, [][2]string{
+		{"b.php", "<?php\nclass Late {}\nclass Uniq {}\n"},
+		{"a.php", `<?php
+namespace App;
+use Ext\Lib\Ext;
+interface IEarly {}
+class Early {}
+#[Attr1]
+class User extends MissingBase implements IMiss, IEarly {
+    use TraitMiss, Early;
+    public Early $e;
+    public ?Late $l;
+    public int|Uniq $u;
+    public \Other\Qual $q;
+    public Ext $x;
+    public self $s;
+    public array $arr;
+    public function __construct(private Ctor2 $p, int $n, ?Param3 $z = null) {}
+    #[Attr2]
+    public function meth(Param1 $a, int $b, Early&Inter $c): ?Ret3 { return null; }
+    public function m3(): static { return $this; }
+    public function m4(parent $p): void {}
+    public function m6(): Ext\Deep {}
+}
+interface I2 extends IMiss1, IEarly { public function im(Late $x): Early; }
+function top(Late $a, Top1 $b): TopRet {}
+trait TrA { public Late $tl; }
+enum En: string implements IMiss2 { case A = 'a'; }
+`},
+	})
+	for _, w := range [][3]string{
+		{"a.php:User", "inherits", ":MissingBase"},
+		{"a.php:User", "implements", ":IMiss"},
+		{"a.php:User", "implements", "a.php:IEarly"},
+		{"a.php:User", "mixes_in", ":TraitMiss"},
+		{"a.php:User", "mixes_in", "a.php:Early"},
+		{"a.php:User", "references", "a.php:Early"},
+		{"a.php:User", "references", "b.php:Late"},
+		{"a.php:User", "references", "b.php:Uniq"},
+		{"a.php:User", "references", ":Qual"},
+		{"a.php:User", "references", ":Ext"},
+		{"a.php:User", "references", ":Ctor2"},
+		{"a.php:User.__construct()", "references", ":Ctor2"},
+		{"a.php:User.__construct()", "references", ":Param3"},
+		{"a.php:User.meth()", "references", ":Param1"},
+		{"a.php:User.meth()", "references", ":Inter"},
+		{"a.php:User.meth()", "references", ":Ret3"},
+		{"a.php:User.m6()", "references", ":Deep"},
+		{"a.php:I2", "inherits", ":IMiss1"},
+		{"a.php:I2.im()", "references", "b.php:Late"},
+		{"a.php:I2.im()", "references", "a.php:Early"},
+		{"a.php:top()", "references", ":Top1"},
+		{"a.php:top()", "references", ":TopRet"},
+		{"a.php:TrA", "references", "b.php:Late"},
+		{"a.php:En", "implements", ":IMiss2"},
+	} {
+		if !edges[w] {
+			t.Errorf("missing edge %v", w)
+		}
+	}
+	for _, e := range [][3]string{
+		{"a.php:User", "references", ":Attr1"},
+		{"a.php:User.meth()", "references", ":Attr2"},
+	} {
+		if edges[e] {
+			t.Errorf("unexpected edge %v", e)
+		}
+	}
+	for _, label := range []string{"self", "static", "parent", "array", "int", "void", "Attr1", "Attr2"} {
+		if nodes[[2]string{"", label}] {
+			t.Errorf("unexpected stub %q", label)
+		}
+	}
+}
+
+// Upstream emits no type references for Ruby, only the superclass stub.
+func TestRubyReferences(t *testing.T) {
+	nodes, edges := resolveSrc(t, [][2]string{
+		{"b.rb", "class Late; end\n"},
+		{"a.rb", "class Early; end\nclass Same < Early; end\nclass Miss < Missing::Deep; end\nclass Far < Late; end\nclass Inc < Early\n  include IMiss\n  def m(a = Pm1.new); end\nend\n"},
+	})
+	for _, w := range [][3]string{
+		{"a.rb:Same", "inherits", "a.rb:Early"},
+		{"a.rb:Miss", "inherits", ":Deep"},
+		{"a.rb:Far", "inherits", "b.rb:Late"},
+	} {
+		if !edges[w] {
+			t.Errorf("missing edge %v", w)
+		}
+	}
+	for _, label := range []string{"IMiss", "Pm1", "Missing"} {
+		if nodes[[2]string{"", label}] {
+			t.Errorf("unexpected stub %q", label)
+		}
+	}
+}

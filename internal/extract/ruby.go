@@ -70,7 +70,7 @@ func (b *builder) rubyType(n *ts.Node, src []byte) {
 	b.def(typeID, name, name, line(n))
 	// The superclass lets an inherited self-send walk the chain.
 	if sup := n.ChildByFieldName("superclass"); sup != nil {
-		b.typeRef(typeID, rubyConstName(firstNamed(sup), src), "inherits", line(n))
+		b.ref(typeID, rubyConstName(firstNamed(sup), src), "inherits", false, line(n))
 	}
 
 	body := n.ChildByFieldName("body")
