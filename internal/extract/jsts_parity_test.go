@@ -739,6 +739,8 @@ func TestJSImportJsSpecifierAndBarrelCycle(t *testing.T) {
 		names += "x" + itoa(i) + ", "
 	}
 	srcs = append(srcs, [2]string{"use.ts", "import { " + names + "} from './m0';\n"})
+	srcs = append(srcs, [2]string{"self.ts", "import { S } from './self.js';\nexport class S {}\n"},
+		[2]string{"c.mts", "export class C {}\n"}, [2]string{"d.ts", "import { C } from './c.mjs';\n"})
 	_, edges := resolveSrc(t, srcs)
 	for _, want := range [][3]string{
 		{"b.ts:b.ts", "imports", "a.ts:A"},
@@ -746,6 +748,15 @@ func TestJSImportJsSpecifierAndBarrelCycle(t *testing.T) {
 	} {
 		if !edges[want] {
 			t.Errorf("missing edge %v", want)
+		}
+	}
+	// upstream pairs only .js/.ts and .jsx/.tsx, and a file does not import itself
+	for _, not := range [][3]string{
+		{"self.ts:self.ts", "imports_from", "self.ts:self.ts"},
+		{"d.ts:d.ts", "imports_from", "c.mts:c.mts"},
+	} {
+		if edges[not] {
+			t.Errorf("unexpected edge %v", not)
 		}
 	}
 }

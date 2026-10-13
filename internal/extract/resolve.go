@@ -1224,6 +1224,13 @@ func importTargets(im Imp, corpus map[string]bool, goPkgs map[string][]string, g
 		if t := resolveRelImport(im.File, spec, corpus); t != "" {
 			return []string{t}
 		}
+		// TypeScript names the output file: `./x.js` is x.ts on disk.
+		if ext := path.Ext(spec); jsLike(im.File) && (ext == ".js" || ext == ".jsx") {
+			ts := strings.TrimSuffix(spec, ext) + ".t" + ext[2:]
+			if t := resolveRelImport(im.File, ts, corpus); t != "" && t != from {
+				return []string{t}
+			}
+		}
 	}
 	return out
 }
@@ -1339,15 +1346,6 @@ func resolveRelImport(fromFile, spec string, corpus map[string]bool) string {
 func resolveModulePath(base string, corpus map[string]bool) string {
 	if corpus[base] {
 		return base
-	}
-	// TypeScript names the output file: `./x.js` is x.ts on disk.
-	if ext := path.Ext(base); ext == ".js" || ext == ".jsx" || ext == ".mjs" || ext == ".cjs" {
-		stem := strings.TrimSuffix(base, ext)
-		for _, ts := range []string{".ts", ".tsx", ".mts", ".cts", ".d.ts"} {
-			if corpus[stem+ts] {
-				return stem + ts
-			}
-		}
 	}
 	// One reused buffer: a missed probe then allocates nothing.
 	buf := make([]byte, 0, len(base)+len("/index.d.ts"))
