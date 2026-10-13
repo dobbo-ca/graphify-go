@@ -42,8 +42,9 @@ The parser is [gositter](https://github.com/dobbo-ca/gositter), a Go port of
 the tree-sitter runtime. `go install` and `go build` work with `CGO_ENABLED=0`
 and cross-compile every target from one host.
 
-Releases are cut automatically from conventional commits (Uplift) and published
-as GitHub releases + a Homebrew formula on every merge to `main`.
+Every push to `main` publishes a beta GitHub release (skipped when the merge
+commit says `[skip ci]`). A final release is a `vX.Y.Z` tag pushed by hand; it
+publishes the GitHub release and updates the Homebrew formula.
 
 ## Usage
 
