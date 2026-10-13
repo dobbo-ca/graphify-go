@@ -362,7 +362,12 @@ func F[U any](l *Local, u U, vs ...Inner) (n int, err error) { return }
 func TestCReferences(t *testing.T) {
 	nodes, edges := resolveSrc(t, [][2]string{
 		{"types.h", "typedef struct Point { int x; } Point;\nstruct Box { Point origin; };\n"},
+		{"kv.h", "typedef struct _kv kv;\n"},
+		{"kv.c", "#include \"kv.h\"\nstruct _kv { int n; };\nint kvlen(kv *k) { return 0; }\n"},
+		{"bench.c", "typedef struct kv { int other; } kv;\n"},
 		{"main.c", `#include "types.h"
+Point (paren)(Missing m) { Point p; return p; }
+Point PREFIX(name3)(FILE *f) { Point p; return p; }
 Point make_point(int x, struct Box *b) { Point p; return p; }
 int area(const Point *p, Missing m, FILE **f, uint32_t n, size_t k, void (*cb)(Other)) { return 0; }
 Pt (*getfp(Arg a))(Inner) { return 0; }
@@ -375,6 +380,9 @@ Pt (*getfp(Arg a))(Inner) { return 0; }
 		{"main.c:area()", "references", ":FILE"},
 		{"main.c:getfp()", "references", ":Pt"},
 		{"main.c:getfp()", "references", ":Arg"},
+		{"main.c:paren()", "references", ":Missing"},
+		{"main.c:PREFIX()", "references", ":FILE"},
+		{"kv.c:kvlen()", "references", "kv.c:_kv"}, // not the unrelated kv of bench.c
 	} {
 		if !edges[w] {
 			t.Errorf("missing edge %v", w)
@@ -383,7 +391,7 @@ Pt (*getfp(Arg a))(Inner) { return 0; }
 	if edges[[3]string{"main.c:make_point()", "references", "types.h:Box"}] {
 		t.Error("struct Box is a tag, not a typedef name")
 	}
-	for _, label := range []string{"uint32_t", "size_t", "Other", "Inner", "Box", "int"} {
+	for _, label := range []string{"uint32_t", "size_t", "Other", "Inner", "Box", "int", "name3", "kv"} {
 		if nodes[[2]string{"", label}] {
 			t.Errorf("unexpected stub %q", label)
 		}

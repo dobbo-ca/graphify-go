@@ -167,6 +167,9 @@ type Result struct {
 	// Exports are the "local" or "local as exported" entries of its JS/TS
 	// `export { ... }` statements without a source.
 	Exports []string `json:",omitempty"`
+	// TypeAliases are the "name tag" pairs of its C typedefs of a struct,
+	// union or enum tag with another name (`typedef struct _kv kv;`).
+	TypeAliases []string `json:",omitempty"`
 	// OverBudget: ts.Budget stopped the parse, only the file node is here.
 	OverBudget bool `json:",omitempty"`
 }

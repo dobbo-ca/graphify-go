@@ -311,6 +311,18 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	}
 	stubSeen := map[string]bool{}
 	var stubs []model.Node
+	// C typedef name -> the tag it names and a file that says so; the tag is
+	// "" when two typedefs of the name disagree.
+	ctags := map[string][2]string{}
+	for _, r := range results {
+		for _, a := range r.TypeAliases {
+			name, tag, _ := strings.Cut(a, " ")
+			if old, ok := ctags[name]; ok && old[0] != tag {
+				tag = ""
+			}
+			ctags[name] = [2]string{tag, r.File}
+		}
+	}
 	for _, r := range results {
 		js := len(r.TypeRefs) > 0 && jsLike(r.File)
 		var bound map[string]string
@@ -329,6 +341,9 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		for _, t := range r.TypeRefs {
 			ref := t.Relation == "references"
 			name := t.Name
+			if a := ctags[name]; a[0] != "" && !langfamily.Cross(t.File, a[1]) && len(typeDefs(local[[2]string{t.File, name}], name, idFile)) == 0 {
+				name = a[0]
+			}
 			// A supertype or a type position names a type; a decorator can
 			// name a function.
 			cands := func(ids []string, name string) []string {

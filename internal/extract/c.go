@@ -42,6 +42,13 @@ func (b *builder) cItems(root *ts.Node, src []byte) {
 				switch spec.Kind() {
 				case "struct_specifier", "union_specifier", "enum_specifier":
 					b.cType(spec, src)
+					// `typedef struct _kv kv;`: kv names the tag _kv.
+					tag := fieldText(spec, "name", src)
+					for j := uint(0); n.Kind() == "type_definition" && tag != "" && j < n.ChildCount(); j++ {
+						if d := n.Child(j); n.FieldNameForChild(uint32(j)) == "declarator" && d.Kind() == "type_identifier" && d.Utf8Text(src) != tag {
+							b.res.TypeAliases = append(b.res.TypeAliases, d.Utf8Text(src)+" "+tag)
+						}
+					}
 				}
 			}
 		}
@@ -74,9 +81,16 @@ func (b *builder) cRefs(id string, fn *ts.Node, src []byte) {
 		if c.Kind() != "function_declarator" {
 			return true
 		}
-		// `T (*f(int n))(P)`: the parameters of f sit beside its name.
-		if d := c.ChildByFieldName("declarator"); d != nil && d.Kind() != "identifier" {
-			return true
+		// `T (*f(int n))(P)`: the parameters of f sit beside its name, in
+		// the declarator behind the pointer. `T NAME(f)(P)` has none there.
+		for d, ptr := c.ChildByFieldName("declarator"), false; d != nil; d = d.ChildByFieldName("declarator") {
+			if d.Kind() == "parenthesized_declarator" {
+				d = firstNamed(d)
+			}
+			if d == nil || d.Kind() == "function_declarator" && ptr {
+				return d != nil
+			}
+			ptr = ptr || d.Kind() == "pointer_declarator"
 		}
 		if ps := c.ChildByFieldName("parameters"); ps != nil {
 			for i := uint(0); i < ps.NamedChildCount(); i++ {
