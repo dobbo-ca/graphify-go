@@ -344,23 +344,26 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				tgt = jm.supertype(t, &r, bound)
 			} else if ids := cands(own, name); len(ids) == 1 {
 				tgt = ids[0]
-			} else if len(typeDefs(own, name, idFile)) == 0 {
+			} else if len(typeDefs(own, name, idFile)) > 0 {
+				// The file's own N is no type: N names nothing elsewhere.
+				stubOnly = len(ids) == 0
+			} else if t.Qual == "" {
 				// `from m import Real as R`: R names Real in the files that
 				// import statement resolved to, or nothing. The last import
-				// of R that binds wins; a plain import of R among them
-				// leaves R to the lookup by name.
+				// of R that binds wins; a plain import of R that does not
+				// bind there leaves R to the lookup by name.
 				as := alias[name]
 				for i := len(as) - 1; i >= 0 && tgt == ""; i-- {
 					a := as[i]
-					if stubOnly = a.Imported != name; !stubOnly {
-						break
-					}
 					for _, im := range r.Imps {
 						if im.Loc != a.Loc || pySpecStem(im.Spec) != a.ModuleStem || !contains(im.Names, a.Imported) {
 							continue
 						}
 						files := importTargets(im, corpus, goPkgs, goMods, goTargets)
 						tgt = unique(cands(global[a.Imported], a.Imported), func(id string) bool { return contains(files, idFile[id]) })
+					}
+					if stubOnly = a.Imported != name; !stubOnly {
+						break
 					}
 				}
 			}
@@ -1090,7 +1093,9 @@ func resolveImportGuided(results []Result, idFile map[string]string, out *model.
 		}
 		aliases := map[string]ImportAlias{}
 		for _, a := range r.ImportAliases {
-			aliases[a.Local] = a // last write wins, mirroring upstream alias dict
+			if a.ModuleStem != "" { // `from . import N` has no stem to look up
+				aliases[a.Local] = a // last write wins, mirroring upstream alias dict
+			}
 		}
 		rf := model.FileOf(r.File)
 		for _, n := range r.Calls {

@@ -90,6 +90,8 @@ type TypeRef struct {
 	// no definition binds. Deco marks a decorator, which a function can be.
 	Stub bool `json:",omitempty"`
 	Deco bool `json:",omitempty"`
+	// Qual is the qualifier Name was written with (`ns` in `ns.Name`).
+	Qual string `json:",omitempty"`
 }
 
 // Imp is an unresolved import: File imported the module named Spec. TypeOnly

@@ -257,3 +257,22 @@ class K(Foo):
 		}
 	}
 }
+
+// Upstream fixtures r6g, r6e: a plain import binds in its own module although
+// another module has the name; a qualified name is not the file's alias.
+func TestPythonPlainImportAndQualifiedName(t *testing.T) {
+	_, edges := resolveSrc(t, [][2]string{
+		{"p1.py", "class Config:\n    pass\n"},
+		{"p2.py", "class Config:\n    pass\n\n\nclass R:\n    pass\n\n\ndef load():\n    pass\n"},
+		{"lib.py", "class Real:\n    pass\n"},
+		{"user.py", "import p2\nfrom p1 import Config\nfrom p2 import load\nfrom lib import Real as R\n\n\nclass Mine(Config):\n    pass\n\n\nclass KQ(p2.R):\n    pass\n"},
+	})
+	for _, w := range [][3]string{
+		{"user.py:Mine", "inherits", "p1.py:Config"},
+		{"user.py:KQ", "inherits", "p2.py:R"},
+	} {
+		if !edges[w] {
+			t.Errorf("missing edge %v", w)
+		}
+	}
+}

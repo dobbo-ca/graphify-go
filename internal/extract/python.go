@@ -650,6 +650,7 @@ func (b *builder) pySuperclasses(classID string, n *ts.Node, src []byte) {
 			continue
 		}
 		b.typeRef(classID, baseTypeName(arg.Utf8Text(src)), "inherits", line(n))
+		b.pyQual(arg, src)
 	}
 }
 
@@ -704,6 +705,7 @@ func (b *builder) pyTypeNames(id string, n *ts.Node, src []byte, loc model.Loc) 
 		// A module variable made by TypeVar is a type parameter, not a type.
 		if name := baseTypeName(n.Utf8Text(src)); !pyTypeSkip[name] && !b.pyTypeVars[name] {
 			b.ref(id, name, "references", false, loc)
+			b.pyQual(n, src)
 		}
 		return
 	case "keyword_argument":
@@ -713,6 +715,13 @@ func (b *builder) pyTypeNames(id string, n *ts.Node, src []byte, loc model.Loc) 
 	}
 	for i := uint(0); i < n.NamedChildCount(); i++ {
 		b.pyTypeNames(id, n.NamedChild(i), src, loc)
+	}
+}
+
+// pyQual marks the last type reference as qualified when n is `q.Name`.
+func (b *builder) pyQual(n *ts.Node, src []byte) {
+	if o := n.ChildByFieldName("object"); n.Kind() == "attribute" && o != nil && len(b.res.TypeRefs) > 0 {
+		b.res.TypeRefs[len(b.res.TypeRefs)-1].Qual = o.Utf8Text(src)
 	}
 }
 
@@ -738,6 +747,7 @@ func (b *builder) pyDecorators(id string, n *ts.Node, src []byte) {
 				expr = f
 			}
 		}
+		attr := expr
 		if expr.Kind() == "attribute" {
 			expr = expr.ChildByFieldName("attribute")
 		}
@@ -746,6 +756,7 @@ func (b *builder) pyDecorators(id string, n *ts.Node, src []byte) {
 		}
 		if name := expr.Utf8Text(src); !pyDecoSkip[name] {
 			b.ref(id, name, "references", true, line(d))
+			b.pyQual(attr, src)
 		}
 	}
 }
