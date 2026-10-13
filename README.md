@@ -109,6 +109,19 @@ Two places spend CPU to keep peak memory down, both on purpose:
 `graphify update` keeps a parse cache in `graphify-out/`. A cache written by
 another graphify version is dropped and rebuilt once, with a note on stderr.
 
+### Profiling a build
+
+`graphify build` and `graphify update` write Go profiles when asked:
+`GFY_CPUPROFILE=cpu.pprof` for CPU and `GFY_MEMPROFILE=mem.pprof` for
+allocations. Unset, they cost nothing. A path that cannot be created prints a
+warning and the run goes on without that profile.
+
+```bash
+GFY_CPUPROFILE=cpu.pprof GFY_MEMPROFILE=mem.pprof graphify build .
+go tool pprof -top cpu.pprof
+go tool pprof -sample_index=alloc_space -top mem.pprof
+```
+
 ## Use it in your own repo
 
 1. Add `graphify build` to CI on merge to `main` and commit `graphify-out/` —

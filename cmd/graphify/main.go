@@ -171,7 +171,9 @@ func main() {
 		err = cmdBuild(os.Args[2:])
 		stop()
 	case "update":
+		stop := startProf()
 		err = cmdUpdate(os.Args[2:])
+		stop()
 	case "watch":
 		err = cmdWatch(arg(2, ""))
 	case "hook":

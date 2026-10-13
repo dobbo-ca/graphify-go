@@ -8,6 +8,8 @@
 - The GC target is 50 from resolve to the end of the output writes: about 5 to
   7 percent CPU for about 20 percent lower peak memory on a Kubernetes-sized
   tree.
+- `GFY_CPUPROFILE` and `GFY_MEMPROFILE` are documented, cover `update` as well
+  as `build`, and warn on a path that cannot be created instead of panicking.
 
 ### 📚 Documentation
 
