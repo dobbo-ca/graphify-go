@@ -8,6 +8,11 @@ func resolveSrc(t *testing.T, srcs [][2]string) (map[[2]string]bool, map[[3]stri
 	var results []Result
 	var files []string
 	for _, s := range srcs {
+		// "go.mod" names the module of the corpus root.
+		if s[0] == "go.mod" {
+			results = append(results, Result{GoMods: map[string]string{".": s[1]}})
+			continue
+		}
 		results = append(results, FileFromBytes(s[0], []byte(s[1])))
 		files = append(files, s[0])
 	}
