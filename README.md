@@ -109,9 +109,10 @@ Cold build of the Kubernetes source tree (M4 Pro, 14 cores):
 
 Two places spend CPU to keep peak memory down, both on purpose:
 
-- Parsers are pooled, and each one hands its subtree heap chunks back to a
-  pool shared by all parsers after every file. One huge file does not leave
-  its memory pinned in an idle parser; the cost is the hand-back on each parse.
+- Parsers are pooled, and after every file each one keeps 8 subtree heap
+  chunks and hands the rest back to a pool shared by all parsers. One huge
+  file does not leave its memory pinned in an idle parser; the cost is the
+  hand-back on each parse.
 - From resolve to the end of the output writes the Go GC target is 50 instead
   of 100. On a Kubernetes-sized tree that costs about 5 to 7 percent CPU for
   about 20 percent lower peak memory. A lower `GOGC`, or `GOGC=off`, is left
@@ -130,7 +131,10 @@ and nothing else, a warning on stderr names it on every build and update, and
 
 `GRAPHIFY_PARSE_BUDGET` sets the limit: a whole number of steps, `0` for no
 limit. The largest count in eight real repositories (about 71,000 parsed
-files) is 588. The parse cache is kept per limit, so the first `update` after
+files) is 588. The count can grow with the size of a broken region, so a
+file of several KB of one repeated bad token can reach the limit although it
+parses in under a second; raise the limit if a file you need is skipped. The
+parse cache is kept per limit, so the first `update` after
 a change parses every file again; a git hook must see the same value as your
 shell, or each of the two rebuilds the cache.
 

@@ -23,3 +23,11 @@ planned. The original's LLM-based semantic extraction, Obsidian/Neo4j/SVG
 exports, MCP server, and AI-assistant installers are intentionally omitted.
 
 The original MIT copyright is preserved in `LICENSE`.
+
+## Parser
+
+Source files are parsed with [gositter](https://github.com/dobbo-ca/gositter),
+a Go port of the tree-sitter runtime (MIT) with parser tables and scanners
+derived from the tree-sitter grammar repositories (MIT, and Apache-2.0 for
+HCL). The gositter repository lists each upstream in its `NOTICE.md` and
+carries the license texts in `LICENSE-tree-sitter` and `grammars/<pkg>/LICENSE`.
