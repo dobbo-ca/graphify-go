@@ -206,3 +206,21 @@ class Real(Base):
 		}
 	}
 }
+
+// Upstream fixture r3o: the import statement of an alias names its module.
+func TestPythonAliasBindsItsOwnModule(t *testing.T) {
+	_, edges := resolveSrc(t, [][2]string{
+		{"a/models.py", "class User:\n    pass\n"},
+		{"b/models.py", "class User:\n    pass\n"},
+		{"a/views.py", "from a.models import User as AUser\nfrom b.models import User as BUser\n\n\nclass Remote(BUser):\n    pass\n\n\ndef handle(u: BUser, v: AUser):\n    pass\n"},
+	})
+	for _, w := range [][3]string{
+		{"a/views.py:Remote", "inherits", "b/models.py:User"},
+		{"a/views.py:handle()", "references", "b/models.py:User"},
+		{"a/views.py:handle()", "references", "a/models.py:User"},
+	} {
+		if !edges[w] {
+			t.Errorf("missing edge %v", w)
+		}
+	}
+}
