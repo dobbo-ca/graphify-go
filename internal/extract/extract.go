@@ -72,10 +72,14 @@ func (r *Result) CallsOK() bool {
 }
 
 // ImportAlias is per-file evidence from a top-level `from M import N [as L]`:
-// the local name L (alias or N) resolves to symbol N in module-stem M.
+// the local name L (alias or N) resolves to symbol N in module-stem M. Spec
+// is M as written. InFunc marks an import inside a function, which binds no
+// name of the file.
 type ImportAlias struct {
 	Local, Imported, ModuleStem string
+	Spec                        string
 	Loc                         model.Loc
+	InFunc                      bool `json:",omitempty"`
 }
 
 // TypeRef is an unresolved supertype reference: the type FromID declared Name
@@ -143,8 +147,12 @@ type Result struct {
 	CallText []string
 	// File is the file the Calls were made in.
 	File string
-	// CallMods runs beside Calls, as far as the last entry set: the import
-	// spec Recv names when it is an unshadowed `import x` binding (Python only).
+	// CallMods runs beside Calls, as far as the last entry set (Python only):
+	// what an unshadowed import binds Recv, or the callee of a bare call, to.
+	// "module" is a plain import and "module:name" a `from module import name`.
+	// A last ":" marks a binding that never falls back: a receiver is then no
+	// external module, and a bare callee of an import inside the function
+	// binds to nothing else (":" alone when that import names no definition).
 	CallMods      []string
 	TypeRefs      []TypeRef
 	Imps          []Imp
@@ -318,13 +326,14 @@ func itoa(i int) string {
 
 // builder accumulates nodes/edges/defs for one file, de-duplicating node IDs.
 type builder struct {
-	file   string
-	src    model.File // file, as edges hold it
-	fileID string
-	stem   string // id prefix of the symbols: the file path
-	res    Result
-	seen   map[string]bool
-	pyMods map[string]string // local name -> plainly imported module
+	file     string
+	src      model.File // file, as edges hold it
+	fileID   string
+	stem     string // id prefix of the symbols: the file path
+	res      Result
+	seen     map[string]bool
+	pyMods   map[string]string // local name -> what a module-level import binds it to
+	pyBodies []pyBody          // function bodies awaiting the Python call walk
 	// rubyMethods holds method names defined in the file (bare self-sends).
 	rubyMethods map[string]bool
 	jsBodies    []jsBody             // function bodies awaiting the JS call walk

@@ -278,7 +278,16 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	// resolves a call to the unique (module_stem, symbol) definition with
 	// EXTRACTED confidence. Runs before the generic name pass and marks each
 	// resolved call site so the weaker name pass leaves it alone.
-	resolved := resolveImportGuided(results, idFile, &out)
+	// A Python module gives a name it imports to its own importers.
+	reexports := map[[2]string]*ImportAlias{} // file, local name
+	for _, r := range results {
+		for k := range r.ImportAliases {
+			if a := &r.ImportAliases[k]; !a.InFunc {
+				reexports[[2]string{r.File, a.Local}] = a
+			}
+		}
+	}
+	resolved := resolveImportGuided(results, idFile, &out, corpus, local, owner, reexports)
 
 	// Inheritance: a declared supertype name binds the same way a call does —
 	// same file first, then disambiguated among the definitions sharing the name.
@@ -327,6 +336,27 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		}
 	}
 
+	// A Python file imports each top-level definition its from-imports name.
+	var pySyms []model.Edge
+	pyMod := map[[2]string]string{}
+	for _, r := range results {
+		var seen map[string]bool
+		for _, a := range r.ImportAliases {
+			tgt := pySymbol(r.File, a.Spec, a.Imported, corpus, local, owner, reexports, pyMod)
+			if tgt == "" || idFile[tgt] == r.File || seen[tgt] {
+				continue
+			}
+			if seen == nil {
+				seen = map[string]bool{}
+			}
+			seen[tgt] = true
+			pySyms = append(pySyms, model.Edge{
+				Source: idutil.MakeID(r.File), Target: tgt, Relation: model.RelImports,
+				Confidence: model.ConfExtracted, SourceFile: fc.of(r.File), SourceLocation: a.Loc,
+			})
+		}
+	}
+
 	// Calls: prefer a definition in the same file, else disambiguate among the
 	// definitions sharing the called name (unique global, imported file, or same
 	// package) rather than guessing. A member call binds on its receiver: self/this
@@ -351,6 +381,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 			edges[n-1] = append(edges[n-1], e)
 		}
 		imported := importedSet{targets: impTargets}
+		pyMod := map[[2]string]string{}    // file, module -> the corpus file of a Python import
 		kept := map[string][]string{}      // callee\x00qualifier -> the definitions it qualifies
 		allQuals := map[string][]qualSet{} // callee -> quals of each id in its global list
 		bareJS := map[string][]string{}    // callee -> its global list without class members
@@ -361,13 +392,54 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				if len(resolved) > 0 && resolved[callSite{c.CallerID, c.Callee, c.Loc}] {
 					continue
 				}
-				tgt := ""
+				tgt, conf := "", model.ConfInferred
 				super, isSelf := selfRecv[c.Recv]
 				if ext := langRecv[c.Recv]; ext != "" && path.Ext(r.File) != ext {
 					isSelf = false
 				}
-				if isSelf {
-					tgt = selfTarget(owner[c.CallerID], c.Callee, super, methods, supers, openSuper)
+				// A Python import names the module of the receiver, or the
+				// module and name of a bare callee.
+				if i < len(r.CallMods) && r.CallMods[i] != "" {
+					cm := r.CallMods[i]
+					spec, name, from := strings.Cut(strings.TrimSuffix(cm, ":"), ":")
+					switch {
+					case c.Recv == "" && from:
+						tgt = pySymbol(r.File, spec, name, corpus, local, owner, reexports, pyMod)
+					case c.Recv == "":
+					case !from:
+						tgt = pySymbol(r.File, spec, c.Callee, corpus, local, owner, reexports, pyMod)
+					case pySymbol(r.File, spec, name, corpus, local, owner, reexports, pyMod) == "":
+						// The name is the submodule unless the package binds
+						// it to anything but that submodule.
+						sub := strings.TrimSuffix(spec, ".") + "." + name
+						pkg := pyMod[[2]string{r.File, spec}]
+						if a := reexports[[2]string{pkg, name}]; a == nil || resolvePyModule(pkg, strings.TrimSuffix(a.Spec, ".")+"."+a.Imported, corpus) == resolvePyModule(r.File, sub, corpus) {
+							tgt = pySymbol(r.File, sub, c.Callee, corpus, local, owner, reexports, pyMod)
+						}
+					}
+					if tgt != "" {
+						conf = model.ConfExtracted
+					} else if c.Recv == "" && strings.HasSuffix(cm, ":") {
+						// An import in the function binds the callee to nothing
+						// else. A module off the import path binds by its stem,
+						// as the name alone did.
+						if stem := spec[strings.LastIndex(spec, ".")+1:]; from && stem != "" {
+							tgt = unique(global[name], func(id string) bool { return owner[id] == "" && defStem(idFile[id]) == stem })
+						}
+						if tgt == "" {
+							continue
+						}
+					}
+				}
+				if tgt != "" {
+				} else if isSelf {
+					self := c.CallerID
+					// A Python def inside a method closes over the method's
+					// self. Such a def is no definition of the corpus.
+					for n := 0; path.Ext(r.File) == ".py" && self != "" && idFile[self] == "" && n < 16; n++ {
+						self = owner[self]
+					}
+					tgt = selfTarget(owner[self], c.Callee, super, methods, supers, openSuper)
 				} else {
 					lkey := [2]string{r.File, c.Callee}
 					here, all := localC[lkey], globalC[c.Callee]
@@ -448,7 +520,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				}
 				add(model.Edge{
 					Source: c.CallerID, Target: tgt, Relation: model.RelCalls,
-					Confidence: model.ConfInferred, SourceFile: rf, SourceLocation: c.Loc,
+					Confidence: conf, SourceFile: rf, SourceLocation: c.Loc,
 				})
 			}
 		}
@@ -478,7 +550,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	for _, parts := range callEdges {
 		nParts += len(parts)
 	}
-	edges := make([][]model.Edge, 0, len(results)+nParts+7)
+	edges := make([][]model.Edge, 0, len(results)+nParts+8)
 	for _, r := range results {
 		nodes = append(nodes, r.Nodes)
 		edges = append(edges, r.Edges)
@@ -487,7 +559,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	for _, parts := range callEdges {
 		edges = append(edges, parts...)
 	}
-	edges = append(edges, inherit, jm.edges(&fc))
+	edges = append(edges, inherit, jm.edges(&fc), pySyms)
 	// A method whose type is in the sibling file of the same stem.
 	var owned []model.Edge
 	for _, r := range results {
@@ -989,13 +1061,16 @@ type callSite struct {
 // bare call to the unique definition. Member calls and self-edges are skipped.
 // It returns the set of call sites it resolved so the generic name pass leaves
 // them alone.
-func resolveImportGuided(results []Result, idFile map[string]string, out *model.Extraction) map[callSite]bool {
+func resolveImportGuided(results []Result, idFile map[string]string, out *model.Extraction, corpus map[string]bool, local map[[2]string][]string, owner map[string]string, reexports map[[2]string]*ImportAlias) map[callSite]bool {
+	pyMod := map[[2]string]string{}
 	// (module_stem, symbol) -> def ids, used only when an import names that symbol.
 	// Only a stem some import names is ever looked up.
 	want := map[string]bool{}
 	for _, r := range results {
 		for _, a := range r.ImportAliases {
-			want[a.ModuleStem] = true
+			if !a.InFunc {
+				want[a.ModuleStem] = true
+			}
 		}
 	}
 	index := map[string][]string{}
@@ -1019,16 +1094,24 @@ func resolveImportGuided(results []Result, idFile map[string]string, out *model.
 		}
 		aliases := map[string]ImportAlias{}
 		for _, a := range r.ImportAliases {
-			aliases[a.Local] = a // last write wins, mirroring upstream alias dict
+			if !a.InFunc {
+				aliases[a.Local] = a // last write wins, mirroring upstream alias dict
+			}
 		}
 		rf := model.FileOf(r.File)
-		for _, n := range r.Calls {
+		for i, n := range r.Calls {
 			c := r.call(n)
 			if c.Recv != "" {
 				continue
 			}
 			a, ok := aliases[c.Callee]
 			if !ok {
+				continue
+			}
+			// The call walk binds the callee to an import inside the function,
+			// or to this one by the path of its module: both go before the stem.
+			if i < len(r.CallMods) && r.CallMods[i] != "" &&
+				(r.CallMods[i] != a.Spec+":"+a.Imported || pySymbol(r.File, a.Spec, a.Imported, corpus, local, owner, reexports, pyMod) != "") {
 				continue
 			}
 			ids := index[a.ModuleStem+"\x00"+a.Imported]
@@ -1049,6 +1132,43 @@ func resolveImportGuided(results []Result, idFile map[string]string, out *model.
 		}
 	}
 	return resolved
+}
+
+// pySymbol returns the one top-level definition that `from spec import name`
+// binds in the Python file from, through the names that module itself
+// imports, or "". mods remembers the file of each module.
+func pySymbol(from, spec, name string, corpus map[string]bool, local map[[2]string][]string, owner map[string]string, reexports map[[2]string]*ImportAlias, mods map[[2]string]string) string {
+	// Bounded so a cyclic re-export can't hang.
+	for depth := 0; depth < 8; depth++ {
+		key := [2]string{from, spec}
+		f, ok := mods[key]
+		if !ok {
+			f = resolvePyModule(from, spec, corpus)
+			mods[key] = f
+		}
+		if f == "" {
+			return ""
+		}
+		// A method or a nested type of that name is not what the import binds.
+		hit, n := "", 0
+		for _, id := range local[[2]string{f, name}] {
+			if owner[id] == "" {
+				hit, n = id, n+1
+			}
+		}
+		if n > 0 {
+			if n > 1 {
+				return ""
+			}
+			return hit
+		}
+		a := reexports[[2]string{f, name}]
+		if a == nil {
+			return ""
+		}
+		from, spec, name = f, a.Spec, a.Imported
+	}
+	return ""
 }
 
 // defStem returns a definition file's bare stem (basename without extension),

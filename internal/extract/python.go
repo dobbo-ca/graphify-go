@@ -26,6 +26,9 @@ func extractPython(rel string, src []byte) Result {
 	for i := uint(0); i < root.ChildCount(); i++ {
 		b.pyStatement(root.Child(i), src)
 	}
+	for i := range b.pyBodies {
+		b.pyCalls(&b.pyBodies[i].fn, b.pyBodies[i].id, src)
+	}
 	b.pyRationale(root, src)
 	return b.res
 }
@@ -76,7 +79,7 @@ func (b *builder) pyFunc(n *ts.Node, src []byte) {
 	}
 	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
-	b.pyCalls(n, id, src)
+	b.pyBodies = append(b.pyBodies, pyBody{*n, id})
 }
 
 func (b *builder) pyClass(n *ts.Node, src []byte) {
@@ -101,6 +104,7 @@ func (b *builder) pyClass(n *ts.Node, src []byte) {
 			}
 		}
 		if m.Kind() != "function_definition" {
+			pyImportNames(m, src, func(local, val string) { b.pyInFuncAlias(local, val, line(m)) })
 			continue
 		}
 		mname := fieldText(m, "name", src)
@@ -114,7 +118,7 @@ func (b *builder) pyClass(n *ts.Node, src []byte) {
 			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
 		})
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
-		b.pyCalls(m, mid, src)
+		b.pyBodies = append(b.pyBodies, pyBody{*m, mid})
 	}
 }
 
@@ -164,9 +168,6 @@ func (b *builder) pyImports(n *ts.Node, src []byte, typeOnly bool) {
 // (wildcard_import, no name field) carries no usable alias and is skipped.
 func (b *builder) pyImportAliases(n, mod *ts.Node, src []byte) {
 	stem := pyModuleStem(mod, src)
-	if stem == "" {
-		return
-	}
 	loc := line(n)
 	for i := uint(0); i < n.ChildCount(); i++ {
 		if n.FieldNameForChild(uint32(i)) != "name" {
@@ -190,7 +191,7 @@ func (b *builder) pyImportAliases(n, mod *ts.Node, src []byte) {
 			continue
 		}
 		b.res.ImportAliases = append(b.res.ImportAliases, ImportAlias{
-			Local: local, Imported: imported, ModuleStem: stem, Loc: loc,
+			Local: local, Imported: imported, ModuleStem: stem, Spec: mod.Utf8Text(src), Loc: loc,
 		})
 	}
 }
@@ -214,8 +215,6 @@ var pyClassName = regexp.MustCompile(`^[A-Z]\w*$`)
 // annotation (`c: Client`) or a constructor binding (`c = Client()`). A local
 // also bound by anything else (assignment, unpacking, for, with, except, `:=`)
 // maps to "".
-// ponytail: one flat scope per function, nested defs are not tracked; add
-// scopes if a repo shows wrong edges.
 func pyLocalTyper(types map[string]string, src []byte) func(c *ts.Node) bool {
 	// untype clears every name a binding target rebinds.
 	var untype func(n *ts.Node)
@@ -271,35 +270,19 @@ func pyLocalTyper(types map[string]string, src []byte) func(c *ts.Node) bool {
 	}
 }
 
-// pyModules maps each local name bound by exactly one module-level `import x`
-// or `import x as y`, and bound nowhere else at module scope, to its module.
+// pyModules maps each local name bound by exactly one module-level import,
+// and bound nowhere else at module scope, to what it names (pyImportNames).
 func pyModules(root *ts.Node, src []byte) map[string]string {
 	mods, bound := map[string]string{}, map[string]bool{}
 	for i := uint(0); i < root.ChildCount(); i++ {
 		st := root.Child(i)
-		if st.Kind() != "import_statement" {
-			pyBinds(st, src, false, bound)
-			continue
-		}
-		for j := uint(0); j < st.ChildCount(); j++ {
-			c := st.Child(j)
-			local, spec := "", ""
-			switch c.Kind() {
-			case "dotted_name":
-				// `import a.b` binds a, which is not the module imported.
-				local = c.NamedChild(0).Utf8Text(src)
-				if c.NamedChildCount() == 1 {
-					spec = local
-				}
-			case "aliased_import":
-				local, spec = fieldText(c, "alias", src), fieldText(c, "name", src)
-			default:
-				continue
-			}
-			if _, dup := mods[local]; dup || spec == "" {
+		if !pyImportNames(st, src, func(local, val string) {
+			if _, dup := mods[local]; dup || val == "" {
 				bound[local] = true
 			}
-			mods[local] = spec
+			mods[local] = val
+		}) {
+			pyBinds(st, src, false, bound)
 		}
 	}
 	// `from m import *` can bind any name.
@@ -310,6 +293,45 @@ func pyModules(root *ts.Node, src []byte) map[string]string {
 		delete(mods, name)
 	}
 	return mods
+}
+
+// pyImportNames calls fn for each name the import statement st binds, with
+// what it names: "a.b" for the module of `import a.b as x`, "a.b:n" for the n
+// of `from a.b import n`, and "" for `import a.b`, which binds a alone. It
+// returns false, and calls nothing, for another statement or a star import.
+func pyImportNames(st *ts.Node, src []byte, fn func(local, val string)) bool {
+	from := ""
+	switch st.Kind() {
+	case "import_statement":
+	case "import_from_statement":
+		from = fieldText(st, "module_name", src) + ":"
+		for i := uint(0); i < st.ChildCount(); i++ {
+			if st.Child(i).Kind() == "wildcard_import" {
+				return false
+			}
+		}
+	default:
+		return false
+	}
+	for i := uint(0); i < st.ChildCount(); i++ {
+		if st.FieldNameForChild(uint32(i)) != "name" {
+			continue
+		}
+		c := st.Child(i)
+		switch c.Kind() {
+		case "dotted_name":
+			// `import a.b` binds a, which is not the module imported.
+			local, val := c.NamedChild(0).Utf8Text(src), ""
+			if c.NamedChildCount() == 1 || from != "" {
+				local = c.Utf8Text(src)
+				val = from + local
+			}
+			fn(local, val)
+		case "aliased_import":
+			fn(fieldText(c, "alias", src), from+fieldText(c, "name", src))
+		}
+	}
+	return true
 }
 
 // The kinds pyBind acts on, then those of the pyCalls walk: pyBind's, the
@@ -402,10 +424,42 @@ func pyTargets(t *ts.Node, src []byte, bound map[string]bool) {
 	}
 }
 
+// pyScope is the function or class the pyCalls walk is inside. A class adds
+// to the ids below it alone: fn and the body are those of the function around.
+// outer is the function a def is made in, which runs its defaults; local marks
+// a method of a class made in a function, where self is not that of fn.
+type pyScope struct {
+	id, fn, outer  string
+	end            uint
+	bodyLo, bodyHi uint
+	local          bool
+}
+
+// pyBody is a function whose calls pyCalls records once the file's own
+// definitions have their ids.
+type pyBody struct {
+	fn ts.Node
+	id string
+}
+
+// pyInFuncAlias records the name a from-import inside a function or class
+// binds, for the edge from the file to what it names.
+func (b *builder) pyInFuncAlias(local, val string, loc model.Loc) {
+	if mod, name, ok := strings.Cut(val, ":"); ok {
+		b.res.ImportAliases = append(b.res.ImportAliases, ImportAlias{
+			Local: local, Imported: name, Spec: mod, Loc: loc, InFunc: true,
+		})
+	}
+}
+
 // pyCalls records each call site in the body of function fn. Direct
 // calls (`f()`) record the identifier; attribute calls (`x.f()`) record the
 // attribute name, with the receiver's class in place of a typed local. One walk
-// of fn collects the local types, the bound names and the call sites.
+// of fn collects the local types, the bound names and the call sites. A def
+// inside fn is a node the function around it contains, and the caller of the
+// calls in its own body.
+// ponytail: the types and bound names are one flat scope for fn and the defs
+// inside it; add scopes if a repo shows wrong edges.
 func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
 	body := fn.ChildByFieldName("body")
 	if body == nil {
@@ -416,24 +470,90 @@ func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
 		return of != nil && c.StartByte() >= of.StartByte() && c.EndByte() <= of.EndByte()
 	}
 	types, bound := map[string]string{}, map[string]bool{}
+	mods := map[[2]string]string{} // function, name -> what an import inside it binds
+	made := map[string]bool{}      // ids of the defs inside fn
+	// The defs inside fn by function and name, and the function around each.
+	// They are of this walk alone: a later function can have the id of fn.
+	nested, parent := map[[2]string]string{}, map[string]string{}
 	localType := pyLocalTyper(types, src)
 	// Types and bound names cover the whole function, so a receiver is
 	// resolved only after the walk.
 	type site struct {
-		callee, recv string
-		loc          model.Loc
-		member       bool
+		caller, callee, recv string
+		loc                  model.Loc
+		member, local        bool
 	}
 	var sites []site
+	scopes := []pyScope{{id: callerID, fn: callerID, end: fn.EndByte(), bodyLo: body.StartByte(), bodyHi: body.EndByte()}}
 	walkKinds(fn, pyCallKinds, func(cv ts.Node) bool {
 		c := &cv
 		localType(c)
-		inBody := within(c, body)
-		if inBody || within(c, params) {
+		for len(scopes) > 1 && c.StartByte() >= scopes[len(scopes)-1].end {
+			scopes = scopes[:len(scopes)-1]
+		}
+		in := scopes[len(scopes)-1]
+		if within(c, body) && pyImportNames(c, src, func(local, val string) {
+			b.pyInFuncAlias(local, val, line(c))
+			// A name of a class body is no name of the functions.
+			if in.id != in.fn {
+				return
+			}
+			key := [2]string{in.fn, local}
+			if old, dup := mods[key]; dup && old != val {
+				val = ""
+			}
+			mods[key] = val
+		}) {
+			return true
+		}
+		if within(c, body) || within(c, params) {
 			pyBind(c, src, true, bound)
 		}
-		if !inBody || c.Kind() != "call" {
+		switch c.Kind() {
+		case "function_definition", "class_definition":
+			name, cbody := fieldText(c, "name", src), c.ChildByFieldName("body")
+			if c.StartByte() == fn.StartByte() || name == "" || cbody == nil {
+				return true
+			}
+			sc := in
+			sc.id, sc.end = idutil.MakeID(in.id, name), c.EndByte()
+			if c.Kind() == "function_definition" {
+				// ponytail: one more part keeps the def off the id of a
+				// module-level def or method `outer_name`; a def of that
+				// longer name still collides.
+				if b.seen[sc.id] && !made[sc.id] {
+					sc.id = idutil.MakeID(in.id, name, "nested")
+				}
+				sc.fn, sc.outer, sc.bodyLo, sc.bodyHi = sc.id, in.fn, cbody.StartByte(), cbody.EndByte()
+				sc.local = in.local || in.id != in.fn
+				if !b.seen[sc.id] {
+					made[sc.id] = true
+					b.addNode(sc.id, name+"()", line(c))
+					b.res.Edges = append(b.res.Edges, model.Edge{
+						Source: in.fn, Target: sc.id, Relation: model.RelContains,
+						Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(c),
+					})
+				}
+				// A method of a local class is no name of the scope around
+				// it. Two names of one id (`_f`, `f`) both reach its node.
+				parent[sc.id] = in.fn
+				if in.id == in.fn {
+					nested[[2]string{in.fn, name}] = sc.id
+				}
+			}
+			scopes = append(scopes, sc)
 			return true
+		}
+		if c.Kind() != "call" {
+			return true
+		}
+		caller := in.fn
+		if c.StartByte() < in.bodyLo || c.EndByte() > in.bodyHi {
+			// A default or an annotation of a def runs in the function the
+			// def is made in; fn itself has none here.
+			if caller = in.outer; caller == "" {
+				return true
+			}
 		}
 		f := c.ChildByFieldName("function")
 		if f == nil {
@@ -441,29 +561,65 @@ func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
 		}
 		switch f.Kind() {
 		case "identifier":
-			sites = append(sites, site{callee: f.Utf8Text(src), loc: line(c)})
+			sites = append(sites, site{caller: caller, callee: f.Utf8Text(src), loc: line(c)})
 		case "attribute":
 			if a := f.ChildByFieldName("attribute"); a != nil {
-				sites = append(sites, site{a.Utf8Text(src), recvText(f, a, src), line(c), true})
+				sites = append(sites, site{caller, a.Utf8Text(src), recvText(f, a, src), line(c), true, in.local})
 			}
 		}
 		return true
 	})
+	// imported is what name names by an import no other binding hides: one
+	// inside the caller or a function around it before one of the module.
+	imported := func(caller, name string) (val string, inFn bool) {
+		if bound[name] {
+			return "", false
+		}
+		for s, ok := caller, true; ok; s, ok = parent[s] {
+			if val, ok := mods[[2]string{s, name}]; ok {
+				return val, true
+			}
+		}
+		return b.pyMods[name], false
+	}
+sites:
 	for _, c := range sites {
+		n, mod := len(b.res.Calls), ""
 		if !c.member {
-			b.call(callerID, c.callee, c.loc)
-			continue
+			// A def of an enclosing function hides every other of its name.
+			for s, ok := c.caller, true; ok; s, ok = parent[s] {
+				if id, ok := nested[[2]string{s, c.callee}]; ok {
+					b.jsNestedCall(c.caller, id, c.loc)
+					continue sites
+				}
+			}
+			b.call(c.caller, c.callee, c.loc)
+			val, inFn := imported(c.caller, c.callee)
+			if mod = val; !strings.Contains(val, ":") {
+				mod = ""
+			}
+			// An import in the function binds the callee to that and to
+			// nothing else, even when it names no definition.
+			if inFn {
+				mod += ":"
+			}
+		} else {
+			recv := c.recv
+			// The self of a local class has no node to bind on.
+			if _, isSelf := selfRecv[recv]; isSelf && c.local {
+				continue
+			}
+			val, inFn := imported(c.caller, recv)
+			// Upstream gives a call on an external module to a top-level
+			// function, and to a plain module-level import, alone.
+			if mod = val; mod != "" && (inFn || c.caller != callerID || strings.Contains(val, ":")) {
+				mod += ":"
+			}
+			if t := types[recv]; t != "" {
+				recv = t
+			}
+			b.callRecv(c.caller, c.callee, recv, c.loc)
 		}
-		recv := c.recv
-		mod := b.pyMods[recv]
-		if bound[recv] {
-			mod = ""
-		}
-		if t := types[recv]; t != "" {
-			recv = t
-		}
-		n := len(b.res.Calls)
-		b.callRecv(callerID, c.callee, recv, c.loc)
 		if len(b.res.Calls) > n && mod != "" {
 			for len(b.res.CallMods) < n {
 				b.res.CallMods = append(b.res.CallMods, "")
