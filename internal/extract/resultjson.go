@@ -56,6 +56,9 @@ func (r *Result) AppendJSON(b []byte) ([]byte, error) {
 		b = i.Loc.AppendJSON(append(b, `,"Loc":`...))
 		b = appendJSONBool(append(b, `,"TypeOnly":`...), i.TypeOnly, ',')
 		b = appendJSONBool(append(b, `"Rel":`...), i.Rel, ',')
+		if i.Export {
+			b = append(b, `"Export":true,`...)
+		}
 		b = append(b, `"Names":`...)
 		b, _ = appendJSONArr(b, i.Names, func(b []byte, s *string) ([]byte, error) {
 			return model.AppendJSONString(b, *s), nil
@@ -87,6 +90,15 @@ func (r *Result) AppendJSON(b []byte) ([]byte, error) {
 	b = append(b, `,"GoMods":`...)
 	if b, err = appendJSONAny(b, r.GoMods == nil, r.GoMods); err != nil {
 		return b, err
+	}
+	if r.Default != "" {
+		b = appendJSONFields(b, `,"Default":`, r.Default)
+	}
+	if len(r.Exports) > 0 {
+		b = append(b, `,"Exports":`...)
+		b, _ = appendJSONArr(b, r.Exports, func(b []byte, s *string) ([]byte, error) {
+			return model.AppendJSONString(b, *s), nil
+		})
 	}
 	if r.OverBudget {
 		b = append(b, `,"OverBudget":true`...)

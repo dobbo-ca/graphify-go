@@ -106,6 +106,9 @@ func (b *builder) jsStatement(n *ts.Node, src []byte, owner string) {
 	case "export_statement":
 		d := n.ChildByFieldName("declaration")
 		s := n.ChildByFieldName("source")
+		if jsHasDefault(n) {
+			b.jsDefault(n, d, src)
+		}
 		if d != nil {
 			b.jsStatement(d, src, owner)
 			if len(b.jsNS) > 0 {
@@ -118,11 +121,23 @@ func (b *builder) jsStatement(n *ts.Node, src []byte, owner string) {
 			b.jsChildren(n, src, owner)
 		}
 		if s != nil {
-			b.impTyped(unquote(s.Utf8Text(src)), line(n), jsTypeOnlyImport(n))
+			b.jsImp(n, unquote(s.Utf8Text(src)), src, true)
+		} else if c := jsChild(n, "export_clause"); c != nil {
+			for i := uint(0); i < c.NamedChildCount(); i++ {
+				sp := c.NamedChild(i)
+				e, a := fieldText(sp, "name", src), fieldText(sp, "alias", src)
+				if a == "default" {
+					b.res.Default = e // `export { Foo as default }`
+				}
+				if a != "" && a != e {
+					e += " as " + a
+				}
+				b.res.Exports = append(b.res.Exports, e)
+			}
 		}
 	case "import_statement":
 		if s := n.ChildByFieldName("source"); s != nil {
-			b.impTyped(unquote(s.Utf8Text(src)), line(n), jsTypeOnlyImport(n))
+			b.jsImp(n, unquote(s.Utf8Text(src)), src, false)
 		}
 	case "function_declaration", "generator_function_declaration":
 		b.jsFunc(n, src)
@@ -204,6 +219,92 @@ func jsTypeOnlyImport(n *ts.Node) bool {
 	return false
 }
 
+// jsChild is the first child of kind k.
+func jsChild(n *ts.Node, k string) *ts.Node {
+	for i := uint(0); i < n.ChildCount(); i++ {
+		if c := n.Child(i); c.Kind() == k {
+			return c
+		}
+	}
+	return nil
+}
+
+func jsHasDefault(n *ts.Node) bool { return jsChild(n, "default") != nil }
+
+// jsDefault records the local name `export default` exports: a declaration's
+// name or a bare identifier. An anonymous default has none.
+func (b *builder) jsDefault(n, d *ts.Node, src []byte) {
+	if d != nil {
+		b.res.Default = fieldText(d, "name", src)
+	} else if v := n.ChildByFieldName("value"); v != nil && v.Kind() == "identifier" {
+		b.res.Default = v.Utf8Text(src)
+	}
+}
+
+// jsImp records an import or `export ... from` and the names it binds. An
+// import entry is "name" or "name as local" (name "default" for the default
+// clause); a re-export entry is "name" or "name as exported", name being the
+// one in the source module, "*" for `export * as ns`. A plain `export *` has
+// none.
+func (b *builder) jsImp(n *ts.Node, spec string, src []byte, export bool) {
+	b.impTyped(spec, line(n), jsTypeOnlyImport(n))
+	if spec == "" {
+		return
+	}
+	im := &b.res.Imps[len(b.res.Imps)-1]
+	im.Export = export
+	spec1 := func(sp *ts.Node) {
+		name := sp.ChildByFieldName("name")
+		if name == nil || name.Kind() == "string" {
+			return
+		}
+		e := name.Utf8Text(src)
+		if a := fieldText(sp, "alias", src); a != "" && a != e {
+			e += " as " + a
+		}
+		im.Names = append(im.Names, e)
+	}
+	if c := jsChild(n, "namespace_export"); c != nil {
+		im.Names = []string{"*"}
+	}
+	if c := jsChild(n, "export_clause"); c != nil {
+		for i := uint(0); i < c.NamedChildCount(); i++ {
+			spec1(c.NamedChild(i))
+		}
+	}
+	if c := jsChild(n, "import_clause"); c != nil {
+		for i := uint(0); i < c.NamedChildCount(); i++ {
+			switch k := c.NamedChild(i); k.Kind() {
+			case "identifier":
+				im.Names = append(im.Names, "default as "+k.Utf8Text(src))
+			case "named_imports":
+				for j := uint(0); j < k.NamedChildCount(); j++ {
+					spec1(k.NamedChild(j))
+				}
+			}
+		}
+	}
+}
+
+// jsHeritage records the bases of a class or interface from its extends,
+// implements or bare JS heritage clause. Only a plain or generic name is
+// bound: a qualified name or a call names no declaration.
+func (b *builder) jsHeritage(fromID string, clause *ts.Node, src []byte) {
+	rel := "inherits"
+	if clause.Kind() == "implements_clause" {
+		rel = "implements"
+	}
+	for i := uint(0); i < clause.NamedChildCount(); i++ {
+		c := clause.NamedChild(i)
+		if c.Kind() == "generic_type" {
+			c = c.NamedChild(0)
+		}
+		if k := c.Kind(); k == "identifier" || k == "type_identifier" {
+			b.typeRef(fromID, c.Utf8Text(src), rel, line(clause))
+		}
+	}
+}
+
 // degenerateName reports whether a symbol name carries no identifier signal — it
 // normalizes to an empty ID (a minified `$`, a JSONC `//` comment key). MakeID
 // would collapse such a name to the bare file stem, producing a label-only noise
@@ -227,6 +328,14 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 	}
 	classID := b.id(name)
 	b.def(classID, name, name, line(n))
+	if h := jsChild(n, "class_heritage"); h != nil {
+		b.jsHeritage(classID, h, src)
+		for i := uint(0); i < h.NamedChildCount(); i++ {
+			if c := h.NamedChild(i); c.Kind() == "extends_clause" || c.Kind() == "implements_clause" {
+				b.jsHeritage(classID, c, src)
+			}
+		}
+	}
 
 	body := n.ChildByFieldName("body")
 	if body == nil {
@@ -261,7 +370,11 @@ func (b *builder) jsNamedType(n *ts.Node, src []byte) {
 	if degenerateName(name) {
 		return
 	}
-	b.def(b.id(name), name, name, line(n))
+	id := b.id(name)
+	b.def(id, name, name, line(n))
+	if c := jsChild(n, "extends_type_clause"); c != nil {
+		b.jsHeritage(id, c, src)
+	}
 }
 
 // jsVarFuncs captures `const foo = () => {}` and `const foo = function() {}`,

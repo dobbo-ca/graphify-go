@@ -97,8 +97,11 @@ type Imp struct {
 	// Rel marks a spec that is relative to the importing file's directory even
 	// without a leading dot (a quoted C include, Ruby `require_relative`).
 	Rel bool
+	// Export marks a JS/TS `export ... from Spec`.
+	Export bool `json:",omitempty"`
 	// Names are the names a Python `from Spec import ...` or Rust `use Spec::...`
-	// binds; each may be a module.
+	// binds; each may be a module. For JS/TS see jsImp: a name costs 16 bytes and
+	// its text, a bare import nothing; Export fits the padding after Rel.
 	Names []string
 }
 
@@ -152,6 +155,11 @@ type Result struct {
 	MDRefs        []MDRef
 	// GoMods maps a go.mod's directory to its module path (manifest pass only).
 	GoMods map[string]string
+	// Default is the local name a JS/TS file exports as its default.
+	Default string `json:",omitempty"`
+	// Exports are the "local" or "local as exported" entries of its JS/TS
+	// `export { ... }` statements without a source.
+	Exports []string `json:",omitempty"`
 	// OverBudget: ts.Budget stopped the parse, only the file node is here.
 	OverBudget bool `json:",omitempty"`
 }
