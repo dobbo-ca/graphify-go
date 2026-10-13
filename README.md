@@ -32,7 +32,7 @@ Homebrew:
 brew install dobbo-ca/taps/graphify-go
 ```
 
-Or from source (requires a C toolchain — extraction uses cgo/tree-sitter):
+Or from source (pure Go, no C toolchain needed):
 
 ```bash
 go install github.com/dobbo-ca/graphify-go/cmd/graphify@latest

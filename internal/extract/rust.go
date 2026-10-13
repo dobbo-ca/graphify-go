@@ -1,8 +1,8 @@
 package extract
 
 import (
-	ts "github.com/tree-sitter/go-tree-sitter"
-	tsrust "github.com/tree-sitter/tree-sitter-rust/bindings/go"
+	tsrust "github.com/dobbo-ca/gositter/grammars/rust"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -87,8 +87,8 @@ func (b *builder) rustImpl(n *ts.Node, src []byte) {
 		mid := idutil.MakeID(b.stem, typeName, mname)
 		b.addNode(mid, typeName+"."+mname+"()", line(m))
 		b.res.Edges = append(b.res.Edges, model.Edge{
-			Source: idutil.MakeID(b.stem, typeName), Target: mid, Relation: "contains",
-			Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
+			Source: idutil.MakeID(b.stem, typeName), Target: mid, Relation: model.RelContains,
+			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
 		})
 		// Register under the bare method name so `x.method()` call sites resolve.
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
@@ -142,7 +142,8 @@ func rustTypeName(n *ts.Node, src []byte) string {
 	}
 	// Fall back to the first type/identifier descendant.
 	var name string
-	walk(n, func(c *ts.Node) bool {
+	walk(n, func(cv ts.Node) bool {
+		c := &cv
 		if name != "" {
 			return false
 		}
@@ -155,6 +156,8 @@ func rustTypeName(n *ts.Node, src []byte) string {
 	return name
 }
 
+var rustCallKinds = tsrust.Language().KindMask("call_expression", "macro_invocation")
+
 // rustCalls walks a function body and records each call site. Direct calls
 // (`f()`), path calls (`mod::f()`), and method calls (`x.f()`) all record the
 // trailing name; macro invocations (`f!()`) record the macro name.
@@ -162,7 +165,8 @@ func (b *builder) rustCalls(body *ts.Node, callerID string, src []byte) {
 	if body == nil {
 		return
 	}
-	walk(body, func(c *ts.Node) bool {
+	walkKinds(body, rustCallKinds, func(cv ts.Node) bool {
+		c := &cv
 		switch c.Kind() {
 		case "call_expression":
 			fn := c.ChildByFieldName("function")

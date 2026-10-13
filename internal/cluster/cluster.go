@@ -42,14 +42,21 @@ func Cluster(g *model.Graph) map[int][]string {
 // louvain runs Louvain over the induced subgraph on the given node set and
 // returns the detected communities as string-ID groups.
 func louvain(g *model.Graph, nodeSet []string) [][]string {
-	idOf := make(map[string]int, len(nodeSet))
-	for i, id := range nodeSet {
-		idOf[id] = i
+	// Position in nodeSet of each graph node, -1 outside it.
+	local := make([]int, g.NumNodes())
+	for i := range local {
+		local[i] = -1
 	}
+	for i, id := range nodeSet {
+		if at, ok := g.Index(id); ok {
+			local[at] = i
+		}
+	}
+	// Neighbor order is free: modularize gives the same result for any order.
 	adj := make([][]int, len(nodeSet))
 	for i, id := range nodeSet {
-		for _, nb := range g.Neighbors(id) {
-			if j, ok := idOf[nb]; ok && j != i {
+		for _, nb := range g.NeighborIndexes(id) {
+			if j := local[nb]; j >= 0 && j != i {
 				adj[i] = append(adj[i], j)
 			}
 		}
@@ -214,14 +221,17 @@ func Cohesion(g *model.Graph, nodes []string) float64 {
 	if n <= 1 {
 		return 1.0
 	}
-	in := make(map[string]bool, n)
+	in := make(map[uint32]bool, n)
 	for _, id := range nodes {
-		in[id] = true
+		if at, ok := g.Index(id); ok {
+			in[at] = true
+		}
 	}
+	ids := g.NodeIDs()
 	actual := 0
 	for _, id := range nodes {
-		for _, nb := range g.Neighbors(id) {
-			if in[nb] && id < nb {
+		for _, nb := range g.NeighborIndexes(id) {
+			if in[nb] && id < ids[nb] {
 				actual++
 			}
 		}

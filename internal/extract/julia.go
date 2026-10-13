@@ -1,8 +1,8 @@
 package extract
 
 import (
-	ts "github.com/tree-sitter/go-tree-sitter"
-	tsjulia "github.com/tree-sitter/tree-sitter-julia/bindings/go"
+	tsjulia "github.com/dobbo-ca/gositter/grammars/julia"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -107,8 +107,8 @@ func (b *builder) juliaModule(n *ts.Node, src []byte) {
 			mid := idutil.MakeID(b.stem, name, mname)
 			b.addNode(mid, name+"."+mname+"()", line(m))
 			b.res.Edges = append(b.res.Edges, model.Edge{
-				Source: modID, Target: mid, Relation: "contains",
-				Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
+				Source: modID, Target: mid, Relation: model.RelContains,
+				Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
 			})
 			b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
 			b.juliaCalls(juliaBody(m), mid, src)
@@ -172,7 +172,8 @@ func juliaFuncName(n *ts.Node, src []byte) string {
 // or a bare identifier.
 func juliaSignatureName(sig *ts.Node, src []byte) string {
 	var name string
-	walk(sig, func(c *ts.Node) bool {
+	walk(sig, func(cv ts.Node) bool {
+		c := &cv
 		if name != "" {
 			return false
 		}
@@ -195,7 +196,8 @@ func juliaTypeName(n *ts.Node, src []byte) string {
 	for i := uint(0); i < n.ChildCount(); i++ {
 		if c := n.Child(i); c.Kind() == "type_head" {
 			var name string
-			walk(c, func(d *ts.Node) bool {
+			walk(c, func(dv ts.Node) bool {
+				d := &dv
 				if name != "" {
 					return false
 				}
@@ -233,16 +235,16 @@ func juliaCalleeName(fn *ts.Node, src []byte) string {
 	return ""
 }
 
+var juliaCallKinds = tsjulia.Language().KindMask("call_expression")
+
 // juliaCalls walks a definition body and records each call site by its simple
 // callee name. Macro invocations (`@m ...`) are ignored as call edges.
 func (b *builder) juliaCalls(body *ts.Node, callerID string, src []byte) {
 	if body == nil {
 		return
 	}
-	walk(body, func(c *ts.Node) bool {
-		if c.Kind() != "call_expression" {
-			return true
-		}
+	walkKinds(body, juliaCallKinds, func(cv ts.Node) bool {
+		c := &cv
 		fn := c.NamedChild(0)
 		if name := juliaCalleeName(fn, src); name != "" {
 			recv := ""

@@ -1,12 +1,13 @@
 package extract
 
 import (
+	"bytes"
 	"regexp"
 	"strings"
 	"unicode/utf8"
 
-	ts "github.com/tree-sitter/go-tree-sitter"
-	tspy "github.com/tree-sitter/tree-sitter-python/bindings/go"
+	tspy "github.com/dobbo-ca/gositter/grammars/python"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -75,7 +76,7 @@ func (b *builder) pyFunc(n *ts.Node, src []byte) {
 	}
 	id := idutil.MakeID(b.stem, name)
 	b.def(id, name, name+"()", line(n))
-	b.pyCalls(n, id, pyLocalTypes(n, src), src)
+	b.pyCalls(n, id, src)
 }
 
 func (b *builder) pyClass(n *ts.Node, src []byte) {
@@ -109,11 +110,11 @@ func (b *builder) pyClass(n *ts.Node, src []byte) {
 		mid := idutil.MakeID(b.stem, name, mname)
 		b.addNode(mid, name+"."+mname+"()", line(m))
 		b.res.Edges = append(b.res.Edges, model.Edge{
-			Source: classID, Target: mid, Relation: "contains",
-			Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
+			Source: classID, Target: mid, Relation: model.RelContains,
+			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
 		})
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
-		b.pyCalls(m, mid, pyLocalTypes(m, src), src)
+		b.pyCalls(m, mid, src)
 	}
 }
 
@@ -208,14 +209,14 @@ func pyModuleStem(mod *ts.Node, src []byte) string {
 // taken as a class.
 var pyClassName = regexp.MustCompile(`^[A-Z]\w*$`)
 
-// pyLocalTypes maps the locals of function fn to their class, from a parameter
+// pyLocalTyper returns the visitor that, run over every node of a function,
+// maps its locals to their class in types, from a parameter
 // annotation (`c: Client`) or a constructor binding (`c = Client()`). A local
 // also bound by anything else (assignment, unpacking, for, with, except, `:=`)
 // maps to "".
 // ponytail: one flat scope per function, nested defs are not tracked; add
 // scopes if a repo shows wrong edges.
-func pyLocalTypes(fn *ts.Node, src []byte) map[string]string {
-	types := map[string]string{}
+func pyLocalTyper(types map[string]string, src []byte) func(c *ts.Node) bool {
 	// untype clears every name a binding target rebinds.
 	var untype func(n *ts.Node)
 	untype = func(n *ts.Node) {
@@ -231,7 +232,7 @@ func pyLocalTypes(fn *ts.Node, src []byte) map[string]string {
 			}
 		}
 	}
-	walk(fn, func(c *ts.Node) bool {
+	return func(c *ts.Node) bool {
 		var name *ts.Node
 		switch c.Kind() {
 		case "typed_parameter":
@@ -267,8 +268,7 @@ func pyLocalTypes(fn *ts.Node, src []byte) map[string]string {
 		}
 		bindType(types, name.Utf8Text(src), typ)
 		return true
-	})
-	return types
+	}
 }
 
 // pyModules maps each local name bound by exactly one module-level `import x`
@@ -312,60 +312,74 @@ func pyModules(root *ts.Node, src []byte) map[string]string {
 	return mods
 }
 
+// The kinds pyBind acts on, then those of the pyCalls walk: pyBind's, the
+// local typer's and the call itself.
+var (
+	pyGlobalKinds = tspy.Language().KindMask("global_statement")
+	pyBindKinds   = tspy.Language().KindMask("function_definition", "class_definition", "lambda",
+		"parameters", "lambda_parameters", "assignment", "augmented_assignment", "for_statement",
+		"for_in_clause", "named_expression", "as_pattern", "global_statement", "nonlocal_statement",
+		"delete_statement", "case_pattern", "import_statement", "import_from_statement", "wildcard_import")
+	pyCallKinds = pyBindKinds | tspy.Language().KindMask("typed_parameter", "typed_default_parameter",
+		"as_pattern_target", "call")
+	pyDefKinds = tspy.Language().KindMask("function_definition", "class_definition")
+)
+
 // pyBinds adds the names bound under n to bound. Unless deep, the body of a
 // def, class or lambda is skipped: it is another scope, and only a `global`
 // reaches out of it.
 func pyBinds(n *ts.Node, src []byte, deep bool, bound map[string]bool) {
-	walk(n, func(c *ts.Node) bool {
-		switch c.Kind() {
-		case "function_definition", "class_definition", "lambda":
-			pyTargets(c.ChildByFieldName("name"), src, bound)
-			if !deep {
-				walk(c, func(g *ts.Node) bool {
-					if g.Kind() == "global_statement" {
-						pyTargets(g, src, bound)
-					}
-					return true
-				})
-				return false
-			}
-		case "parameters", "lambda_parameters":
-			for i := uint(0); i < c.NamedChildCount(); i++ {
-				p := c.NamedChild(i)
-				if name := p.ChildByFieldName("name"); name != nil {
-					p = name
-				} else if p.Kind() == "typed_parameter" {
-					p = p.NamedChild(0)
-				}
-				pyTargets(p, src, bound)
-			}
-		case "assignment", "augmented_assignment", "for_statement", "for_in_clause":
-			pyTargets(c.ChildByFieldName("left"), src, bound)
-		case "named_expression":
-			pyTargets(c.ChildByFieldName("name"), src, bound)
-		case "as_pattern":
-			pyTargets(c.ChildByFieldName("alias"), src, bound)
-		case "global_statement", "nonlocal_statement", "delete_statement", "case_pattern":
-			pyTargets(c, src, bound)
-		case "import_statement", "import_from_statement":
-			for i := uint(0); i < c.ChildCount(); i++ {
-				if c.FieldNameForChild(uint32(i)) != "name" {
-					continue
-				}
-				// `import a.b` binds a alone.
-				name := c.Child(i)
-				if alias := name.ChildByFieldName("alias"); alias != nil {
-					name = alias
-				} else {
-					name = name.NamedChild(0)
-				}
-				pyTargets(name, src, bound)
-			}
-		case "wildcard_import":
-			bound["*"] = true
+	walkKinds(n, pyBindKinds, func(c ts.Node) bool { return pyBind(&c, src, deep, bound) })
+}
+
+// pyBind is pyBinds for the single node c; false means skip its children.
+func pyBind(c *ts.Node, src []byte, deep bool, bound map[string]bool) bool {
+	switch c.Kind() {
+	case "function_definition", "class_definition", "lambda":
+		pyTargets(c.ChildByFieldName("name"), src, bound)
+		if !deep {
+			walkKinds(c, pyGlobalKinds, func(gv ts.Node) bool {
+				pyTargets(&gv, src, bound)
+				return true
+			})
+			return false
 		}
-		return true
-	})
+	case "parameters", "lambda_parameters":
+		for i := uint(0); i < c.NamedChildCount(); i++ {
+			p := c.NamedChild(i)
+			if name := p.ChildByFieldName("name"); name != nil {
+				p = name
+			} else if p.Kind() == "typed_parameter" {
+				p = p.NamedChild(0)
+			}
+			pyTargets(p, src, bound)
+		}
+	case "assignment", "augmented_assignment", "for_statement", "for_in_clause":
+		pyTargets(c.ChildByFieldName("left"), src, bound)
+	case "named_expression":
+		pyTargets(c.ChildByFieldName("name"), src, bound)
+	case "as_pattern":
+		pyTargets(c.ChildByFieldName("alias"), src, bound)
+	case "global_statement", "nonlocal_statement", "delete_statement", "case_pattern":
+		pyTargets(c, src, bound)
+	case "import_statement", "import_from_statement":
+		for i := uint(0); i < c.ChildCount(); i++ {
+			if c.FieldNameForChild(uint32(i)) != "name" {
+				continue
+			}
+			// `import a.b` binds a alone.
+			name := c.Child(i)
+			if alias := name.ChildByFieldName("alias"); alias != nil {
+				name = alias
+			} else {
+				name = name.NamedChild(0)
+			}
+			pyTargets(name, src, bound)
+		}
+	case "wildcard_import":
+		bound["*"] = true
+	}
+	return true
 }
 
 // pyTargets adds the names an assignment target t rebinds or mutates: the
@@ -388,47 +402,75 @@ func pyTargets(t *ts.Node, src []byte, bound map[string]bool) {
 	}
 }
 
-// pyCalls walks the body of function fn and records each call site. Direct
+// pyCalls records each call site in the body of function fn. Direct
 // calls (`f()`) record the identifier; attribute calls (`x.f()`) record the
-// attribute name, with the receiver's class in place of a typed local.
-func (b *builder) pyCalls(fn *ts.Node, callerID string, types map[string]string, src []byte) {
+// attribute name, with the receiver's class in place of a typed local. One walk
+// of fn collects the local types, the bound names and the call sites.
+func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
 	body := fn.ChildByFieldName("body")
 	if body == nil {
 		return
 	}
-	bound := map[string]bool{}
-	pyBinds(fn.ChildByFieldName("parameters"), src, true, bound)
-	pyBinds(body, src, true, bound)
-	walk(body, func(c *ts.Node) bool {
-		if c.Kind() != "call" {
+	params := fn.ChildByFieldName("parameters")
+	within := func(c, of *ts.Node) bool {
+		return of != nil && c.StartByte() >= of.StartByte() && c.EndByte() <= of.EndByte()
+	}
+	types, bound := map[string]string{}, map[string]bool{}
+	localType := pyLocalTyper(types, src)
+	// Types and bound names cover the whole function, so a receiver is
+	// resolved only after the walk.
+	type site struct {
+		callee, recv string
+		loc          model.Loc
+		member       bool
+	}
+	var sites []site
+	walkKinds(fn, pyCallKinds, func(cv ts.Node) bool {
+		c := &cv
+		localType(c)
+		inBody := within(c, body)
+		if inBody || within(c, params) {
+			pyBind(c, src, true, bound)
+		}
+		if !inBody || c.Kind() != "call" {
 			return true
 		}
-		fn := c.ChildByFieldName("function")
-		if fn == nil {
+		f := c.ChildByFieldName("function")
+		if f == nil {
 			return true
 		}
-		switch fn.Kind() {
+		switch f.Kind() {
 		case "identifier":
-			b.call(callerID, fn.Utf8Text(src), line(c))
+			sites = append(sites, site{callee: f.Utf8Text(src), loc: line(c)})
 		case "attribute":
-			if a := fn.ChildByFieldName("attribute"); a != nil {
-				recv := recvText(fn, a, src)
-				mod := b.pyMods[recv]
-				if bound[recv] {
-					mod = ""
-				}
-				if t := types[recv]; t != "" {
-					recv = t
-				}
-				n := len(b.res.Calls)
-				b.callRecv(callerID, a.Utf8Text(src), recv, line(c))
-				if len(b.res.Calls) > n {
-					b.res.Calls[n].Module = mod
-				}
+			if a := f.ChildByFieldName("attribute"); a != nil {
+				sites = append(sites, site{a.Utf8Text(src), recvText(f, a, src), line(c), true})
 			}
 		}
 		return true
 	})
+	for _, c := range sites {
+		if !c.member {
+			b.call(callerID, c.callee, c.loc)
+			continue
+		}
+		recv := c.recv
+		mod := b.pyMods[recv]
+		if bound[recv] {
+			mod = ""
+		}
+		if t := types[recv]; t != "" {
+			recv = t
+		}
+		n := len(b.res.Calls)
+		b.callRecv(callerID, c.callee, recv, c.loc)
+		if len(b.res.Calls) > n && mod != "" {
+			for len(b.res.CallMods) < n {
+				b.res.CallMods = append(b.res.CallMods, "")
+			}
+			b.res.CallMods = append(b.res.CallMods, mod)
+		}
+	}
 }
 
 // pyRationalePrefixes are the leading comment tokens that mark an explanatory
@@ -457,14 +499,21 @@ func (b *builder) pyRationale(root *ts.Node, src []byte) {
 	b.pyWalkDocstrings(root, b.fileID, src)
 
 	// Rationale comments (# NOTE:, # IMPORTANT:, ...).
-	for i, lineText := range strings.Split(string(src), "\n") {
-		stripped := strings.TrimSpace(lineText)
-		for _, p := range pyRationalePrefixes {
-			if strings.HasPrefix(stripped, p) {
-				b.addRationale(stripped, i+1, b.fileID)
-				break
+	for lineNum := 1; ; lineNum++ {
+		line, rest, more := bytes.Cut(src, []byte("\n"))
+		if t := bytes.TrimSpace(line); len(t) > 0 && t[0] == '#' {
+			stripped := string(t)
+			for _, p := range pyRationalePrefixes {
+				if strings.HasPrefix(stripped, p) {
+					b.addRationale(stripped, lineNum, b.fileID)
+					break
+				}
 			}
 		}
+		if !more {
+			return
+		}
+		src = rest
 	}
 }
 
@@ -473,37 +522,38 @@ func (b *builder) pyRationale(root *ts.Node, src []byte) {
 // descends into class bodies but not function bodies, so nested definitions
 // inside a method are not visited (matching upstream).
 func (b *builder) pyWalkDocstrings(n *ts.Node, parentID string, src []byte) {
-	switch n.Kind() {
-	case "class_definition":
-		name := fieldText(n, "name", src)
-		body := n.ChildByFieldName("body")
-		if name != "" && body != nil {
-			nid := idutil.MakeID(b.stem, name)
-			if text, ln, ok := pyDocstring(body, src); ok {
-				b.addRationale(text, ln, nid)
+	walkKinds(n, pyDefKinds, func(cv ts.Node) bool {
+		n := &cv
+		switch n.Kind() {
+		case "class_definition":
+			name := fieldText(n, "name", src)
+			body := n.ChildByFieldName("body")
+			if name != "" && body != nil {
+				nid := idutil.MakeID(b.stem, name)
+				if text, ln, ok := pyDocstring(body, src); ok {
+					b.addRationale(text, ln, nid)
+				}
+				for _, c := range body.Children() {
+					b.pyWalkDocstrings(&c, nid, src)
+				}
 			}
-			for i := uint(0); i < body.ChildCount(); i++ {
-				b.pyWalkDocstrings(body.Child(i), nid, src)
+			return false
+		case "function_definition":
+			name := fieldText(n, "name", src)
+			body := n.ChildByFieldName("body")
+			if name != "" && body != nil {
+				nid := idutil.MakeID(b.stem, name)
+				if parentID != b.fileID {
+					nid = idutil.MakeID(parentID, name)
+				}
+				if text, ln, ok := pyDocstring(body, src); ok {
+					b.addRationale(text, ln, nid)
+				}
 			}
+			return false
 		}
-		return
-	case "function_definition":
-		name := fieldText(n, "name", src)
-		body := n.ChildByFieldName("body")
-		if name != "" && body != nil {
-			nid := idutil.MakeID(b.stem, name)
-			if parentID != b.fileID {
-				nid = idutil.MakeID(parentID, name)
-			}
-			if text, ln, ok := pyDocstring(body, src); ok {
-				b.addRationale(text, ln, nid)
-			}
-		}
-		return
-	}
-	for i := uint(0); i < n.ChildCount(); i++ {
-		b.pyWalkDocstrings(n.Child(i), parentID, src)
-	}
+		return true
+	})
 }
 
 // pyDocstring returns a module/class/function body's leading docstring and its
@@ -565,7 +615,7 @@ func isAutogeneratedPython(src []byte) bool {
 			return true
 		}
 	}
-	if pyRevisionRe.MatchString(h) && strings.Contains(h, "def upgrade(") && strings.Contains(h, "down_revision") {
+	if strings.Contains(h, "def upgrade(") && strings.Contains(h, "down_revision") && pyRevisionRe.MatchString(h) {
 		return true
 	}
 	if strings.Contains(h, "class Migration(migrations.Migration)") && strings.Contains(h, "operations") {

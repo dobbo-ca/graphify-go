@@ -29,7 +29,7 @@ func TestExtractAndResolve(t *testing.T) {
 	// Relation presence checks.
 	rels := map[string]int{}
 	for _, e := range ext.Edges {
-		rels[e.Relation]++
+		rels[e.Relation.String()]++
 	}
 	if rels["contains"] == 0 {
 		t.Error("no contains edges")
@@ -48,7 +48,7 @@ func TestExtractAndResolve(t *testing.T) {
 	}
 	found := false
 	for _, e := range ext.Edges {
-		if e.Relation == "calls" && id2label[e.Source] == "Calc.Sum()" && id2label[e.Target] == "Add()" {
+		if e.Relation.String() == "calls" && id2label[e.Source] == "Calc.Sum()" && id2label[e.Target] == "Add()" {
 			found = true
 		}
 	}

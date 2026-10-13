@@ -112,9 +112,9 @@ func IntrospectManifests(root string) (Result, error) {
 				})
 			}
 			res.Edges = append(res.Edges, model.Edge{
-				Source: m.pkgID, Target: depID, Relation: "depends_on",
-				Confidence: "EXTRACTED", Weight: 1.0,
-				SourceFile: m.rel, SourceLocation: "L1",
+				Source: m.pkgID, Target: depID, Relation: model.RelDependsOn,
+				Confidence: model.ConfExtracted, Weight: 1.0,
+				SourceFile: model.FileOf(m.rel), SourceLocation: model.Line(1),
 			})
 		}
 	}

@@ -12,7 +12,9 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
+	"sync"
 )
 
 // SupportedExtensions are the file suffixes this port can extract.
@@ -359,9 +361,8 @@ type WalkReport struct {
 // them) and counts the files it skips for lacking a supported extension. The
 // returned Files slice is identical to CollectFiles' output.
 func CollectFilesReport(root string) (WalkReport, error) {
-	var rep WalkReport
 	ign := newIgnorer(root)
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	rep := walkTree(root, func(rep *WalkReport, path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			// Record the failing entry instead of swallowing it: an unreadable
 			// directory (permissions, or a delete racing a concurrent scan)
@@ -423,7 +424,94 @@ func CollectFilesReport(root string) (WalkReport, error) {
 		rep.Files = append(rep.Files, rel)
 		return nil
 	})
-	return rep, err
+	return rep, nil
+}
+
+// walkNode is what one directory adds to the walk: its own files and
+// diagnostics in rep, and its subdirectories in the order they were met.
+type walkNode struct {
+	rep  WalkReport
+	subs []*walkNode
+	at   []int // len(rep.Files) when subs[i] was met
+}
+
+// join appends n and everything under it to dst in filepath.WalkDir order.
+func (n *walkNode) join(dst *WalkReport) {
+	dst.WalkErrors = append(dst.WalkErrors, n.rep.WalkErrors...)
+	dst.Skipped += n.rep.Skipped
+	if n.rep.SkippedExts != nil && dst.SkippedExts == nil {
+		dst.SkippedExts = map[string]int{}
+	}
+	for k, v := range n.rep.SkippedExts {
+		dst.SkippedExts[k] += v
+	}
+	i := 0
+	for j, sub := range n.subs {
+		dst.Files = append(dst.Files, n.rep.Files[i:n.at[j]]...)
+		i = n.at[j]
+		sub.join(dst)
+	}
+	dst.Files = append(dst.Files, n.rep.Files[i:]...)
+}
+
+// walkers caps the goroutines of one walk: on darwin 14 are no faster than 4
+// and cost four times the system time, the kernel serialises the lookups.
+const walkers = 4
+
+// walkTree calls fn for every entry under root as filepath.WalkDir would, with
+// directories read on several goroutines: the walk is mostly system calls, and
+// it runs before anything else can start. fn records into the report it is
+// handed (one per directory, joined in WalkDir order) and returns nil or, to
+// prune a directory, filepath.SkipDir. It must be safe to call concurrently.
+func walkTree(root string, fn func(rep *WalkReport, path string, d fs.DirEntry, err error) error) WalkReport {
+	top := &walkNode{}
+	info, err := os.Lstat(root)
+	if err != nil {
+		_ = fn(&top.rep, root, nil, err)
+		return top.rep
+	}
+	d := fs.FileInfoToDirEntry(info)
+	if fn(&top.rep, root, d, nil) == nil && d.IsDir() {
+		var wg sync.WaitGroup
+		slots := make(chan struct{}, min(runtime.GOMAXPROCS(0), walkers)-1)
+		// spawn runs f on a free walker, or here when all are busy.
+		spawn := func(f func()) {
+			select {
+			case slots <- struct{}{}:
+				wg.Add(1)
+				go func() {
+					f()
+					<-slots
+					wg.Done()
+				}()
+			default:
+				f()
+			}
+		}
+		var walk func(n *walkNode, dir string, d fs.DirEntry)
+		walk = func(n *walkNode, dir string, d fs.DirEntry) {
+			// On an error ReadDir still returns the entries it could read.
+			entries, err := os.ReadDir(dir)
+			if err != nil && fn(&n.rep, dir, d, err) != nil {
+				return
+			}
+			for _, e := range entries {
+				p := filepath.Join(dir, e.Name())
+				if fn(&n.rep, p, e, nil) != nil || !e.IsDir() {
+					continue
+				}
+				sub := &walkNode{}
+				n.subs = append(n.subs, sub)
+				n.at = append(n.at, len(n.rep.Files))
+				spawn(func() { walk(sub, p, e) })
+			}
+		}
+		walk(top, root, d)
+		wg.Wait()
+	}
+	var out WalkReport
+	top.join(&out)
+	return out
 }
 
 // CollectFiles returns the supported source files under root, relative to root,

@@ -121,7 +121,7 @@ func modelOf(g *query.Graph) *model.Graph {
 	}
 	for i := range g.Links {
 		l := &g.Links[i]
-		m.AddEdge(model.Edge{Source: l.Source, Target: l.Target, Relation: l.Relation, Confidence: l.Confidence})
+		m.AddEdge(model.Edge{Source: l.Source, Target: l.Target, Relation: model.Rel(l.Relation), Confidence: model.Conf(l.Confidence)})
 	}
 	return m
 }

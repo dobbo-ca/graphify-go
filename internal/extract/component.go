@@ -1,14 +1,16 @@
 package extract
 
 import (
+	"github.com/dobbo-ca/gositter"
 	"regexp"
 	"strings"
-	"unsafe"
 
-	tsjs "github.com/tree-sitter/tree-sitter-javascript/bindings/go"
-	tstsx "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
+	tsjs "github.com/dobbo-ca/gositter/grammars/javascript"
+	tstsx "github.com/dobbo-ca/gositter/grammars/tsx"
+	tsts "github.com/dobbo-ca/gositter/grammars/typescript"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
+	"github.com/dobbo-ca/graphify-go/internal/model"
 )
 
 // Single-file components (.vue/.svelte/.astro) wrap a JS/TS script region in
@@ -50,7 +52,7 @@ func extractComponent(rel string, src []byte, isAstro bool) Result {
 		if spec == "" {
 			continue
 		}
-		res.Imps = append(res.Imps, Imp{FileID: fileID, File: rel, Spec: spec, Loc: "L" + itoa(lineOf(src, m[0]))})
+		res.Imps = append(res.Imps, Imp{FileID: fileID, File: rel, Spec: spec, Loc: model.Line(lineOf(src, m[0]))})
 	}
 	return res
 }
@@ -89,12 +91,12 @@ func maskComponentScript(src []byte, isAstro bool) ([]byte, string) {
 // componentLangPtr picks the grammar for a script block's declared lang: TS for
 // `ts`, TSX for `tsx`, else JS (js/jsx/unset). TS is a superset of JS, so JS is a
 // safe default for a script that declares no lang.
-func componentLangPtr(lang string) unsafe.Pointer {
+func componentLangPtr(lang string) *gositter.Language {
 	switch lang {
 	case "ts":
-		return tstsx.LanguageTypescript()
+		return tsts.Language()
 	case "tsx":
-		return tstsx.LanguageTSX()
+		return tstsx.Language()
 	default:
 		return tsjs.Language()
 	}

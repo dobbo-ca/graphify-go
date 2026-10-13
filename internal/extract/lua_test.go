@@ -40,7 +40,7 @@ func TestExtractLua(t *testing.T) {
 
 	has := func(srcLabel, rel, tgtLabel string) bool {
 		for _, e := range ext.Edges {
-			if e.Relation == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
+			if e.Relation.String() == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
 				return true
 			}
 		}
@@ -69,7 +69,7 @@ func TestExtractLua(t *testing.T) {
 	// require("socket") recorded as an external import.
 	hasImport := false
 	for _, e := range ext.Edges {
-		if e.Relation == "imports" && id2label[e.Target] == "socket" {
+		if e.Relation.String() == "imports" && id2label[e.Target] == "socket" {
 			hasImport = true
 		}
 	}

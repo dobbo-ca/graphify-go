@@ -25,7 +25,7 @@ func build(n int, pairs ...[2]int) *model.Graph {
 	}
 	ids := g.NodeIDs()
 	for _, p := range pairs {
-		g.AddEdge(model.Edge{Source: ids[p[0]], Target: ids[p[1]], Relation: "calls"})
+		g.AddEdge(model.Edge{Source: ids[p[0]], Target: ids[p[1]], Relation: model.RelCalls})
 	}
 	return g
 }
@@ -130,6 +130,79 @@ func TestLouvainMatchesGonumGolden(t *testing.T) {
 			if got := formatGroups(clustered(c.g)); got != want[c.name][1] {
 				t.Errorf("%s: Cluster\n got %s\nwant %s", c.name, got, want[c.name][1])
 			}
+		}
+	}
+}
+
+// louvain feeds modularize each node's neighbours in map order, so the result
+// must not depend on that order, group and member order included.
+func TestModularizeIgnoresNeighbourOrder(t *testing.T) {
+	rng := rand.New(rand.NewSource(7))
+	for _, n := range []int{2, 9, 60, 400, 3000} {
+		// Sparse random edges plus a few dense blocks, so ties and real moves both occur.
+		set := map[[2]int]bool{}
+		for i := 0; i < 3*n; i++ {
+			a, b := rng.Intn(n), rng.Intn(n)
+			if a != b {
+				set[[2]int{min(a, b), max(a, b)}] = true
+			}
+		}
+		for b := 0; b+6 <= n && b < 60; b += 12 {
+			for _, p := range clique(b, b+6) {
+				set[p] = true
+			}
+		}
+		adj := make([][]int, n)
+		for p := range set {
+			adj[p[0]] = append(adj[p[0]], p[1])
+			adj[p[1]] = append(adj[p[1]], p[0])
+		}
+		for i := range adj {
+			sort.Ints(adj[i])
+		}
+		want := fmt.Sprint(modularize(adj))
+		for run := 0; run < 5; run++ {
+			shuffled := make([][]int, n)
+			for i := range adj {
+				shuffled[i] = append([]int(nil), adj[i]...)
+				rng.Shuffle(len(shuffled[i]), func(a, b int) { shuffled[i][a], shuffled[i][b] = shuffled[i][b], shuffled[i][a] })
+			}
+			if got := fmt.Sprint(modularize(shuffled)); got != want {
+				t.Fatalf("n=%d: result changed with neighbour order", n)
+			}
+		}
+	}
+}
+
+// The skip in localMove must give what looking at every node every sweep gives.
+func TestSkipMatchesLookingAtAll(t *testing.T) {
+	rng := rand.New(rand.NewSource(11))
+	for round := 0; round < 400; round++ {
+		// Blocks of uneven size with noise between them: near ties and long
+		// tails of sweeps with a few moves each.
+		n := 2 + rng.Intn(1500)
+		block := 2 + rng.Intn(40)
+		set := map[[2]int]bool{}
+		for i := 0; i < n*(1+rng.Intn(6)); i++ {
+			a := rng.Intn(n)
+			b := rng.Intn(n)
+			if rng.Intn(4) > 0 {
+				b = a/block*block + rng.Intn(block)
+			}
+			if a != b && b < n {
+				set[[2]int{min(a, b), max(a, b)}] = true
+			}
+		}
+		adj := make([][]int, n)
+		for p := range set {
+			adj[p[0]] = append(adj[p[0]], p[1])
+			adj[p[1]] = append(adj[p[1]], p[0])
+		}
+		lookAtAll = true
+		want := fmt.Sprint(modularize(adj))
+		lookAtAll = false
+		if got := fmt.Sprint(modularize(adj)); got != want {
+			t.Fatalf("round %d, n=%d: the skip changed the result", round, n)
 		}
 	}
 }

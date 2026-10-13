@@ -2,7 +2,6 @@ package cluster
 
 import (
 	"math"
-	"slices"
 
 	"golang.org/x/exp/rand"
 )
@@ -10,13 +9,19 @@ import (
 // deltaQTol is the smallest modularity gain that still counts as a move.
 const deltaQTol = 1e-15
 
+// lookAtAll turns the skip in localMove off, for the test that compares both.
+var lookAtAll bool
+
 // level is one step of the Louvain hierarchy: a weighted graph whose nodes are
 // the communities of the level below.
 type level struct {
-	adj    [][]int     // distinct neighbours, never the node itself
-	w      [][]float64 // edge weights, parallel to adj
-	self   []float64   // weight internal to each node
-	comms  [][]int     // current communities, as node indices
+	// Row u of the adjacency is nbr[off[u]:off[u+1]]: distinct neighbours,
+	// never the node itself. Flat rows keep a sweep inside the cache.
+	off    []int32
+	nbr    []int32
+	w      []float64 // edge weights, parallel to nbr; nil means every weight is 1
+	self   []float64 // weight internal to each node
+	comms  [][]int   // current communities, as node indices
 	parent *level
 }
 
@@ -26,16 +31,17 @@ type level struct {
 // It reproduces gonum v0.15.1 community.Modularize(g, 1, rand.NewSource(seed))
 // on an unweighted graph exactly, group and member order included: same visit
 // order, random stream, candidate order and tie-breaks. Every weight is an
-// integer held in a float64, so the sums are exact in any order. Keeping a
-// running weight per community makes one node move cost O(degree).
+// integer held in a float64, so the sums are exact in any order, and the result
+// does not depend on the order of a node's neighbours. Keeping a running weight
+// per community makes one node move cost O(degree).
 func modularize(adj [][]int) [][]int {
 	n := len(adj)
-	l := &level{adj: adj, w: make([][]float64, n), self: make([]float64, n), comms: make([][]int, n)}
-	for i := range adj {
-		l.w[i] = make([]float64, len(adj[i]))
-		for j := range l.w[i] {
-			l.w[i][j] = 1
+	l := &level{off: make([]int32, n+1), self: make([]float64, n), comms: make([][]int, n)}
+	for i, row := range adj {
+		for _, v := range row {
+			l.nbr = append(l.nbr, int32(v))
 		}
+		l.off[i+1] = int32(len(l.nbr))
 		l.comms[i] = []int{i}
 	}
 	rnd := rand.New(rand.NewSource(seed)).Intn
@@ -63,12 +69,15 @@ func (l *level) expand() [][]int {
 // localMove moves nodes between communities until no move improves
 // modularity, and reports whether any node moved.
 func (l *level) localMove(rnd func(int) int) bool {
-	n := len(l.adj)
+	n := len(l.self)
 	degree := make([]float64, n) // weighted, internal weight included
 	var m2 float64
-	for u := range l.adj {
+	for u := range degree {
 		d := l.self[u]
-		for _, w := range l.w[u] {
+		if l.w == nil {
+			d += float64(l.off[u+1] - l.off[u])
+		}
+		for _, w := range l.weights(u) {
 			d += w
 		}
 		degree[u] = d
@@ -78,12 +87,12 @@ func (l *level) localMove(rnd func(int) int) bool {
 		return false
 	}
 
-	member := make([]int, n) // community of each node
-	pos := make([]int, n)    // index of each node within its community
+	member := make([]int32, n) // community of each node
+	pos := make([]int, n)      // index of each node within its community
 	total := make([]float64, len(l.comms))
 	for c, nodes := range l.comms {
 		for i, u := range nodes {
-			member[u], pos[u] = c, i
+			member[u], pos[u] = int32(c), i
 			total[c] += degree[u]
 		}
 	}
@@ -93,7 +102,27 @@ func (l *level) localMove(rnd func(int) int) bool {
 	}
 	toComm := make([]float64, len(l.comms)) // weight from the node to each community
 	seen := make([]bool, len(l.comms))
-	var candidates []int
+	var candidates []int32
+
+	// A node that stayed put is skipped until its verdict could differ. The
+	// verdict is a function of its neighbours' communities and of the totals
+	// of those communities and its own, and every step of the arithmetic
+	// below is monotone in a total: a larger one makes a community a worse
+	// place to go and the node's own a better one to leave. So when a node
+	// stays, the same test is run once more with its own total raised and
+	// every other total lowered by a slack; if it still stays, it stays for
+	// as long as no neighbour moves, its own total is within the slack, and
+	// no more than the slack has left all communities together (which bounds
+	// what any one of them lost). Looking at a node more often than needed
+	// changes nothing.
+	dirty := make([]bool, n)
+	for u := range dirty {
+		dirty[u] = true
+	}
+	ownLimit := make([]float64, n)  // look again when the node's own total passes this
+	lostLimit := make([]float64, n) // or when lost does
+	var lost float64                // weight that has left any community so far
+	var candK []float64             // toComm of each candidate
 
 	changed := false
 	for {
@@ -104,32 +133,60 @@ func (l *level) localMove(rnd func(int) int) bool {
 		}
 		for _, u := range order {
 			own := member[u]
+			if !lookAtAll && !dirty[u] && total[own] <= ownLimit[u] && lost <= lostLimit[u] {
+				continue
+			}
+			row, w := l.nbr[l.off[u]:l.off[u+1]], l.weights(u)
+			dirty[u] = false
 			candidates = append(candidates[:0], own)
 			seen[own] = true
-			for j, v := range l.adj[u] {
+			for j, v := range row {
 				c := member[v]
 				if !seen[c] {
 					seen[c] = true
 					candidates = append(candidates, c)
 				}
-				toComm[c] += l.w[u][j]
+				if w == nil {
+					toComm[c]++
+				} else {
+					toComm[c] += w[j]
+				}
 			}
-			// Ascending index with a strict > below: the lowest index wins a tie.
-			slices.Sort(candidates)
-
 			k := degree[u]
-			var remove float64
-			add, dst := math.Inf(-1), -1
+			var remove, kOwn float64
+			add, dst := math.Inf(-1), int32(-1)
+			candK = candK[:0]
 			for _, c := range candidates {
 				kc, tot := toComm[c], total[c]
 				toComm[c], seen[c] = 0, false
+				candK = append(candK, kc)
 				if c == own {
+					kOwn = kc
 					remove = kc - k*(tot-k)/m2
-				} else if dQ := kc - k*tot/m2; dQ > add {
+				} else if dQ := kc - k*tot/m2; dQ > add || (dQ == add && c < dst) {
+					// The lowest index wins a tie, as when gonum scans the
+					// candidates in ascending order.
 					add, dst = dQ, c
 				}
 			}
 			if 2*(add-remove)/m2 <= deltaQTol {
+				ownLimit[u], lostLimit[u] = total[own], lost
+				if dst < 0 {
+					// Nowhere to go, whatever the totals.
+					ownLimit[u], lostLimit[u] = math.Inf(1), math.Inf(1)
+				} else if slack := math.Floor((remove - add) * m2 / k / 2); slack >= 1 {
+					// Half the room real arithmetic leaves to each side, whole
+					// so the sums stay exact; kept only if the test agrees.
+					worst := math.Inf(-1)
+					for i, c := range candidates {
+						if c != own {
+							worst = max(worst, candK[i]-k*(total[c]-slack)/m2)
+						}
+					}
+					if 2*(worst-(kOwn-k*(total[own]+slack-k)/m2))/m2 <= deltaQTol {
+						ownLimit[u], lostLimit[u] = total[own]+slack, lost+slack
+					}
+				}
 				continue
 			}
 			moved, changed = true, true
@@ -143,11 +200,24 @@ func (l *level) localMove(rnd func(int) int) bool {
 			l.comms[dst] = append(l.comms[dst], u)
 			total[own] -= k
 			total[dst] += k
+			lost += k
+			dirty[u] = true
+			for _, v := range row {
+				dirty[v] = true
+			}
 		}
 		if !moved {
 			return changed
 		}
 	}
+}
+
+// weights returns the weights of row u, nil when every weight is 1.
+func (l *level) weights(u int) []float64 {
+	if l.w == nil {
+		return nil
+	}
+	return l.w[l.off[u]:l.off[u+1]]
 }
 
 // reduce builds the next level, one node per non-empty community.
@@ -165,35 +235,42 @@ func (l *level) reduce() *level {
 	l.comms = comms
 
 	n := len(comms)
-	r := &level{adj: make([][]int, n), w: make([][]float64, n), self: make([]float64, n), comms: make([][]int, n), parent: l}
-	of := make([]int, len(l.adj))
+	r := &level{off: make([]int32, n+1), w: []float64{}, self: make([]float64, n), comms: make([][]int, n), parent: l}
+	of := make([]int32, len(l.self))
 	for c, nodes := range comms {
 		r.comms[c] = []int{c}
 		for _, u := range nodes {
-			of[u] = c
+			of[u] = int32(c)
 		}
 	}
-	slot := make([]int, n) // 1-based index into the current r.adj[c]
+	slot := make([]int32, n) // 1-based index into r.nbr, set only for the row being built
 	for c, nodes := range comms {
+		start := len(r.nbr)
 		for _, u := range nodes {
 			r.self[c] += l.self[u]
-			for j, v := range l.adj[u] {
+			w := l.weights(u)
+			for j, v := range l.nbr[l.off[u]:l.off[u+1]] {
+				x := 1.0
+				if w != nil {
+					x = w[j]
+				}
 				vc := of[v]
-				if vc == c {
-					r.self[c] += l.w[u][j] // seen from both ends, so 2w per pair
+				if int(vc) == c {
+					r.self[c] += x // seen from both ends, so 2w per pair
 					continue
 				}
 				if slot[vc] == 0 {
-					r.adj[c] = append(r.adj[c], vc)
-					r.w[c] = append(r.w[c], 0)
-					slot[vc] = len(r.adj[c])
+					r.nbr = append(r.nbr, vc)
+					r.w = append(r.w, 0)
+					slot[vc] = int32(len(r.nbr))
 				}
-				r.w[c][slot[vc]-1] += l.w[u][j]
+				r.w[slot[vc]-1] += x
 			}
 		}
-		for _, vc := range r.adj[c] {
+		for _, vc := range r.nbr[start:] {
 			slot[vc] = 0
 		}
+		r.off[c+1] = int32(len(r.nbr))
 	}
 	return r
 }

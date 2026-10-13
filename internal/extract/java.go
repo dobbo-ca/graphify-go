@@ -3,8 +3,8 @@ package extract
 import (
 	"strings"
 
-	ts "github.com/tree-sitter/go-tree-sitter"
-	tsjava "github.com/tree-sitter/tree-sitter-java/bindings/go"
+	tsjava "github.com/dobbo-ca/gositter/grammars/java"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -69,8 +69,8 @@ func (b *builder) javaMember(ownerID, ownerName string, m *ts.Node, src []byte) 
 	mid := idutil.MakeID(ownerID, mname)
 	b.addNode(mid, ownerName+"."+mname+"()", line(m))
 	b.res.Edges = append(b.res.Edges, model.Edge{
-		Source: ownerID, Target: mid, Relation: "contains",
-		Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
+		Source: ownerID, Target: mid, Relation: model.RelContains,
+		Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
 	})
 	b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
 	b.javaCalls(m.ChildByFieldName("body"), mid, src)
@@ -87,8 +87,8 @@ func (b *builder) javaEnumConstant(typeID string, n *ts.Node, src []byte) {
 	cid := idutil.MakeID(typeID, cname)
 	b.addNode(cid, cname, line(n))
 	b.res.Edges = append(b.res.Edges, model.Edge{
-		Source: typeID, Target: cid, Relation: "case_of",
-		Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(n),
+		Source: typeID, Target: cid, Relation: model.RelCaseOf,
+		Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(n),
 	})
 	for i := uint(0); i < n.ChildCount(); i++ {
 		body := n.Child(i)
@@ -116,16 +116,16 @@ func (b *builder) javaImport(n *ts.Node, src []byte) {
 	}
 }
 
+var javaCallKinds = tsjava.Language().KindMask("method_invocation")
+
 // javaCalls walks a method body and records each invocation. Both direct calls
 // (`f()`) and object/method calls (`x.f()`) are recorded by the invoked name.
 func (b *builder) javaCalls(body *ts.Node, callerID string, src []byte) {
 	if body == nil {
 		return
 	}
-	walk(body, func(c *ts.Node) bool {
-		if c.Kind() != "method_invocation" {
-			return true
-		}
+	walkKinds(body, javaCallKinds, func(cv ts.Node) bool {
+		c := &cv
 		if name := c.ChildByFieldName("name"); name != nil {
 			b.callRecv(callerID, name.Utf8Text(src), recvText(c, name, src), line(c))
 		}
@@ -157,7 +157,7 @@ func (b *builder) javaSupertypes(typeID string, n *ts.Node, src []byte) {
 }
 
 // javaTypeList records every type named in the `type_list` under n.
-func (b *builder) javaTypeList(typeID string, n *ts.Node, relation, loc string, src []byte) {
+func (b *builder) javaTypeList(typeID string, n *ts.Node, relation string, loc model.Loc, src []byte) {
 	for i := uint(0); i < n.ChildCount(); i++ {
 		list := n.Child(i)
 		if list.Kind() != "type_list" {

@@ -39,7 +39,7 @@ func TestExtractJava(t *testing.T) {
 
 	has := func(srcLabel, rel, tgtLabel string) bool {
 		for _, e := range ext.Edges {
-			if e.Relation == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
+			if e.Relation.String() == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
 				return true
 			}
 		}
@@ -61,7 +61,7 @@ func TestExtractJava(t *testing.T) {
 	// External import edge for util.Math.
 	rels := map[string]int{}
 	for _, e := range ext.Edges {
-		rels[e.Relation]++
+		rels[e.Relation.String()]++
 	}
 	if rels["imports"] == 0 {
 		t.Error("no external import edges (expected util.Math)")
@@ -94,7 +94,7 @@ func TestExtractJavaEnum(t *testing.T) {
 
 	has := func(srcLabel, rel, tgtLabel string) bool {
 		for _, e := range res.Edges {
-			if e.Relation == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
+			if e.Relation.String() == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
 				return true
 			}
 		}

@@ -3,8 +3,8 @@ package extract
 import (
 	"strings"
 
-	ts "github.com/tree-sitter/go-tree-sitter"
-	tsphp "github.com/tree-sitter/tree-sitter-php/bindings/go"
+	tsphp "github.com/dobbo-ca/gositter/grammars/php"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -15,7 +15,7 @@ import (
 // types become definitions; methods are nested under their type. Calls are
 // recorded by the called name and resolved against the corpus by Resolve.
 func extractPHP(rel string, src []byte) Result {
-	root, done := parseRoot(src, tsphp.LanguagePHP())
+	root, done := parseRoot(src, tsphp.Language())
 	defer done()
 	b := newBuilder(rel)
 
@@ -79,8 +79,8 @@ func (b *builder) phpType(n *ts.Node, src []byte) {
 		mid := idutil.MakeID(b.stem, name, mname)
 		b.addNode(mid, name+"."+mname+"()", line(m))
 		b.res.Edges = append(b.res.Edges, model.Edge{
-			Source: typeID, Target: mid, Relation: "contains",
-			Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
+			Source: typeID, Target: mid, Relation: model.RelContains,
+			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
 		})
 		// Register under the bare method name so `$x->method()` call sites resolve.
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
@@ -109,6 +109,9 @@ func (b *builder) phpUse(n *ts.Node, src []byte) {
 // phpConstructs are language constructs that parse like calls.
 var phpConstructs = map[string]bool{"array": true, "die": true, "empty": true, "eval": true, "exit": true, "isset": true, "list": true, "unset": true}
 
+var phpCallKinds = tsphp.Language().KindMask("function_call_expression", "member_call_expression",
+	"nullsafe_member_call_expression", "scoped_call_expression")
+
 // phpCalls walks a function/method body and records each call site. Direct
 // calls (`f()`), method calls (`$x->f()`, `$x?->f()`), and static calls
 // (`C::f()`) all record the trailing simple name.
@@ -116,7 +119,8 @@ func (b *builder) phpCalls(body *ts.Node, callerID string, src []byte) {
 	if body == nil {
 		return
 	}
-	walk(body, func(c *ts.Node) bool {
+	walkKinds(body, phpCallKinds, func(cv ts.Node) bool {
+		c := &cv
 		switch c.Kind() {
 		case "function_call_expression":
 			if fn := c.ChildByFieldName("function"); fn != nil {

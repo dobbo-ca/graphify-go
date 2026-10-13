@@ -1,8 +1,8 @@
 package extract
 
 import (
-	ts "github.com/tree-sitter/go-tree-sitter"
-	tsc "github.com/tree-sitter/tree-sitter-c/bindings/go"
+	tsc "github.com/dobbo-ca/gositter/grammars/c"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -82,8 +82,8 @@ func (b *builder) cType(n *ts.Node, src []byte) {
 		mid := idutil.MakeID(b.stem, name, mname)
 		b.addNode(mid, name+"."+mname+"()", line(f))
 		b.res.Edges = append(b.res.Edges, model.Edge{
-			Source: typeID, Target: mid, Relation: "contains",
-			Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(f),
+			Source: typeID, Target: mid, Relation: model.RelContains,
+			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(f),
 		})
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
 	}
@@ -105,16 +105,16 @@ func (b *builder) cInclude(n *ts.Node, src []byte) {
 	}
 }
 
+var cCallKinds = tsc.Language().KindMask("call_expression")
+
 // cCalls walks a function body and records each call site. Direct calls (`f()`)
 // record the identifier; member calls (`x.f()`, `x->f()`) record the field name.
 func (b *builder) cCalls(body *ts.Node, callerID string, src []byte) {
 	if body == nil {
 		return
 	}
-	walk(body, func(c *ts.Node) bool {
-		if c.Kind() != "call_expression" {
-			return true
-		}
+	walkKinds(body, cCallKinds, func(cv ts.Node) bool {
+		c := &cv
 		fn := c.ChildByFieldName("function")
 		if fn == nil {
 			return true
@@ -147,7 +147,8 @@ func cDeclName(n *ts.Node, src []byte) string {
 			// parenthesized subtree excludes the parameter list, so the first
 			// identifier is the field name, not a parameter.
 			var name string
-			walk(n, func(c *ts.Node) bool {
+			walk(n, func(cv ts.Node) bool {
+				c := &cv
 				if name != "" {
 					return false
 				}
@@ -170,7 +171,8 @@ func cIsFuncPointer(n *ts.Node) bool {
 		return false
 	}
 	found := false
-	walk(n, func(c *ts.Node) bool {
+	walk(n, func(cv ts.Node) bool {
+		c := &cv
 		if c.Kind() == "function_declarator" {
 			found = true
 			return false

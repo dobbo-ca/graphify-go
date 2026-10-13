@@ -25,7 +25,7 @@ func resolveFiles(t *testing.T, root string, files ...string) model.Extraction {
 
 func hasScriptCall(edges []model.Edge, srcID, tgtID string) bool {
 	for _, e := range edges {
-		if e.Relation == "calls" && e.Source == srcID && e.Target == tgtID {
+		if e.Relation == model.RelCalls && e.Source == srcID && e.Target == tgtID {
 			return true
 		}
 	}
@@ -102,7 +102,7 @@ func TestBashScriptInvocationSkipsDynamic(t *testing.T) {
 		t.Fatalf("File: %v", err)
 	}
 	for _, e := range r.Edges {
-		if e.Relation == "calls" {
+		if e.Relation == model.RelCalls {
 			t.Errorf("dynamic invocation must emit no calls edge, got %+v", e)
 		}
 	}

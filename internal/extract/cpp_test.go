@@ -1,8 +1,10 @@
 package extract
 
 import (
+	"math/rand"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -37,7 +39,7 @@ func TestExtractCpp(t *testing.T) {
 
 	has := func(srcLabel, rel, tgtLabel string) bool {
 		for _, e := range ext.Edges {
-			if e.Relation == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
+			if e.Relation.String() == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
 				return true
 			}
 		}
@@ -59,7 +61,7 @@ func TestExtractCpp(t *testing.T) {
 	// External import edge for <string>.
 	rels := map[string]int{}
 	for _, e := range ext.Edges {
-		rels[e.Relation]++
+		rels[e.Relation.String()]++
 	}
 	if rels["imports"] == 0 {
 		t.Error("no external import edges (expected string)")
@@ -129,4 +131,50 @@ func TestCppExportMacroClass(t *testing.T) {
 	if !inherits {
 		t.Errorf("no Widget inherits Base ref in %v", res.TypeRefs)
 	}
+}
+
+// The keyword scan must blank exactly what one unanchored regexp pass did.
+func TestCppExportMacroScanMatchesRegexp(t *testing.T) {
+	re := regexp.MustCompile(`\b(?:class|struct)\s+((?:[A-Z][A-Z0-9_]*\s+)+)([A-Za-z_]\w*(?:\s+final)?\s*)([:{])`)
+	ref := func(src []byte) []byte {
+		out := append([]byte(nil), src...)
+		for _, m := range re.FindAllSubmatchIndex(src, -1) {
+			if strings.HasSuffix(strings.TrimSpace(string(src[:m[0]])), "(") {
+				continue
+			}
+			if rest := strings.TrimSpace(string(src[m[7]:])); src[m[6]] == '{' && rest != "" && strings.ContainsRune("0123456789\"'-", rune(rest[0])) {
+				continue
+			}
+			end := m[3]
+			if strings.TrimSpace(string(src[m[4]:m[5]])) == "final" {
+				end = m[2] + strings.LastIndexAny(strings.TrimSpace(string(src[m[2]:m[3]])), " \t\r\n") + 1
+			}
+			for i := m[2]; i < end; i++ {
+				if out[i] != '\r' && out[i] != '\n' {
+					out[i] = ' '
+				}
+			}
+		}
+		return out
+	}
+	toks := []string{"class ", "struct\n", "class", " ", "\n", "\t", "API ", "A_B2 ", "API", "Foo", "Foo ", "final ", ":", "{", " {", "(", "1", "x", "_", "é", "\xff", ";"}
+	rng, blanked := rand.New(rand.NewSource(1)), 0
+	for i := 0; i < 200000; i++ {
+		var sb strings.Builder
+		for n := rng.Intn(14); n >= 0; n-- {
+			sb.WriteString(toks[rng.Intn(len(toks))])
+		}
+		src := []byte(sb.String())
+		got, want := blankCppExportMacros(src), ref(src)
+		if string(got) != string(want) {
+			t.Fatalf("%q: got %q, want %q", src, got, want)
+		}
+		if string(got) != string(src) {
+			blanked++
+		}
+	}
+	if blanked < 100 {
+		t.Fatalf("only %d inputs blanked: the generator no longer reaches the match", blanked)
+	}
+	t.Log("blanked", blanked)
 }

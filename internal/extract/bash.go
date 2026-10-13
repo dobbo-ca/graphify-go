@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	ts "github.com/tree-sitter/go-tree-sitter"
-	tsbash "github.com/tree-sitter/tree-sitter-bash/bindings/go"
+	tsbash "github.com/dobbo-ca/gositter/grammars/bash"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -40,21 +40,17 @@ func extractBash(rel string, src []byte) Result {
 	return b.res
 }
 
+var bashFuncKinds = tsbash.Language().KindMask("function_definition")
+
 // collectBashFuncs returns the set of function names defined anywhere in the file.
 func collectBashFuncs(n *ts.Node, src []byte) map[string]bool {
 	funcs := map[string]bool{}
-	var walk func(*ts.Node)
-	walk = func(n *ts.Node) {
-		if n.Kind() == "function_definition" {
-			if name := fieldText(n, "name", src); name != "" {
-				funcs[name] = true
-			}
+	walkKinds(n, bashFuncKinds, func(cv ts.Node) bool {
+		if name := fieldText(&cv, "name", src); name != "" {
+			funcs[name] = true
 		}
-		for i := uint(0); i < n.ChildCount(); i++ {
-			walk(n.Child(i))
-		}
-	}
-	walk(n)
+		return true
+	})
 	return funcs
 }
 
@@ -113,9 +109,9 @@ func (b *builder) bashCommand(n *ts.Node, src []byte, callerID string, funcs map
 				caller = b.fileID // at file scope, the script's own file node is the caller
 			}
 			b.res.Edges = append(b.res.Edges, model.Edge{
-				Source: caller, Target: tgt, Relation: "calls",
-				Confidence: "EXTRACTED", Weight: 1.0,
-				SourceFile: b.file, SourceLocation: line(n),
+				Source: caller, Target: tgt, Relation: model.RelCalls,
+				Confidence: model.ConfExtracted, Weight: 1.0,
+				SourceFile: b.src, SourceLocation: line(n),
 			})
 		}
 	}

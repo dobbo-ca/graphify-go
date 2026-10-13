@@ -254,8 +254,8 @@ func TestToJSON(t *testing.T) {
 	g := model.New()
 	g.AddNode(model.Node{ID: "fa", Label: "a.go", FileType: "code", SourceFile: "pkg/a.go", SourceLocation: "L1"})
 	g.AddNode(model.Node{ID: "a1", Label: "Add()", FileType: "code", SourceFile: "pkg/a.go", SourceLocation: "L3"})
-	g.AddEdge(model.Edge{Source: "fa", Target: "a1", Relation: "contains", Confidence: "EXTRACTED"})
-	g.AddEdge(model.Edge{Source: "a1", Target: "fa", Relation: "calls", Confidence: "INFERRED"})
+	g.AddEdge(model.Edge{Source: "fa", Target: "a1", Relation: model.RelContains, Confidence: model.ConfExtracted})
+	g.AddEdge(model.Edge{Source: "a1", Target: "fa", Relation: model.RelCalls, Confidence: model.ConfInferred})
 	communities := map[int][]string{0: {"a1", "fa"}}
 
 	path := filepath.Join(t.TempDir(), "graph.json")
@@ -314,8 +314,8 @@ func TestToJSONEdgeWeight(t *testing.T) {
 	g.AddNode(model.Node{ID: "a", Label: "a", FileType: "code", SourceFile: "pkg/a.go"})
 	g.AddNode(model.Node{ID: "b", Label: "b", FileType: "code", SourceFile: "pkg/b.go"})
 	// One edge carries a non-zero weight, the other leaves it unset.
-	g.AddEdge(model.Edge{Source: "a", Target: "b", Relation: "calls", Confidence: "EXTRACTED", Weight: 3.5})
-	g.AddEdge(model.Edge{Source: "b", Target: "a", Relation: "calls", Confidence: "EXTRACTED"})
+	g.AddEdge(model.Edge{Source: "a", Target: "b", Relation: model.RelCalls, Confidence: model.ConfExtracted, Weight: 3.5})
+	g.AddEdge(model.Edge{Source: "b", Target: "a", Relation: model.RelCalls, Confidence: model.ConfExtracted})
 
 	path := filepath.Join(t.TempDir(), "graph.json")
 	if err := ToJSON(g, map[int][]string{}, path, "c1", false); err != nil {

@@ -52,6 +52,7 @@ func extractMCPConfig(rel string, src []byte) Result {
 	}
 
 	fileID := idutil.MakeID(rel)
+	relF := model.FileOf(rel)
 	res := Result{Nodes: []model.Node{{
 		ID: fileID, Label: filepath.Base(rel), FileType: "code", SourceFile: rel, SourceLocation: "L1",
 	}}}
@@ -78,8 +79,8 @@ func extractMCPConfig(rel string, src []byte) Result {
 		}
 		seenEdge[key] = true
 		res.Edges = append(res.Edges, model.Edge{
-			Source: srcID, Target: tgtID, Relation: relation,
-			Confidence: "EXTRACTED", SourceFile: rel, SourceLocation: "L1",
+			Source: srcID, Target: tgtID, Relation: model.Rel(relation),
+			Confidence: model.ConfExtracted, SourceFile: relF, SourceLocation: model.Line(1),
 		})
 	}
 

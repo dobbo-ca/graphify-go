@@ -73,7 +73,7 @@ func TestParseConceptsMarksLowScoreAmbiguous(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseConcepts: %v", err)
 	}
-	if len(edges) != 1 || edges[0].Confidence != "AMBIGUOUS" {
+	if len(edges) != 1 || edges[0].Confidence.String() != "AMBIGUOUS" {
 		t.Errorf("low-score edge should be AMBIGUOUS, got %+v", edges)
 	}
 }

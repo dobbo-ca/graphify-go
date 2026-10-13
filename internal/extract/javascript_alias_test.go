@@ -19,10 +19,10 @@ func TestResolveAtSlashAliasImport(t *testing.T) {
 	fromID, toID := idutil.MakeID("app/page.tsx"), idutil.MakeID("lib/x.ts")
 	found := false
 	for _, e := range ext.Edges {
-		if e.Relation == "imports_from" && e.Source == fromID && e.Target == toID {
+		if e.Relation.String() == "imports_from" && e.Source == fromID && e.Target == toID {
 			found = true
 		}
-		if e.Relation == "imports" && e.Source == fromID && e.Target == idutil.MakeID("@/lib/x") {
+		if e.Relation.String() == "imports" && e.Source == fromID && e.Target == idutil.MakeID("@/lib/x") {
 			t.Error("@/lib/x became an external import edge")
 		}
 	}

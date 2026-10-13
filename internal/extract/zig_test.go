@@ -30,7 +30,7 @@ func TestExtractZig(t *testing.T) {
 
 	has := func(srcLabel, rel, tgtLabel string) bool {
 		for _, e := range ext.Edges {
-			if e.Relation == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
+			if e.Relation.String() == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
 				return true
 			}
 		}
@@ -52,7 +52,7 @@ func TestExtractZig(t *testing.T) {
 	// External import edge for std (@import("std")).
 	rels := map[string]int{}
 	for _, e := range ext.Edges {
-		rels[e.Relation]++
+		rels[e.Relation.String()]++
 	}
 	if rels["imports"] == 0 {
 		t.Error("no external import edges (expected std)")

@@ -35,7 +35,7 @@ func TestExtractPython(t *testing.T) {
 
 	has := func(srcLabel, rel, tgtLabel string) bool {
 		for _, e := range ext.Edges {
-			if e.Relation == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
+			if e.Relation.String() == rel && id2label[e.Source] == srcLabel && id2label[e.Target] == tgtLabel {
 				return true
 			}
 		}
@@ -52,7 +52,7 @@ func TestExtractPython(t *testing.T) {
 	// External import edge for os.
 	rels := map[string]int{}
 	for _, e := range ext.Edges {
-		rels[e.Relation]++
+		rels[e.Relation.String()]++
 	}
 	if rels["imports"] == 0 {
 		t.Error("no external import edges (expected os)")
@@ -79,7 +79,7 @@ func TestExtractPythonRationale(t *testing.T) {
 	}
 	hasRationaleFor := func(labelPrefix, target string) bool {
 		for _, e := range res.Edges {
-			if e.Relation != "rationale_for" || e.Target != target {
+			if e.Relation.String() != "rationale_for" || e.Target != target {
 				continue
 			}
 			if ftype[e.Source] == "rationale" && strings.HasPrefix(label[e.Source], labelPrefix) {
@@ -119,7 +119,7 @@ func TestExtractPythonDocstringAfterComment(t *testing.T) {
 	}
 	found := false
 	for _, e := range res.Edges {
-		if e.Relation != "rationale_for" || e.Target != fileID {
+		if e.Relation.String() != "rationale_for" || e.Target != fileID {
 			continue
 		}
 		if ftype[e.Source] == "rationale" && strings.HasPrefix(label[e.Source], "Module docstring") {

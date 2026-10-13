@@ -1,8 +1,8 @@
 package extract
 
 import (
-	tszig "github.com/tree-sitter-grammars/tree-sitter-zig/bindings/go"
-	ts "github.com/tree-sitter/go-tree-sitter"
+	tszig "github.com/dobbo-ca/gositter/grammars/zig"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
 	"github.com/dobbo-ca/graphify-go/internal/model"
@@ -85,8 +85,8 @@ func (b *builder) zigType(name string, container *ts.Node, src []byte) {
 		mid := idutil.MakeID(b.stem, name, mname)
 		b.addNode(mid, name+"."+mname+"()", line(m))
 		b.res.Edges = append(b.res.Edges, model.Edge{
-			Source: typeID, Target: mid, Relation: "contains",
-			Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: line(m),
+			Source: typeID, Target: mid, Relation: model.RelContains,
+			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
 		})
 		// Register under the bare method name so `x.method()` call sites resolve.
 		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
@@ -152,7 +152,8 @@ func zigImportSpec(bf *ts.Node, src []byte) string {
 		return ""
 	}
 	var spec string
-	walk(args, func(c *ts.Node) bool {
+	walk(args, func(cv ts.Node) bool {
+		c := &cv
 		if spec != "" {
 			return false
 		}
@@ -165,6 +166,8 @@ func zigImportSpec(bf *ts.Node, src []byte) string {
 	return spec
 }
 
+var zigCallKinds = tszig.Language().KindMask("call_expression")
+
 // zigCalls walks a function body and records each call site, attributing it to
 // callerID. Direct calls (`f()`) record the identifier; field/method calls
 // (`x.f()`) record the trailing member name.
@@ -172,10 +175,8 @@ func (b *builder) zigCalls(body *ts.Node, callerID string, src []byte) {
 	if body == nil {
 		return
 	}
-	walk(body, func(c *ts.Node) bool {
-		if c.Kind() != "call_expression" {
-			return true
-		}
+	walkKinds(body, zigCallKinds, func(cv ts.Node) bool {
+		c := &cv
 		fn := c.ChildByFieldName("function")
 		if fn == nil {
 			return true

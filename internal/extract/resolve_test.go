@@ -1,6 +1,11 @@
 package extract
 
 import (
+	"fmt"
+	"github.com/dobbo-ca/graphify-go/internal/idutil"
+	"github.com/dobbo-ca/graphify-go/internal/model"
+	"runtime"
+	"slices"
 	"testing"
 	"time"
 )
@@ -27,8 +32,8 @@ func TestResolveAmbiguousByImport(t *testing.T) {
 		{Defs: []Def{{ID: "B", Name: "helper", File: "b/util.js"}}},
 		{
 			Defs:  []Def{{ID: "MAIN", Name: "run", File: "main.js"}},
-			Calls: []Call{{CallerID: "MAIN", Callee: "helper", File: "main.js", Loc: "L2"}},
-			Imps:  []Imp{{FileID: "mainfile", File: "main.js", Spec: "./a/util", Loc: "L1"}},
+			Calls: []Call{{CallerID: 1, Callee: 2, Loc: model.Line(2)}}, CallText: []string{"", "MAIN", "helper"}, File: "main.js",
+			Imps: []Imp{{FileID: "mainfile", File: "main.js", Spec: "./a/util", Loc: model.Line(1)}},
 		},
 	}
 	files := []string{"a/util.js", "b/util.js", "main.js"}
@@ -36,7 +41,7 @@ func TestResolveAmbiguousByImport(t *testing.T) {
 
 	var es []edge
 	for _, e := range ext.Edges {
-		es = append(es, edge{e.Source, e.Target, e.Relation})
+		es = append(es, edge{e.Source, e.Target, e.Relation.String()})
 	}
 	if !hasCall(es, "MAIN", "A") {
 		t.Error("expected MAIN --calls--> A (the imported helper)")
@@ -56,10 +61,11 @@ func TestResolveNoCrossFamilyCall(t *testing.T) {
 		{Defs: []Def{{ID: "PYHELPER", Name: "helper", File: "util.py"}}},
 		{
 			Defs: []Def{{ID: "PYMAIN", Name: "run", File: "main.py"}},
+			File: "main.py",
 			Calls: []Call{
-				{CallerID: "PYMAIN", Callee: "process", File: "main.py", Loc: "L2"}, // cross-family, must not bind
-				{CallerID: "PYMAIN", Callee: "helper", File: "main.py", Loc: "L3"},  // same-family, must bind
-			},
+				{CallerID: 1, Callee: 2, Loc: model.Line(2)}, // cross-family, must not bind
+				{CallerID: 1, Callee: 3, Loc: model.Line(3)}, // same-family, must bind
+			}, CallText: []string{"", "PYMAIN", "process", "helper"},
 		},
 	}
 	files := []string{"Svc.java", "util.py", "main.py"}
@@ -67,7 +73,7 @@ func TestResolveNoCrossFamilyCall(t *testing.T) {
 
 	var es []edge
 	for _, e := range ext.Edges {
-		es = append(es, edge{e.Source, e.Target, e.Relation})
+		es = append(es, edge{e.Source, e.Target, e.Relation.String()})
 	}
 	if hasCall(es, "PYMAIN", "JAVA") {
 		t.Error("did not expect PYMAIN --calls--> JAVA (cross language family)")
@@ -86,7 +92,7 @@ func TestResolveAmbiguousBySameDir(t *testing.T) {
 		{Defs: []Def{{ID: "FAR", Name: "doIt", File: "other/b.go"}}},
 		{
 			Defs:  []Def{{ID: "CALLER", Name: "run", File: "pkg/c.go"}},
-			Calls: []Call{{CallerID: "CALLER", Callee: "doIt", File: "pkg/c.go", Loc: "L3"}},
+			Calls: []Call{{CallerID: 1, Callee: 2, Loc: model.Line(3)}}, CallText: []string{"", "CALLER", "doIt"}, File: "pkg/c.go",
 		},
 	}
 	files := []string{"pkg/a.go", "other/b.go", "pkg/c.go"}
@@ -94,7 +100,7 @@ func TestResolveAmbiguousBySameDir(t *testing.T) {
 
 	var es []edge
 	for _, e := range ext.Edges {
-		es = append(es, edge{e.Source, e.Target, e.Relation})
+		es = append(es, edge{e.Source, e.Target, e.Relation.String()})
 	}
 	if !hasCall(es, "CALLER", "LOCAL") {
 		t.Error("expected CALLER --calls--> LOCAL (same directory)")
@@ -116,16 +122,17 @@ func TestResolveSameNameMethodsInOneFile(t *testing.T) {
 			{ID: "x_b_helper", Name: "Helper", File: "x.cs"},
 			{ID: "x_b_only", Name: "Only", File: "x.cs"},
 		},
+		File: "x.cs",
 		Calls: []Call{
-			{CallerID: "x_a_build", Callee: "Helper", File: "x.cs", Loc: "L3"},
-			{CallerID: "x_a_build", Callee: "Only", File: "x.cs", Loc: "L4"},
-		},
+			{CallerID: 1, Callee: 2, Loc: model.Line(3)},
+			{CallerID: 1, Callee: 3, Loc: model.Line(4)},
+		}, CallText: []string{"", "x_a_build", "Helper", "Only"},
 	}}
 	ext := Resolve(results, []string{"x.cs"})
 
 	var es []edge
 	for _, e := range ext.Edges {
-		es = append(es, edge{e.Source, e.Target, e.Relation})
+		es = append(es, edge{e.Source, e.Target, e.Relation.String()})
 	}
 	if hasCall(es, "x_a_build", "x_b_helper") {
 		t.Error("did not expect x_a_build --calls--> x_b_helper (ambiguous same-file name)")
@@ -281,5 +288,161 @@ func TestSelfTargetCyclicInherits(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("selfTarget did not finish on a 6-class inherits cycle")
+	}
+}
+
+// TestResolveImportEdgesAcrossBatches checks the import edges of a corpus that
+// spans several target batches and several edge parts: order, and a TypeOnly
+// that a later value import of the same target clears in an earlier part.
+func TestResolveImportEdgesAcrossBatches(t *testing.T) {
+	const n = 3*impPart/2 + 7
+	files := []string{"t.ts"}
+	results := []Result{{}}
+	type imp struct {
+		src, tgt, rel string
+		typeOnly      bool
+	}
+	var want []imp
+	for i := range n {
+		f, id := fmt.Sprintf("f%d.ts", i), fmt.Sprintf("f%d", i)
+		files = append(files, f)
+		results = append(results, Result{Imps: []Imp{
+			{FileID: id, File: f, Spec: "./t", TypeOnly: true},
+			{FileID: id, File: f, Spec: "lib"},
+		}})
+		// Every third file imports the target again, as a value.
+		again := i%3 == 0
+		want = append(want, imp{id, "t_ts", "imports_from", !again}, imp{id, "lib", "imports", false})
+		if again {
+			results = append(results, Result{Imps: []Imp{{FileID: id, File: f, Spec: "./t"}}})
+			files = append(files, fmt.Sprintf("g%d.ts", i))
+		}
+	}
+	var got []imp
+	for _, e := range Resolve(results, files).Edges {
+		got = append(got, imp{e.Source, e.Target, e.Relation.String(), e.TypeOnly})
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("import edges differ: got %d, want %d", len(got), len(want))
+	}
+}
+
+// TestResolveCallEdgesAcrossParts checks the call edges of a run that fills
+// more than one part: no part above impPart, and the order of the calls.
+func TestResolveCallEdgesAcrossParts(t *testing.T) {
+	const n = 3*impPart/2 + 7
+	r := Result{Defs: []Def{{ID: "helper", Name: "helper", File: "a.go"}}, File: "a.go", CallText: []string{"", "helper"}}
+	var want []string
+	for i := range n {
+		id := fmt.Sprintf("c%d", i)
+		r.CallText = append(r.CallText, id)
+		r.Calls = append(r.Calls, Call{CallerID: uint32(i + 2), Callee: 1, Loc: model.Line(1)})
+		want = append(want, id)
+	}
+	_, parts := ResolveParts([]Result{r}, []string{"a.go"})
+	var got []string
+	for _, p := range parts {
+		for _, e := range p {
+			if e.Relation.String() != "calls" {
+				continue
+			}
+			if len(p) > impPart {
+				t.Fatalf("part of %d call edges, want at most %d", len(p), impPart)
+			}
+			got = append(got, e.Source)
+		}
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("call edges differ: got %d, want %d", len(got), len(want))
+	}
+}
+
+// TestResolveImportedSetPerFile: the set of imported files is made per caller
+// file inside one run, so a file that imports nothing must not bind an
+// ambiguous name through what the file before it imports.
+func TestResolveImportedSetPerFile(t *testing.T) {
+	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1)) // one run for all files
+	files := []string{"p/x.ts", "q/y.ts", "r/a.ts", "s/b.ts"}
+	results := []Result{
+		{Defs: []Def{{ID: "x_f", Name: "f", File: "p/x.ts"}}},
+		{Defs: []Def{{ID: "y_f", Name: "f", File: "q/y.ts"}}},
+		{
+			Imps:  []Imp{{FileID: "a", File: "r/a.ts", Spec: "../p/x"}},
+			Calls: []Call{{CallerID: 1, Callee: 2, Loc: model.Line(2)}}, CallText: []string{"", "a_main", "f"}, File: "r/a.ts",
+		},
+		{Calls: []Call{{CallerID: 1, Callee: 2, Loc: model.Line(2)}}, CallText: []string{"", "b_main", "f"}, File: "s/b.ts"},
+	}
+	var got []string
+	for _, e := range Resolve(results, files).Edges {
+		if e.Relation.String() == "calls" {
+			got = append(got, e.Source+">"+e.Target)
+		}
+	}
+	if want := []string{"a_main>x_f"}; !slices.Equal(got, want) {
+		t.Fatalf("call edges = %v, want %v", got, want)
+	}
+}
+
+// TestResolveImportEdgesDedupByTargetID: two files whose paths make the same
+// id are one import target for the dedupe.
+func TestResolveImportEdgesDedupByTargetID(t *testing.T) {
+	files := []string{"a-b.ts", "a_b.ts", "m.ts"}
+	if idutil.MakeID(files[0]) != idutil.MakeID(files[1]) {
+		t.Fatal("the two paths no longer make one id")
+	}
+	results := []Result{{}, {}, {Imps: []Imp{
+		{FileID: "m", File: "m.ts", Spec: "./a-b", TypeOnly: true},
+		{FileID: "m", File: "m.ts", Spec: "./a_b"},
+	}}}
+	var got []string
+	for _, e := range Resolve(results, files).Edges {
+		got = append(got, fmt.Sprintf("%s>%s %s %v", e.Source, e.Target, e.Relation, e.TypeOnly))
+	}
+	if want := []string{"m>a_b_ts imports_from false"}; !slices.Equal(got, want) {
+		t.Fatalf("import edges = %v, want %v", got, want)
+	}
+}
+
+// TestResolveMarkdownEdgesAfterModuleRefs pins the order of the tail edges:
+// the markdown pass runs beside the calls, and its edges still come last.
+func TestResolveMarkdownEdgesAfterModuleRefs(t *testing.T) {
+	results := []Result{
+		{ModRefs: []ModRef{{FromID: "M", File: "main.tf", Source: "acme/vpc/aws"}}},
+		{MDRefs: []MDRef{{FromID: "D", File: "a.md", Target: "b.md"}}},
+	}
+	var got []string
+	for _, e := range Resolve(results, []string{"main.tf", "a.md", "b.md"}).Edges {
+		got = append(got, e.Source)
+	}
+	if !slices.Equal(got, []string{"M", "D"}) {
+		t.Errorf("edge sources %v, want [M D]", got)
+	}
+}
+
+// TestResolveEdgeFiles checks that an edge Resolve makes names the file and
+// line of the record it came from, across files.
+func TestResolveEdgeFiles(t *testing.T) {
+	results := []Result{
+		{Defs: []Def{{ID: "U", Name: "helper", File: "util.js"}}},
+		{
+			Defs:  []Def{{ID: "A", Name: "a", File: "a.js"}},
+			Calls: []Call{{CallerID: 1, Callee: 2, Loc: model.Line(5)}}, CallText: []string{"", "A", "helper"}, File: "a.js",
+			Imps: []Imp{{FileID: "afile", File: "a.js", Spec: "./util", Loc: model.Line(1)}},
+		},
+		{
+			Defs:  []Def{{ID: "B", Name: "b", File: "b.js"}},
+			Calls: []Call{{CallerID: 1, Callee: 2, Loc: model.Line(7)}}, CallText: []string{"", "B", "helper"}, File: "b.js",
+			Imps: []Imp{{FileID: "bfile", File: "b.js", Spec: "./util", Loc: model.Line(2)}},
+		},
+	}
+	got := map[string]string{}
+	for _, e := range Resolve(results, []string{"util.js", "a.js", "b.js"}).Edges {
+		got[e.Source+" "+e.Relation.String()] = e.SourceFile.String() + ":" + e.SourceLocation.String()
+	}
+	want := map[string]string{"A calls": "a.js:L5", "B calls": "b.js:L7", "afile imports_from": "a.js:L1", "bfile imports_from": "b.js:L2"}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s: got %q, want %q (all: %v)", k, got[k], v, got)
+		}
 	}
 }

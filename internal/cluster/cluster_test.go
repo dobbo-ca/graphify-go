@@ -14,7 +14,7 @@ func twoTriangles() *model.Graph {
 		g.AddNode(model.Node{ID: id, Label: id, SourceFile: "pkg/" + id + ".go"})
 	}
 	edge := func(s, t string) {
-		g.AddEdge(model.Edge{Source: s, Target: t, Relation: "calls"})
+		g.AddEdge(model.Edge{Source: s, Target: t, Relation: model.RelCalls})
 	}
 	edge("a1", "a2")
 	edge("a2", "a3")

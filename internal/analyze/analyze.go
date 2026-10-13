@@ -30,7 +30,7 @@ type GodNode struct {
 // computation cluster() applies, so callers can look past the mega-hubs that
 // dominate every ranking. Zero keeps the historical ranking.
 func GodNodes(g *model.Graph, topN, excludeHubsPercentile int) []GodNode {
-	ids := append([]string(nil), g.NodeIDs()...)
+	ids := g.NodeIDs()
 	hubThreshold, hasThreshold := 0, false
 	if excludeHubsPercentile > 0 && len(ids) > 0 {
 		degrees := make([]int, len(ids))
@@ -47,19 +47,28 @@ func GodNodes(g *model.Graph, topN, excludeHubsPercentile int) []GodNode {
 		}
 		hubThreshold, hasThreshold = degrees[idx], true
 	}
-	sort.SliceStable(ids, func(i, j int) bool { return g.Degree(ids[i]) > g.Degree(ids[j]) })
+	// The first topN of a stable sort by degree, without the sort: a node
+	// goes in behind every kept node of its degree or more, so ties stay in
+	// id order.
+	topN = max(topN, 1)
 	var out []GodNode
 	for _, id := range ids {
-		if hasThreshold && g.Degree(id) > hubThreshold {
+		d := g.Degree(id)
+		if len(out) >= topN && d <= out[len(out)-1].Degree {
+			continue
+		}
+		if hasThreshold && d > hubThreshold {
 			continue
 		}
 		if isFileNode(g, id) || isConceptNode(g, id) || isJSONKeyNode(g, id) {
 			continue
 		}
-		out = append(out, GodNode{ID: id, Label: g.Nodes[id].Label, Degree: g.Degree(id)})
-		if len(out) >= topN {
-			break
+		at := len(out)
+		for at > 0 && out[at-1].Degree < d {
+			at--
 		}
+		out = slices.Insert(out, at, GodNode{ID: id, Label: g.Nodes[id].Label, Degree: d})
+		out = out[:min(len(out), topN)]
 	}
 	return out
 }
@@ -113,7 +122,7 @@ func Surprising(g *model.Graph, communities map[int][]string, topN int) []Surpri
 	}
 	var cands []scored
 	for _, e := range g.Edges() {
-		if e.Relation == "imports" || e.Relation == "imports_from" || e.Relation == "contains" {
+		if e.Relation == model.RelImports || e.Relation == model.RelImportsFrom || e.Relation == model.RelContains {
 			continue
 		}
 		u, v := e.Source, e.Target
@@ -122,7 +131,7 @@ func Surprising(g *model.Graph, communities map[int][]string, topN int) []Surpri
 		// note looks like a file hub (its label is the file basename). So the
 		// file-hub exclusion, which suppresses mechanical AST edges, is skipped
 		// for semantic edges; the extract-concept exclusion still applies.
-		sem := semanticRelations[e.Relation]
+		sem := semanticRelations[e.Relation.String()]
 		if isConceptNode(g, u) || isConceptNode(g, v) {
 			continue
 		}
@@ -133,7 +142,7 @@ func Surprising(g *model.Graph, communities map[int][]string, topN int) []Surpri
 		if uf == "" || vf == "" || uf == vf {
 			continue
 		}
-		score := confRank[e.Confidence]
+		score := confRank[e.Confidence.String()]
 		note := ""
 		if cu, cv := nc[u], nc[v]; cu != cv {
 			score++
@@ -141,7 +150,7 @@ func Surprising(g *model.Graph, communities map[int][]string, topN int) []Surpri
 		}
 		cands = append(cands, scored{Surprise{
 			Source: g.Nodes[u].Label, Target: g.Nodes[v].Label,
-			Relation: e.Relation, Confidence: e.Confidence,
+			Relation: e.Relation.String(), Confidence: e.Confidence.String(),
 			SourceFiles: [2]string{uf, vf}, Note: note,
 		}, score})
 	}
@@ -169,7 +178,7 @@ func ImportCycles(g *model.Graph, maxLen, topN int) []Cycle {
 	for _, e := range g.Edges() {
 		// Type-only imports are erased at compile time, so they cannot form a
 		// runtime cycle (upstream find_import_cycles skips them too).
-		if e.Relation != "imports_from" || e.TypeOnly {
+		if e.Relation != model.RelImportsFrom || e.TypeOnly {
 			continue
 		}
 		uf, vf := g.Nodes[e.Source].SourceFile, g.Nodes[e.Target].SourceFile

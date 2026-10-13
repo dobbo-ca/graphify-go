@@ -18,7 +18,7 @@ const auditSrc = "class Audit {\n  public string Build() { return \"y\"; }\n}\n"
 func implementsEdge(implFile, implType string) model.Edge {
 	return model.Edge{
 		Source: idutil.MakeID(fileStem(implFile), implType), Target: idutil.MakeID("ireport", "IReport"),
-		Relation: "implements", Confidence: "EXTRACTED", SourceFile: implFile,
+		Relation: model.Rel("implements"), Confidence: model.ConfExtracted, SourceFile: model.FileOf(implFile),
 	}
 }
 
@@ -31,7 +31,7 @@ func dispatchTargets(t *testing.T, results []Result, files []string) map[string]
 	}
 	got := map[string]string{}
 	for _, e := range ext.Edges {
-		if e.Relation == "dispatches_to" {
+		if e.Relation == model.RelDispatchesTo {
 			got[label[e.Source]] = label[e.Target]
 		}
 	}
@@ -81,5 +81,28 @@ func TestCSharpDispatchCrossLanguage(t *testing.T) {
 
 	if got := dispatchTargets(t, results, files); len(got) != 0 {
 		t.Errorf("expected no dispatches_to across a language boundary, got %v", got)
+	}
+}
+
+// A later node of another language under the implementing method's id takes
+// the id, as in the graph, so the method is no C# candidate any more.
+func TestCSharpDispatchIDTakenByOtherLanguage(t *testing.T) {
+	files := []string{"IReport.cs", "Report.cs", "report.ts"}
+	results := []Result{
+		extractCSharp("IReport.cs", []byte(ifaceSrc)),
+		extractCSharp("Report.cs", []byte(reportSrc)),
+		{},
+	}
+	results[1].Edges = append(results[1].Edges, implementsEdge("Report.cs", "Report"))
+	for _, n := range results[1].Nodes {
+		if n.Label == "Report.Build()" {
+			results[2].Nodes = []model.Node{{ID: n.ID, Label: n.Label, SourceFile: "report.ts"}}
+		}
+	}
+	if len(results[2].Nodes) != 1 {
+		t.Fatal("no Report.Build() node to shadow")
+	}
+	if got := dispatchTargets(t, results, files); len(got) != 0 {
+		t.Errorf("expected no dispatch edge, got %v", got)
 	}
 }

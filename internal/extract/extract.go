@@ -7,16 +7,18 @@ package extract
 
 import (
 	"bytes"
+	"github.com/dobbo-ca/gositter"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode/utf16"
 	"unicode/utf8"
-	"unsafe"
 
-	ts "github.com/tree-sitter/go-tree-sitter"
-	tsjs "github.com/tree-sitter/tree-sitter-javascript/bindings/go"
-	tstsx "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
+	tsjs "github.com/dobbo-ca/gositter/grammars/javascript"
+	tstsx "github.com/dobbo-ca/gositter/grammars/tsx"
+	tsts "github.com/dobbo-ca/gositter/grammars/typescript"
+	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/detect"
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
@@ -35,18 +37,44 @@ type Def struct {
 // Call is an unresolved call site: CallerID invoked a symbol named Callee.
 // Recv is the receiver or qualifier text of a member call (`x` in `x.f()`,
 // `T` in `T::f()`), empty for a bare call. Resolve binds a member call on its
-// receiver, never on the bare name alone. Module is the import spec Recv names
-// when it is an unshadowed `import x` binding (Python only).
+// receiver, never on the bare name alone. The file and the Python module of
+// a call are in its Result: a call record is the largest part of the results.
+// The three texts are numbers into the CallText of the Result, 0 for none:
+// three calls in four repeat a callee or receiver of their file.
 type Call struct {
-	CallerID, Callee, File, Loc string
-	Recv                        string
-	Module                      string
+	CallerID, Callee uint32
+	Loc              model.Loc
+	Recv             uint32
+}
+
+// callText is a Call with its texts.
+type callText struct {
+	CallerID, Callee, Recv string
+	Loc                    model.Loc
+}
+
+func (r *Result) call(c Call) callText {
+	t := r.CallText
+	return callText{t[c.CallerID], t[c.Callee], t[c.Recv], c.Loc}
+}
+
+// CallsOK reports whether every call numbers a text the result has. A
+// decoded result is checked once so that Resolve need not.
+func (r *Result) CallsOK() bool {
+	n := uint32(len(r.CallText))
+	for _, c := range r.Calls {
+		if c.CallerID >= n || c.Callee >= n || c.Recv >= n {
+			return false
+		}
+	}
+	return n == 0 || r.CallText[0] == ""
 }
 
 // ImportAlias is per-file evidence from a top-level `from M import N [as L]`:
 // the local name L (alias or N) resolves to symbol N in module-stem M.
 type ImportAlias struct {
-	Local, Imported, ModuleStem, Loc string
+	Local, Imported, ModuleStem string
+	Loc                         model.Loc
 }
 
 // TypeRef is an unresolved supertype reference: the type FromID declared Name
@@ -54,15 +82,17 @@ type ImportAlias struct {
 // (interface conformance). Resolve binds Name to a definition the same way a
 // call is bound.
 type TypeRef struct {
-	FromID, Name, Relation, File, Loc string
+	FromID, Name, Relation, File string
+	Loc                          model.Loc
 }
 
 // Imp is an unresolved import: File imported the module named Spec. TypeOnly
 // marks a TypeScript `import type ...`, which is erased at compile time and so
 // cannot participate in a runtime import cycle.
 type Imp struct {
-	FileID, File, Spec, Loc string
-	TypeOnly                bool
+	FileID, File, Spec string
+	Loc                model.Loc
+	TypeOnly           bool
 	// Rel marks a spec that is relative to the importing file's directory even
 	// without a leading dot (a quoted C include, Ruby `require_relative`).
 	Rel bool
@@ -76,7 +106,8 @@ type Imp struct {
 // into an edge to the target directory node, and a registry/private-registry
 // source into an external concept node.
 type ModRef struct {
-	FromID, Source, File, Loc string
+	FromID, Source, File string
+	Loc                  model.Loc
 }
 
 // NullLabelRef carries a captured cloudposse null-label module so Resolve can
@@ -100,10 +131,17 @@ type ModInvoke struct {
 
 // Result is one file's extraction before cross-file resolution.
 type Result struct {
-	Nodes         []model.Node
-	Edges         []model.Edge
-	Defs          []Def
-	Calls         []Call
+	Nodes []model.Node
+	Edges []model.Edge
+	Defs  []Def
+	Calls []Call
+	// CallText holds the texts of the Calls; the first is empty.
+	CallText []string
+	// File is the file the Calls were made in.
+	File string
+	// CallMods runs beside Calls, as far as the last entry set: the import
+	// spec Recv names when it is an unshadowed `import x` binding (Python only).
+	CallMods      []string
 	TypeRefs      []TypeRef
 	Imps          []Imp
 	ModRefs       []ModRef
@@ -129,6 +167,24 @@ func File(root, rel string) (Result, error) {
 // that have hashed the file (e.g. the incremental cache) avoid a second read.
 // Unsupported extensions return an empty result.
 func FileFromBytes(rel string, src []byte) Result {
+	r := fileFromBytes(rel, src)
+	// Results stay live until the cache is written; append growth leaves
+	// about a third of these slices unused.
+	r.Nodes, r.Edges, r.Defs = trim(r.Nodes), trim(r.Edges), trim(r.Defs)
+	r.Calls, r.CallMods, r.Imps = trim(r.Calls), trim(r.CallMods), trim(r.Imps)
+	r.CallText = trim(r.CallText)
+	return r
+}
+
+// trim drops spare capacity worth copying for.
+func trim[T any](s []T) []T {
+	if cap(s)-len(s) <= len(s)/8 {
+		return s
+	}
+	return slices.Clone(s)
+}
+
+func fileFromBytes(rel string, src []byte) Result {
 	src = toUTF8(src)
 	rel = filepath.ToSlash(rel)
 	if IsMCPConfigPath(rel) {
@@ -146,9 +202,9 @@ func FileFromBytes(rel string, src []byte) Result {
 	case ".js", ".jsx", ".mjs", ".cjs":
 		return extractJS(rel, src, tsjs.Language())
 	case ".tsx":
-		return extractJS(rel, src, tstsx.LanguageTSX())
+		return extractJS(rel, src, tstsx.Language())
 	case ".ts", ".mts", ".cts":
-		return extractJS(rel, src, tstsx.LanguageTypescript())
+		return extractJS(rel, src, tsts.Language())
 	case ".tf", ".tfvars", ".hcl":
 		return extractTerraform(rel, src)
 	case ".json":
@@ -218,11 +274,8 @@ func isCppHeader(src []byte) bool {
 // parseRoot parses src with the given grammar and returns the root node plus a
 // close func that frees the tree. Callers must hold the tree until they finish
 // walking, then call close.
-func parseRoot(src []byte, langPtr unsafe.Pointer) (*ts.Node, func()) {
-	parser := ts.NewParser()
-	_ = parser.SetLanguage(ts.NewLanguage(langPtr))
-	tree := parser.Parse(src, nil)
-	return tree.RootNode(), func() { tree.Close(); parser.Close() }
+func parseRoot(src []byte, langPtr *gositter.Language) (*ts.Node, func()) {
+	return ts.Parse(src, langPtr)
 }
 
 // fileStem qualifies a file's stem with its parent directory name so identically
@@ -236,8 +289,8 @@ func fileStem(rel string) string {
 	return base
 }
 
-func line(n *ts.Node) string {
-	return "L" + itoa(int(n.StartPosition().Row)+1)
+func line(n *ts.Node) model.Loc {
+	return model.Line(int(n.StartPosition().Row) + 1)
 }
 
 func itoa(i int) string {
@@ -257,6 +310,7 @@ func itoa(i int) string {
 // builder accumulates nodes/edges/defs for one file, de-duplicating node IDs.
 type builder struct {
 	file   string
+	src    model.File // file, as edges hold it
 	fileID string
 	stem   string
 	res    Result
@@ -264,54 +318,72 @@ type builder struct {
 	pyMods map[string]string // local name -> plainly imported module
 	// rubyMethods holds method names defined in the file (bare self-sends).
 	rubyMethods map[string]bool
+	jsBodies    []jsBody          // function bodies awaiting the JS call walk
+	strs        map[string]uint32 // text -> its number in res.CallText
 }
 
 func newBuilder(rel string) *builder {
 	fileID := idutil.MakeID(rel)
-	b := &builder{file: rel, fileID: fileID, stem: fileStem(rel), seen: map[string]bool{}}
-	b.addNode(fileID, filepath.Base(rel), "L1")
+	b := &builder{file: rel, src: model.FileOf(rel), fileID: fileID, stem: fileStem(rel), seen: map[string]bool{}}
+	b.res.File = rel
+	b.addNode(fileID, filepath.Base(rel), model.Line(1))
 	return b
 }
 
-func (b *builder) addNode(id, label, loc string) {
+func (b *builder) addNode(id, label string, loc model.Loc) {
 	if b.seen[id] {
 		return
 	}
 	b.seen[id] = true
 	b.res.Nodes = append(b.res.Nodes, model.Node{
-		ID: id, Label: label, FileType: "code", SourceFile: b.file, SourceLocation: loc,
+		ID: id, Label: label, FileType: "code", SourceFile: b.file, SourceLocation: loc.String(),
 	})
 }
 
-func (b *builder) contains(childID, loc string) {
+func (b *builder) contains(childID string, loc model.Loc) {
 	b.res.Edges = append(b.res.Edges, model.Edge{
-		Source: b.fileID, Target: childID, Relation: "contains",
-		Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: loc,
+		Source: b.fileID, Target: childID, Relation: model.RelContains,
+		Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: loc,
 	})
 }
 
 // def registers a definition: adds its node, a contains edge from the file, and
 // records it for cross-file call resolution.
-func (b *builder) def(id, name, displayLabel, loc string) {
+func (b *builder) def(id, name, displayLabel string, loc model.Loc) {
 	b.addNode(id, displayLabel, loc)
 	b.contains(id, loc)
 	b.res.Defs = append(b.res.Defs, Def{ID: id, Name: name, File: b.file})
 }
 
-func (b *builder) call(callerID, callee, loc string) {
+func (b *builder) call(callerID, callee string, loc model.Loc) {
 	if callee == "" || callerID == "" {
 		return
 	}
-	b.res.Calls = append(b.res.Calls, Call{CallerID: callerID, Callee: callee, File: b.file, Loc: loc})
+	b.res.Calls = append(b.res.Calls, Call{CallerID: b.text(callerID), Callee: b.text(callee), Loc: loc})
+}
+
+// text numbers s in the CallText of the result.
+func (b *builder) text(s string) uint32 {
+	if b.strs == nil {
+		b.strs = map[string]uint32{"": 0}
+		b.res.CallText = []string{""}
+	}
+	i, ok := b.strs[s]
+	if !ok {
+		i = uint32(len(b.res.CallText))
+		b.strs[s] = i
+		b.res.CallText = append(b.res.CallText, s)
+	}
+	return i
 }
 
 // callRecv records a member or qualified call (`x.f()`, `T::f()`) with its
 // receiver text.
-func (b *builder) callRecv(callerID, callee, recv, loc string) {
+func (b *builder) callRecv(callerID, callee, recv string, loc model.Loc) {
 	if callee == "" || callerID == "" {
 		return
 	}
-	b.res.Calls = append(b.res.Calls, Call{CallerID: callerID, Callee: callee, File: b.file, Loc: loc, Recv: recv})
+	b.res.Calls = append(b.res.Calls, Call{CallerID: b.text(callerID), Callee: b.text(callee), Loc: loc, Recv: b.text(recv)})
 }
 
 // bindType records that local name holds a typ value; a second, different
@@ -339,7 +411,7 @@ func recvText(expr, name *ts.Node, src []byte) string {
 }
 
 // typeRef records a supertype reference for Resolve to bind by name.
-func (b *builder) typeRef(fromID, name, relation, loc string) {
+func (b *builder) typeRef(fromID, name, relation string, loc model.Loc) {
 	if fromID == "" || name == "" {
 		return
 	}
@@ -359,17 +431,17 @@ func baseTypeName(text string) string {
 	return strings.TrimSpace(text)
 }
 
-func (b *builder) imp(spec, loc string) { b.impTyped(spec, loc, false) }
+func (b *builder) imp(spec string, loc model.Loc) { b.impTyped(spec, loc, false) }
 
 // impTyped is imp with an explicit type-only flag (TypeScript `import type`).
-func (b *builder) impTyped(spec, loc string, typeOnly bool) {
+func (b *builder) impTyped(spec string, loc model.Loc, typeOnly bool) {
 	if spec != "" {
 		b.res.Imps = append(b.res.Imps, Imp{FileID: b.fileID, File: b.file, Spec: spec, Loc: loc, TypeOnly: typeOnly})
 	}
 }
 
 // impRel is imp for a spec relative to the importing file's directory.
-func (b *builder) impRel(spec, loc string) {
+func (b *builder) impRel(spec string, loc model.Loc) {
 	if spec != "" {
 		b.res.Imps = append(b.res.Imps, Imp{FileID: b.fileID, File: b.file, Spec: spec, Loc: loc, Rel: true})
 	}
@@ -382,17 +454,17 @@ func (b *builder) impRel(spec, loc string) {
 // the first 80 runes with embedded newlines flattened to spaces.
 func (b *builder) addRationale(text string, lineNum int, parentID string) {
 	rid := idutil.MakeID(b.stem, "rationale", itoa(lineNum))
-	loc := "L" + itoa(lineNum)
+	loc := model.Line(lineNum)
 	if !b.seen[rid] {
 		b.seen[rid] = true
 		b.res.Nodes = append(b.res.Nodes, model.Node{
 			ID: rid, Label: rationaleLabel(text), FileType: "rationale",
-			SourceFile: b.file, SourceLocation: loc,
+			SourceFile: b.file, SourceLocation: loc.String(),
 		})
 	}
 	b.res.Edges = append(b.res.Edges, model.Edge{
-		Source: rid, Target: parentID, Relation: "rationale_for",
-		Confidence: "EXTRACTED", SourceFile: b.file, SourceLocation: loc,
+		Source: rid, Target: parentID, Relation: model.RelRationaleFor,
+		Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: loc,
 	})
 }
 
@@ -411,15 +483,18 @@ func rationaleLabel(text string) string {
 // walk visits every descendant of n, calling fn on each. fn returns false to
 // stop descending into that node's children. n may be nil (e.g. an empty block
 // body, or a missing tree-sitter child), in which case there is nothing to do.
-func walk(n *ts.Node, fn func(*ts.Node) bool) {
-	if n == nil {
-		return
+func walk(n *ts.Node, fn func(ts.Node) bool) {
+	if n != nil {
+		n.Preorder(fn)
 	}
-	if !fn(n) {
-		return
-	}
-	for i := uint(0); i < n.ChildCount(); i++ {
-		walk(n.Child(i), fn)
+}
+
+// walkKinds is walk for an fn that returns true and does nothing else on a
+// node whose kind is not in mask (a gositter Language.KindMask, taken before
+// the language first parses): fn sees only nodes of those kinds.
+func walkKinds(n *ts.Node, mask uint32, fn func(ts.Node) bool) {
+	if n != nil {
+		n.PreorderMask(mask, fn)
 	}
 }
 
