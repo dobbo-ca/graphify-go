@@ -115,6 +115,17 @@ func (b *builder) cppItems(n *ts.Node, src []byte) {
 		case "template_declaration":
 			// Unwrap `template<...>` and re-dispatch on the templated item.
 			b.cppItems(c, src)
+		case "preproc_if", "preproc_ifdef", "preproc_else", "preproc_elif", "preproc_elifdef",
+			"linkage_specification", "declaration_list", "ERROR":
+			b.cppItems(c, src)
+		case "type_definition":
+			// `typedef struct S {...} T;` defines S.
+			if spec := c.ChildByFieldName("type"); spec != nil && spec.ChildByFieldName("body") != nil {
+				switch spec.Kind() {
+				case "struct_specifier", "union_specifier", "enum_specifier":
+					b.cppType(spec, src)
+				}
+			}
 		}
 	}
 }
@@ -172,12 +183,20 @@ func (b *builder) cppType(n *ts.Node, src []byte) {
 		}
 	}
 
-	body := n.ChildByFieldName("body")
-	if body == nil {
-		return
+	if body := n.ChildByFieldName("body"); body != nil {
+		b.cppMembers(body, typeID, name, src)
 	}
+}
+
+// cppMembers records the inline methods directly under body, and those behind
+// a preprocessor conditional in it.
+func (b *builder) cppMembers(body *ts.Node, typeID, name string, src []byte) {
 	for i := uint(0); i < body.ChildCount(); i++ {
 		m := body.Child(i)
+		if strings.HasPrefix(m.Kind(), "preproc_") {
+			b.cppMembers(m, typeID, name, src)
+			continue
+		}
 		if m.Kind() != "function_definition" {
 			continue
 		}
