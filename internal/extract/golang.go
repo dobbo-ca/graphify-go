@@ -128,17 +128,26 @@ func (b *builder) goTypes(n *ts.Node, src []byte) {
 				if f.Kind() != "field_declaration" {
 					return f.Kind() == "field_declaration_list"
 				}
-				// An unnamed field embeds its type (graphify-go-vi5.11).
+				// An unnamed field embeds its type (graphify-go-vi5.11) and
+				// references only that type's arguments.
 				if f.ChildByFieldName("name") != nil {
 					b.goRefs(id, f.ChildByFieldName("type"), skip, src, line(f))
+				} else {
+					b.goTypeArgs(id, f, skip, src)
 				}
 				return false
 			})
 		case "interface_type":
-			// `~int | Early` is a type set; a lone type embeds it.
+			// `~int | Early` and `~Early` are type sets; a lone type embeds.
 			for j := uint(0); j < t.NamedChildCount(); j++ {
-				if e := t.NamedChild(j); e.Kind() == "type_elem" && e.NamedChildCount() > 1 {
+				e := t.NamedChild(j)
+				if e.Kind() != "type_elem" {
+					continue
+				}
+				if e.NamedChildCount() > 1 || e.NamedChild(0).Kind() == "negated_type" {
 					b.goRefs(id, e, skip, src, line(e))
+				} else {
+					b.goTypeArgs(id, e, skip, src)
 				}
 			}
 		}
@@ -151,6 +160,17 @@ var goPredeclared = set("bool", "byte", "complex64", "complex128", "error", "flo
 	"uint", "uint8", "uint16", "uint32", "uint64", "uintptr", "any", "comparable")
 
 var goTypeKinds = tsgo.Language().KindMask("type_identifier", "qualified_type")
+
+// goTypeArgs records the types in the type arguments under n.
+func (b *builder) goTypeArgs(id string, n *ts.Node, skip map[string]bool, src []byte) {
+	walk(n, func(cv ts.Node) bool {
+		if cv.Kind() != "type_arguments" {
+			return true
+		}
+		b.goRefs(id, &cv, skip, src, line(n))
+		return false
+	})
+}
 
 // goSignature records the types the parameters and results of fn name.
 func (b *builder) goSignature(id string, fn *ts.Node, skip map[string]bool, src []byte) {

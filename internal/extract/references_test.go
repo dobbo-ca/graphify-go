@@ -304,6 +304,12 @@ type Gen[T any] struct{ V T }
 
 type Num interface{ ~int | Inner }
 
+type Tilde interface{ ~[]Dup }
+
+type Emb struct {
+	Gen[lb.Thing]
+}
+
 type Local struct {
 	A lb.Thing
 	B Gen[io.Reader]
@@ -330,6 +336,8 @@ func F[U any](l *Local, u U, vs ...Inner) (n int, err error) { return }
 		{"app/a.go:Local", "references", "app/a.go:Dup"},
 		{"app/a.go:Local", "references", ":unknownpkg.T"},
 		{"app/a.go:Num", "references", "app/a.go:Inner"},
+		{"app/a.go:Tilde", "references", "app/a.go:Dup"},
+		{"app/a.go:Emb", "references", "lib/t.go:Thing"},
 		{"app/a.go:Gen.Get()", "references", "app/a.go:Dup"},
 		{"app/a.go:Gen.Get()", "references", "lib/t.go:Dup"},
 		{"app/a.go:F()", "references", "app/a.go:Local"},
