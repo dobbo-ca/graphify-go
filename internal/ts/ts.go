@@ -3,6 +3,9 @@
 package ts
 
 import (
+	"errors"
+	"os"
+	"strconv"
 	"sync"
 
 	"github.com/dobbo-ca/gositter"
@@ -75,12 +78,31 @@ func (n *Node) ChildrenByFieldName(name string, c *Cursor) []Node {
 // Parsers keep their arenas between files.
 var parsers = sync.Pool{New: func() any { return gositter.NewParser() }}
 
+// ErrBudget is the panic value of a Parse stopped by Budget.
+var ErrBudget = errors.New("ts: parse budget exceeded")
+
+// Budget is the most parser steps in a row without progress; 0 is no limit.
+var Budget = budget()
+
+func budget() uint32 {
+	if n, err := strconv.ParseUint(os.Getenv("GRAPHIFY_PARSE_BUDGET"), 10, 32); err == nil {
+		return uint32(n)
+	}
+	return 65536
+}
+
 // Parse returns the root node and a release func. The tree lives in the
-// parser's arenas: no node may be used after release.
+// parser's arenas: no node may be used after release. A parse stopped by
+// Budget panics with ErrBudget.
 func Parse(src []byte, lang *gositter.Language) (*Node, func()) {
 	p := parsers.Get().(*gositter.Parser)
 	_ = p.SetLanguage(lang)
-	return &Node{p.Parse(src).RootNode()}, func() {
+	tree := p.ParseBudget(src, Budget)
+	if tree == nil {
+		parsers.Put(p)
+		panic(ErrBudget)
+	}
+	return &Node{tree.RootNode()}, func() {
 		p.Reset() // an idle parser holds no chunks another could use
 		parsers.Put(p)
 	}

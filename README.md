@@ -109,6 +109,20 @@ Two places spend CPU to keep peak memory down, both on purpose:
 `graphify update` keeps a parse cache in `graphify-out/`. A cache written by
 another graphify version is dropped and rebuilt once, with a note on stderr.
 
+### Files the parser gives up on
+
+A few inputs make a tree-sitter grammar retry the same byte without end: 54
+bytes of Julia can take 14 seconds and 1.4 GB. graphify stops a parse after
+65,536 parser steps in a row without progress. The file keeps its file node
+and nothing else, a warning on stderr names it on every build and update, and
+`GRAPH_REPORT.md` counts such files in its Summary.
+
+`GRAPHIFY_PARSE_BUDGET` sets the limit: a whole number of steps, `0` for no
+limit. The largest count in eight real repositories (about 71,000 parsed
+files) is 588. The parse cache is kept per limit, so the first `update` after
+a change parses every file again; a git hook must see the same value as your
+shell, or each of the two rebuilds the cache.
+
 ### Profiling a build
 
 `graphify build` and `graphify update` write Go profiles when asked:

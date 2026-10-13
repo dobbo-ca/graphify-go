@@ -151,6 +151,8 @@ type Result struct {
 	MDRefs        []MDRef
 	// GoMods maps a go.mod's directory to its module path (manifest pass only).
 	GoMods map[string]string
+	// OverBudget: ts.Budget stopped the parse, only the file node is here.
+	OverBudget bool `json:",omitempty"`
 }
 
 // File extracts rel (a path relative to root). Unsupported extensions return an
@@ -166,8 +168,17 @@ func File(root, rel string) (Result, error) {
 // FileFromBytes extracts rel from already-read source bytes. It lets callers
 // that have hashed the file (e.g. the incremental cache) avoid a second read.
 // Unsupported extensions return an empty result.
-func FileFromBytes(rel string, src []byte) Result {
-	r := fileFromBytes(rel, src)
+func FileFromBytes(rel string, src []byte) (r Result) {
+	defer func() {
+		if e := recover(); e != nil {
+			if e != ts.ErrBudget {
+				panic(e)
+			}
+			r = newBuilder(filepath.ToSlash(rel)).res
+			r.OverBudget = true
+		}
+	}()
+	r = fileFromBytes(rel, src)
 	// Results stay live until the cache is written; append growth leaves
 	// about a third of these slices unused.
 	r.Nodes, r.Edges, r.Defs = trim(r.Nodes), trim(r.Edges), trim(r.Defs)

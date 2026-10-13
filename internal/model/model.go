@@ -66,6 +66,8 @@ type Graph struct {
 	// G.graph dict), not part of the node/edge data: it tells a consumer how
 	// much of the repo the graph actually covers.
 	Unclassified map[string]int
+	// OverBudget counts the files whose parse the budget stopped.
+	OverBudget int
 }
 
 // edgeKey identifies an edge by node position and relation number. Numbers keep

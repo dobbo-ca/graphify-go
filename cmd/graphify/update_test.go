@@ -32,7 +32,7 @@ func TestIncrementalUpdate(t *testing.T) {
 		t.Fatalf("build: %v", err)
 	}
 	// build writes the stat sidecar with an entry per collected file.
-	statIdx := cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName), cache.Stamp(version))
+	statIdx := cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName), cacheStamp())
 	if len(statIdx) != 2 {
 		t.Errorf("stat sidecar: got %d entries, want 2", len(statIdx))
 	}
@@ -44,8 +44,8 @@ func TestIncrementalUpdate(t *testing.T) {
 
 	// An unchanged update reuses every file and re-parses none.
 	files, _ := detect.CollectFiles(root)
-	prev := cache.Load(filepath.Join(root, "graphify-out", cache.FileName), cache.Stamp(version))
-	prevStat := cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName), cache.Stamp(version))
+	prev := cache.Load(filepath.Join(root, "graphify-out", cache.FileName), cacheStamp())
+	prevStat := cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName), cacheStamp())
 	_, _, _, stats := assemble(root, files, prev, prevStat)
 	if stats.parsed != 0 || stats.reused != len(files) || stats.dropped != 0 {
 		t.Errorf("unchanged update: got %+v, want 0 reparsed / %d reused / 0 removed", stats, len(files))
@@ -74,8 +74,8 @@ func TestIncrementalUpdate(t *testing.T) {
 	// Changing one file re-parses exactly that file.
 	write("b.go", "package p\n\nfunc B() {}\n\nfunc C() {}\n")
 	files, _ = detect.CollectFiles(root)
-	prev = cache.Load(filepath.Join(root, "graphify-out", cache.FileName), cache.Stamp(version))
-	prevStat = cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName), cache.Stamp(version))
+	prev = cache.Load(filepath.Join(root, "graphify-out", cache.FileName), cacheStamp())
+	prevStat = cache.LoadStat(filepath.Join(root, "graphify-out", cache.StatFileName), cacheStamp())
 	_, _, _, stats = assemble(root, files, prev, prevStat)
 	if stats.parsed != 1 || stats.reused != len(files)-1 {
 		t.Errorf("one-file change: got %+v, want 1 reparsed / %d reused", stats, len(files)-1)
@@ -91,7 +91,7 @@ func TestIncrementalUpdate(t *testing.T) {
 	if fi, err := os.Stat(cachePath); err != nil || os.SameFile(cacheBuilt, fi) {
 		t.Errorf("update after a change kept the old cache file (err %v)", err)
 	}
-	prev = cache.Load(cachePath, cache.Stamp(version))
+	prev = cache.Load(cachePath, cacheStamp())
 	if _, _, _, stats = assemble(root, files, prev, cache.StatIndex{}); stats.parsed != 0 {
 		t.Errorf("cache after a change: %d reparsed, want 0", stats.parsed)
 	}
@@ -258,11 +258,11 @@ func TestForceBypassesCache(t *testing.T) {
 	// a version without C. Any run that trusts the cache will drop C.
 	cachePath := filepath.Join(root, "graphify-out", cache.FileName)
 	poison := func() {
-		c := cache.Load(cachePath, cache.Stamp(version))
+		c := cache.Load(cachePath, cacheStamp())
 		e := c["a.go"]
 		e.Result = extract.FileFromBytes("a.go", []byte("package p\n\nfunc A() {}\n"))
 		c["a.go"] = e
-		if err := cache.Save(cachePath, cache.Stamp(version), c); err != nil {
+		if err := cache.Save(cachePath, cacheStamp(), c); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -310,7 +310,7 @@ func TestUpdateDropsRemovedFileFromCache(t *testing.T) {
 	if err := cmdUpdate([]string{root}); err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	c := cache.Load(filepath.Join(root, "graphify-out", cache.FileName), cache.Stamp(version))
+	c := cache.Load(filepath.Join(root, "graphify-out", cache.FileName), cacheStamp())
 	if _, ok := c["b.go"]; ok || len(c) != 1 {
 		t.Errorf("cache after removing b.go holds %d entries, b.go present: %v", len(c), ok)
 	}
@@ -333,7 +333,7 @@ func TestUpdateSaysStaleCacheIsRebuilt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	old := bytes.Replace(data, []byte(cache.Stamp(version)), []byte(version+"-s13"), 1)
+	old := bytes.Replace(data, []byte(cacheStamp()), []byte(version+"-s13"), 1)
 	if bytes.Equal(old, data) {
 		t.Fatal("stamp not found in the cache file")
 	}

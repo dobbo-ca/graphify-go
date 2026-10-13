@@ -363,8 +363,8 @@ func watchTick(root string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	prev := cache.Load(filepath.Join(outDirFor(root), cache.FileName), cache.Stamp(version))
-	prevStat := cache.LoadStat(filepath.Join(outDirFor(root), cache.StatFileName), cache.Stamp(version))
+	prev := cache.Load(filepath.Join(outDirFor(root), cache.FileName), cacheStamp())
+	prevStat := cache.LoadStat(filepath.Join(outDirFor(root), cache.StatFileName), cacheStamp())
 	seen := map[string]bool{}
 	for _, f := range files {
 		slash := filepath.ToSlash(f)

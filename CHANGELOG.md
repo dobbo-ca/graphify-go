@@ -1,5 +1,8 @@
 ## Unreleased
 
+- A parse that makes no progress for 65,536 parser steps in a row is stopped:
+  the file keeps only its file node, stderr names it, and `GRAPH_REPORT.md`
+  counts it. `GRAPHIFY_PARSE_BUDGET` sets the limit, `0` turns it off.
 - The first `graphify update` after the upgrade drops the parse cache and
   parses every file again, once, with a note on stderr. `graph.json` and
   `GRAPH_REPORT.md` do not change.
