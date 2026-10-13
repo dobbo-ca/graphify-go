@@ -30,7 +30,7 @@ simplest possible implementation, security-first, find performance wins.
 - [x] Security: SSRF URL guard, graph-path containment, file-size caps, label sanitisation, sensitive-file skip.
 - [x] CI: `ci.yml` (build/vet/test) + `graph.yml` (regenerate + commit graph on merge to main).
 - [x] Claude skill (`skills/graphify/SKILL.md`) + "use the graph, not grep" block in `CLAUDE.md`.
-- [x] Release + Homebrew: `release.yml` (Uplift → cross-build of all four targets on one runner with `CGO_ENABLED=0` → GitHub release → repository_dispatch to `dobbo-ca/homebrew-taps`), `.cliff.toml`, `graphify version`. Formula template added to homebrew-taps.
+- [x] Release + Homebrew: `release.yml` (git-cliff version bump → cross-build of all four targets on one runner with `CGO_ENABLED=0` → GitHub release → repository_dispatch to `dobbo-ca/homebrew-taps`), `.cliff.toml`, `graphify version`. Formula template added to homebrew-taps.
 
 ## Follow-ups
 

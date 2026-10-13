@@ -9,10 +9,10 @@ import (
 	"unsafe"
 )
 
+// An Edge is 64 bytes: checked when the tests compile, so for any GOARCH.
+var _ = [1]struct{}{}[unsafe.Sizeof(Edge{})-64]
+
 func TestEdgeCodes(t *testing.T) {
-	if n := unsafe.Sizeof(Edge{}); n != 64 {
-		t.Fatalf("Edge is %d bytes, want 64", n)
-	}
 	if RelImplements.String() != "implements" || ConfAmbiguous.String() != "AMBIGUOUS" || Rel("calls") != RelCalls || Conf("") != 0 {
 		t.Fatal("constants and tables disagree")
 	}
@@ -248,5 +248,56 @@ func TestTypeOnlyJSON(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(`{"type_only":1}`), &e); err == nil {
 		t.Fatal("no error for a number")
+	}
+}
+
+// typeOnlyJSON.UnmarshalJSON finds its Edge by the offset of the field. The
+// offsets are pinned so a change of layout is a decision, and three edges
+// decoded between two others show the flag lands in its own edge.
+func TestEdgeLayout(t *testing.T) {
+	var e Edge
+	for _, f := range []struct {
+		name      string
+		got, want uintptr
+	}{
+		{"Source", unsafe.Offsetof(e.Source), 0},
+		{"Target", unsafe.Offsetof(e.Target), 16},
+		{"Relation", unsafe.Offsetof(e.Relation), 32},
+		{"Confidence", unsafe.Offsetof(e.Confidence), 36},
+		{"TypeOnlyJSON", unsafe.Offsetof(e.TypeOnlyJSON), 40},
+		{"SourceFile", unsafe.Offsetof(e.SourceFile), 40},
+		{"SourceLocation", unsafe.Offsetof(e.SourceLocation), 44},
+		{"Weight", unsafe.Offsetof(e.Weight), 48},
+		{"ConfidenceScore", unsafe.Offsetof(e.ConfidenceScore), 56},
+		{"size of TypeOnlyJSON", unsafe.Sizeof(e.TypeOnlyJSON), 0},
+	} {
+		if f.got != f.want {
+			t.Errorf("%s: %d, want %d", f.name, f.got, f.want)
+		}
+	}
+
+	guard := Edge{Source: "g", Target: "h", Relation: RelContains, Confidence: ConfAmbiguous, SourceFile: FileOf("g.go"), SourceLocation: Line(8), Weight: 3, ConfidenceScore: 0.5}
+	buf := []Edge{guard, {}, {}, {}, guard}
+	want := []Edge{
+		{Source: "a", Target: "b", Relation: RelCalls, Confidence: ConfExtracted, SourceFile: FileOf("a.go"), SourceLocation: Line(1), Weight: 2},
+		{Source: "c", Target: "d", Relation: RelImportsFrom, Confidence: ConfInferred, SourceFile: FileOf("c.ts"), SourceLocation: Line(2), ConfidenceScore: 0.25},
+		{Source: "e", Target: "f", Relation: RelImplements, Confidence: ConfExtracted},
+	}
+	want[1].SetTypeOnly(true)
+	in, err := json.Marshal(want)
+	if err != nil || strings.Count(string(in), "type_only") != 1 {
+		t.Fatalf("%s %v", in, err)
+	}
+	got := buf[1:1:4]
+	if err := json.Unmarshal(in, &got); err != nil || len(got) != 3 || &got[0] != &buf[1] {
+		t.Fatalf("%v, %d edges", err, len(got))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("edge %d: %+v type-only %v, want %+v type-only %v", i, got[i], got[i].TypeOnly(), want[i], want[i].TypeOnly())
+		}
+	}
+	if buf[0] != guard || buf[4] != guard {
+		t.Errorf("the edges around changed: %+v %+v", buf[0], buf[4])
 	}
 }

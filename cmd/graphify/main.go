@@ -261,10 +261,12 @@ func assemble(root string, files []string, prev cache.Cache, prevStat cache.Stat
 	}
 	close(bigIdx)
 	idx := make(chan int)
+	var gate bigGate
+	gate.free.L = &gate.mu
 	var wg sync.WaitGroup
 	for w := 0; w < workers; w++ {
-		// One worker takes the large files, one at a time, while the rest
-		// start on the others; side by side their parsers would add up.
+		// One worker starts on the large files while the rest start on the
+		// others; the gate keeps their parsers from adding up side by side.
 		lanes := [2]chan int{idx, bigIdx}
 		if w == 0 {
 			lanes = [2]chan int{bigIdx, idx}
@@ -296,7 +298,13 @@ func assemble(root string, files []string, prev cache.Cache, prevStat cache.Stat
 						}
 						src = b
 					}
-					res := extract.FileFromBytes(files[i], src)
+					if isBig[i] {
+						gate.enter(len(src))
+					}
+					res := parseFile(files[i], src)
+					if isBig[i] {
+						gate.leave(len(src))
+					}
 					slots[i] = slot{entry: cache.Entry{Hash: h, Result: res}, stat: statEntry, ok: true}
 				}
 			}
@@ -348,6 +356,36 @@ func cacheStamp() string {
 
 // bigFile is the size from which a file is parsed ahead of the rest.
 const bigFile = 256 << 10
+
+// bigInFlight is how many bytes of large files parse at once. A file over
+// it parses alone.
+const bigInFlight = 8 << 20
+
+// parseFile is a variable so a test can watch what parses side by side.
+var parseFile = extract.FileFromBytes
+
+// bigGate holds the large files back to bigInFlight source bytes in flight.
+type bigGate struct {
+	mu   sync.Mutex
+	free sync.Cond
+	held int
+}
+
+func (g *bigGate) enter(n int) {
+	g.mu.Lock()
+	for g.held > 0 && g.held+n > bigInFlight {
+		g.free.Wait()
+	}
+	g.held += n
+	g.mu.Unlock()
+}
+
+func (g *bigGate) leave(n int) {
+	g.mu.Lock()
+	g.held -= n
+	g.mu.Unlock()
+	g.free.Broadcast()
+}
 
 // largeFirst returns the indexes of the files of bigFile bytes or more,
 // largest first. A parser holds about 30 times its source while it runs, so a
@@ -412,7 +450,7 @@ func writeOutputs(root string, walk detect.WalkReport, results []extract.Result,
 	for i := range results {
 		if results[i].OverBudget {
 			overBudget++
-			fmt.Fprintf(os.Stderr, "  warning: skipped %s (parser made no progress in %d steps; GRAPHIFY_PARSE_BUDGET=0 turns the limit off)\n", results[i].File, ts.Budget)
+			fmt.Fprintf(os.Stderr, "  warning: skipped %s (parser made no progress, GRAPHIFY_PARSE_BUDGET=%d; 0 turns the limit off)\n", results[i].File, ts.Budget)
 		}
 	}
 	nodes, edges := extract.ResolveParts(results, files)
@@ -706,7 +744,12 @@ func updateRoot(root string, rootSet bool) string {
 	if !rootSet {
 		// No explicit target: update the graph the read commands would load,
 		// not a new one rooted at the cwd.
-		return scanRoot()
+		sr := scanRoot()
+		// Build titles the cwd ".", so update does too.
+		if wd, err := os.Getwd(); err == nil && filepath.Clean(sr) == wd {
+			return "."
+		}
+		return sr
 	}
 	if _, err := os.Stat(filepath.Join(root, "graphify-out", "graph.json")); err != nil {
 		// An explicit path inside the recorded scan root must not fork a
@@ -718,6 +761,10 @@ func updateRoot(root string, rootSet bool) string {
 		}
 		if abs, err := filepath.Abs(root); err == nil {
 			if rel, err := filepath.Rel(sr, abs); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				// The scan root itself keeps the title build gave it.
+				if rel == "." {
+					return root
+				}
 				return sr
 			}
 		}

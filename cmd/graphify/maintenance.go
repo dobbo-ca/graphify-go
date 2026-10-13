@@ -321,7 +321,8 @@ func mergeDriverStatus(root string) string {
 func cmdWatch(root string) error {
 	var args []string
 	if root == "" {
-		root = scanRoot()
+		// Same root as the first update, so the report title holds.
+		root = updateRoot("", false)
 	} else {
 		root = updateRoot(root, true)
 		args = []string{root}

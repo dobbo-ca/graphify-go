@@ -228,6 +228,22 @@ func TestEnrichForcesInferredConfidence(t *testing.T) {
 	}
 }
 
+func TestEnrichKeepsTypeOnlyWithoutLocation(t *testing.T) {
+	be := &fakeBackend{result: func(n Note) ([]model.Node, []model.Edge) {
+		e := model.Edge{Source: n.ID, Target: "appconfig", Relation: model.RelCites, SourceFile: model.FileOf("invented.md"), SourceLocation: model.Line(7)}
+		e.SetTypeOnly(true)
+		return nil, []model.Edge{e}
+	}}
+	out, _, err := Enrich(context.Background(), Config{Backend: be}, baseExtraction(), notes(), nil)
+	if err != nil {
+		t.Fatalf("Enrich: %v", err)
+	}
+	e := out.Edges[len(out.Edges)-1]
+	if e.Relation != model.RelCites || !e.TypeOnly() || e.Loc() != 0 || e.SourceFile != 0 {
+		t.Errorf("got %+v, want the cites edge type-only with no file or location", e)
+	}
+}
+
 func TestBackendErrorIsTolerated(t *testing.T) {
 	base := baseExtraction()
 	be := &fakeBackend{failOn: map[string]bool{"notes_appconfig_bake": true}}

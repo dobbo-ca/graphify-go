@@ -98,7 +98,10 @@ jobs:
         with:
           tool: git-cliff@2.13.1
       - name: Generate release notes
-        run: git cliff --config .cliff.toml --latest --strip header -o CHANGELOG.md || echo "(no notes)" > CHANGELOG.md
+        # Beta tags are outside tag_pattern: a beta covers the commits since the last final tag.
+        run: |
+          if [ "${{ needs.version.outputs.is_beta }}" = "true" ]; then scope=--unreleased; else scope=--latest; fi
+          git cliff --config .cliff.toml $scope --strip header -o CHANGELOG.md || echo "(no notes)" > CHANGELOG.md
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
