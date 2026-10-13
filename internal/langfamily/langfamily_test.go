@@ -7,9 +7,9 @@ func TestCross(t *testing.T) {
 		a, b string
 		want bool
 	}{
-		{"main.py", "Svc.java", true},   // python vs jvm
-		{"main.py", "Svc.kt", true},     // python vs jvm (kotlin)
-		{"app.ts", "widget.kt", true},   // jsts vs jvm
+		{"main.py", "Svc.java", true},    // python vs jvm
+		{"main.py", "Svc.kt", true},      // python vs jvm (kotlin)
+		{"app.ts", "widget.kt", true},    // jsts vs jvm
 		{"Svc.java", "Widget.kt", false}, // both jvm
 		{"impl.c", "decl.h", false},      // both native
 		{"a.ts", "b.tsx", false},         // both jsts
