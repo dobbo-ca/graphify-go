@@ -928,6 +928,10 @@ func (b *builder) pyTypeNames(id string, n *ts.Node, src []byte, loc model.Loc) 
 			b.ref(id, name, "references", false, loc)
 		}
 		return
+	case "keyword_argument":
+		// Annotated[int, Field(gt=0)]: gt is no type.
+		b.pyTypeNames(id, n.ChildByFieldName("value"), src, loc)
+		return
 	}
 	for i := uint(0); i < n.NamedChildCount(); i++ {
 		b.pyTypeNames(id, n.NamedChild(i), src, loc)

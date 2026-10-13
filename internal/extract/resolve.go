@@ -316,18 +316,35 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	}
 	stubSeen := map[string]bool{}
 	var stubs []model.Node
+	fileIDs := make(map[string]bool, len(results))
+	for _, r := range results {
+		fileIDs[idutil.MakeID(r.File)] = true
+	}
 	for _, r := range results {
 		js := len(r.TypeRefs) > 0 && jsLike(r.File)
 		var bound map[string]string
 		if js {
 			bound = jm.bound(&r)
 		}
+		var alias map[string]string // local name -> the name its import gave it
+		for _, a := range r.ImportAliases {
+			if len(r.TypeRefs) > 0 && a.Local != a.Imported {
+				if alias == nil {
+					alias = map[string]string{}
+				}
+				alias[a.Local] = a.Imported
+			}
+		}
 		for _, t := range r.TypeRefs {
 			ref := t.Relation == "references"
+			name := t.Name
+			if a := alias[name]; a != "" && len(local[[2]string{t.File, name}]) == 0 {
+				name = a
+			}
 			// A supertype or a type position names a type; a decorator can
 			// name a function.
 			cands := func(ids []string) []string {
-				ids = typeDefs(ids, t.Name, idFile)
+				ids = typeDefs(ids, name, idFile)
 				if ref && !t.Deco {
 					ids = keep(ids, isType)
 				}
@@ -336,11 +353,11 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 			tgt := ""
 			if js {
 				tgt = jm.supertype(t, &r, bound)
-			} else if ids := cands(local[[2]string{t.File, t.Name}]); len(ids) == 1 {
+			} else if ids := cands(local[[2]string{t.File, name}]); len(ids) == 1 {
 				tgt = ids[0]
 			}
 			if tgt == "" && !js {
-				tgt = disambiguate(cands(global[t.Name]), t.File, idFile, &imported)
+				tgt = disambiguate(cands(global[name]), t.File, idFile, &imported)
 			}
 			if tgt == "" || tgt == t.FromID || langfamily.Cross(t.File, idFile[tgt]) {
 				if t.Relation == "inherits" {
@@ -350,9 +367,10 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					continue
 				}
 				// The stub id is the id a definition of Name in this file
-				// has; a definition there that differs in case owns it.
+				// has; a definition there that differs in case owns it, and
+				// so does a file whose id it folds onto.
 				tgt = idutil.MakeID(t.File, t.Name)
-				if _, def := idFile[tgt]; def {
+				if _, def := idFile[tgt]; def || fileIDs[tgt] {
 					continue
 				}
 				if !stubSeen[tgt] {
