@@ -214,8 +214,6 @@ var pyClassName = regexp.MustCompile(`^[A-Z]\w*$`)
 // annotation (`c: Client`) or a constructor binding (`c = Client()`). A local
 // also bound by anything else (assignment, unpacking, for, with, except, `:=`)
 // maps to "".
-// ponytail: one flat scope per function, nested defs are not tracked; add
-// scopes if a repo shows wrong edges.
 func pyLocalTyper(types map[string]string, src []byte) func(c *ts.Node) bool {
 	// untype clears every name a binding target rebinds.
 	var untype func(n *ts.Node)
@@ -402,10 +400,22 @@ func pyTargets(t *ts.Node, src []byte, bound map[string]bool) {
 	}
 }
 
+// pyScope is the function or class the pyCalls walk is inside. A class adds
+// to the ids below it alone: fn and the body are those of the function around.
+type pyScope struct {
+	id, fn         string
+	end            uint
+	bodyLo, bodyHi uint
+}
+
 // pyCalls records each call site in the body of function fn. Direct
 // calls (`f()`) record the identifier; attribute calls (`x.f()`) record the
 // attribute name, with the receiver's class in place of a typed local. One walk
-// of fn collects the local types, the bound names and the call sites.
+// of fn collects the local types, the bound names and the call sites. A def
+// inside fn is a node the function around it contains, and the caller of the
+// calls in its own body.
+// ponytail: the types and bound names are one flat scope for fn and the defs
+// inside it; add scopes if a repo shows wrong edges.
 func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
 	body := fn.ChildByFieldName("body")
 	if body == nil {
@@ -420,19 +430,50 @@ func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
 	// Types and bound names cover the whole function, so a receiver is
 	// resolved only after the walk.
 	type site struct {
-		callee, recv string
-		loc          model.Loc
-		member       bool
+		caller, callee, recv string
+		loc                  model.Loc
+		member               bool
 	}
 	var sites []site
+	scopes := []pyScope{{callerID, callerID, fn.EndByte(), body.StartByte(), body.EndByte()}}
 	walkKinds(fn, pyCallKinds, func(cv ts.Node) bool {
 		c := &cv
 		localType(c)
-		inBody := within(c, body)
-		if inBody || within(c, params) {
+		if within(c, body) || within(c, params) {
 			pyBind(c, src, true, bound)
 		}
-		if !inBody || c.Kind() != "call" {
+		for len(scopes) > 1 && c.StartByte() >= scopes[len(scopes)-1].end {
+			scopes = scopes[:len(scopes)-1]
+		}
+		in := scopes[len(scopes)-1]
+		switch c.Kind() {
+		case "function_definition", "class_definition":
+			name, cbody := fieldText(c, "name", src), c.ChildByFieldName("body")
+			if c.StartByte() == fn.StartByte() || name == "" || cbody == nil {
+				return true
+			}
+			sc := pyScope{idutil.MakeID(in.id, name), in.fn, c.EndByte(), in.bodyLo, in.bodyHi}
+			if c.Kind() == "function_definition" {
+				sc.fn, sc.bodyLo, sc.bodyHi = sc.id, cbody.StartByte(), cbody.EndByte()
+				if !b.seen[sc.id] {
+					b.addNode(sc.id, name+"()", line(c))
+					b.res.Edges = append(b.res.Edges, model.Edge{
+						Source: in.fn, Target: sc.id, Relation: model.RelContains,
+						Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(c),
+					})
+					// A method of a local class is no name of the scope around
+					// it: the empty name keeps it out of the lookups.
+					scoped := name
+					if in.id != in.fn {
+						scoped = ""
+					}
+					b.jsScope(in.fn, scoped, sc.id)
+				}
+			}
+			scopes = append(scopes, sc)
+			return true
+		}
+		if c.Kind() != "call" || c.StartByte() < in.bodyLo || c.EndByte() > in.bodyHi {
 			return true
 		}
 		f := c.ChildByFieldName("function")
@@ -441,29 +482,38 @@ func (b *builder) pyCalls(fn *ts.Node, callerID string, src []byte) {
 		}
 		switch f.Kind() {
 		case "identifier":
-			sites = append(sites, site{callee: f.Utf8Text(src), loc: line(c)})
+			sites = append(sites, site{caller: in.fn, callee: f.Utf8Text(src), loc: line(c)})
 		case "attribute":
 			if a := f.ChildByFieldName("attribute"); a != nil {
-				sites = append(sites, site{a.Utf8Text(src), recvText(f, a, src), line(c), true})
+				sites = append(sites, site{in.fn, a.Utf8Text(src), recvText(f, a, src), line(c), true})
 			}
 		}
 		return true
 	})
+sites:
 	for _, c := range sites {
 		if !c.member {
-			b.call(callerID, c.callee, c.loc)
+			// A def of an enclosing function hides every other of its name.
+			for s, ok := c.caller, true; ok; s, ok = b.jsParent[s] {
+				if id, ok := b.jsNested[[2]string{s, c.callee}]; ok {
+					b.jsNestedCall(c.caller, id, c.loc)
+					continue sites
+				}
+			}
+			b.call(c.caller, c.callee, c.loc)
 			continue
 		}
 		recv := c.recv
 		mod := b.pyMods[recv]
-		if bound[recv] {
+		// Upstream binds a module call of a top-level function alone.
+		if bound[recv] || c.caller != callerID {
 			mod = ""
 		}
 		if t := types[recv]; t != "" {
 			recv = t
 		}
 		n := len(b.res.Calls)
-		b.callRecv(callerID, c.callee, recv, c.loc)
+		b.callRecv(c.caller, c.callee, recv, c.loc)
 		if len(b.res.Calls) > n && mod != "" {
 			for len(b.res.CallMods) < n {
 				b.res.CallMods = append(b.res.CallMods, "")

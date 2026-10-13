@@ -1,6 +1,10 @@
 package extract
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/dobbo-ca/graphify-go/internal/idutil"
+)
 
 // pyCalls resolves receivers from one walk of the function: types and bound
 // names come from the whole function, calls only from the body.
@@ -37,7 +41,7 @@ def run(c: Client, d=make(), e: Client = None):
 	var got []call
 	for i, n := range res.Calls {
 		c := res.call(n)
-		if c.CallerID == run {
+		if c.CallerID == run || c.CallerID == idutil.MakeID(run, "inner") {
 			mod := ""
 			if i < len(res.CallMods) {
 				mod = res.CallMods[i]
