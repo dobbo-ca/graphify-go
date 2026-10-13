@@ -39,15 +39,17 @@ func (b *builder) cItems(root *ts.Node, src []byte) {
 			// A struct/union/enum can be introduced inside a declaration
 			// (`struct S {...} x;`) or a typedef (`typedef struct {...} S;`).
 			if spec := n.ChildByFieldName("type"); spec != nil {
+				// `typedef struct _kv kv;`: kv names the tag _kv. Any other
+				// type has no tag.
+				tag := ""
 				switch spec.Kind() {
 				case "struct_specifier", "union_specifier", "enum_specifier":
 					b.cType(spec, src)
-					// `typedef struct _kv kv;`: kv names the tag _kv.
-					tag := fieldText(spec, "name", src)
-					for j := uint(0); n.Kind() == "type_definition" && tag != "" && j < n.ChildCount(); j++ {
-						if d := n.Child(j); n.FieldNameForChild(uint32(j)) == "declarator" && d.Kind() == "type_identifier" && d.Utf8Text(src) != tag {
-							b.res.TypeAliases = append(b.res.TypeAliases, d.Utf8Text(src)+" "+tag)
-						}
+					tag = fieldText(spec, "name", src)
+				}
+				for j := uint(0); n.Kind() == "type_definition" && j < n.ChildCount(); j++ {
+					if d := n.Child(j); n.FieldNameForChild(uint32(j)) == "declarator" && d.Kind() == "type_identifier" {
+						b.res.TypeAliases = append(b.res.TypeAliases, d.Utf8Text(src)+" "+tag)
 					}
 				}
 			}
