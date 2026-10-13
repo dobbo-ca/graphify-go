@@ -55,7 +55,38 @@ func (b *builder) cFunc(n *ts.Node, src []byte) {
 	}
 	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
+	b.cRefs(id, n, src)
 	b.cCalls(n.ChildByFieldName("body"), id, src)
+}
+
+// cRefs records a references edge from the function id to its return type
+// and to each parameter type that is a typedef name. `struct S` names a tag
+// and a primitive type names nothing.
+func (b *builder) cRefs(id string, fn *ts.Node, src []byte) {
+	ref := func(n *ts.Node) {
+		if t := n.ChildByFieldName("type"); t != nil && t.Kind() == "type_identifier" {
+			b.ref(id, t.Utf8Text(src), "references", false, line(fn))
+		}
+	}
+	ref(fn)
+	walk(fn.ChildByFieldName("declarator"), func(cv ts.Node) bool {
+		c := &cv
+		if c.Kind() != "function_declarator" {
+			return true
+		}
+		// `T (*f(int n))(P)`: the parameters of f sit beside its name.
+		if d := c.ChildByFieldName("declarator"); d != nil && d.Kind() != "identifier" {
+			return true
+		}
+		if ps := c.ChildByFieldName("parameters"); ps != nil {
+			for i := uint(0); i < ps.NamedChildCount(); i++ {
+				if p := ps.NamedChild(i); p.Kind() == "parameter_declaration" {
+					ref(p)
+				}
+			}
+		}
+		return false
+	})
 }
 
 // cType records a struct/union/enum definition and any function-pointer fields
