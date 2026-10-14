@@ -44,7 +44,7 @@ The no-change ratios on opencv and vscode compare different work: upstream does 
 
 ## What the first run left out
 
-Clustering is a small part of upstream's time. `--no-cluster` takes 30% to 65% off upstream's cold wall time, but in upstream that flag skips much more than clustering. Upstream with the `leiden` extra is only 3% to 11% faster than with its default Louvain fallback.
+Clustering is a small part of upstream's time. `--no-cluster` takes 30% to 65% off upstream's cold wall time, but in upstream that flag skips much more than clustering. Upstream with the `leiden` extra is only 7% to 11% faster than with its default Louvain fallback, measured in the same session.
 
 `--no-cluster` does not skip the same work in the two tools:
 
@@ -57,7 +57,7 @@ A cProfile of upstream on redis with Leiden (20.4 s under the profiler) splits t
 
 graphify-go's own clustering is 3% to 32% of its cold wall time (median of 3 runs each, these are sub-second numbers on small corpora and noisy); on the large corpora it is 12% to 22%.
 
-Leiden. `pip install 'graphifyy[leiden]'` on Python 3.14 adds `graspologic-native` 1.3.1 and `scipy`. An instrumented run on redis showed every clustering call going through `_native_leiden` and none through Louvain. Clustering itself took 1.19 s with Leiden against 1.72 s with Louvain, in a run of about 9 s. Nodes and edges are identical; communities change (redis 493 to 511, opencv 2,033 to 1,874, kubernetes 7,861 to 8,241). The refutation agent's same-session, interleaved measurement: redis Louvain 9.51 to 9.68 s against Leiden 8.74 to 9.00 s (-7%); opencv Louvain 62.6 and 63.8 s against Leiden 55.5 and 57.2 s (-9% to -11%). kubernetes was not measured again in the same session; the harness gives -3% against the first-run Louvain numbers.
+Leiden. `pip install 'graphifyy[leiden]'` on Python 3.14 adds `graspologic-native` 1.3.1 and `scipy`. An instrumented run on redis showed every clustering call going through `_native_leiden` and none through Louvain. Clustering itself took 1.19 s with Leiden against 1.72 s with Louvain, in a run of about 9 s. Nodes and edges are identical; communities change (redis 493 to 511, opencv 2,033 to 1,874, kubernetes 7,861 to 8,241). The refutation agent's same-session, interleaved measurement: redis Louvain 9.51 to 9.68 s against Leiden 8.74 to 9.00 s (-7%); opencv Louvain 62.6 and 63.8 s against Leiden 55.5 and 57.2 s (-9% to -11%). kubernetes, 3 interleaved cold builds each in one session (`results-dma.jsonl`, bead graphify-go-dma): Louvain 407.0 s (387.0 to 408.9), Leiden 375.6 s (367.0 to 392.6), -8%; `--no-cluster` 269.5 s (263.4 to 288.9), 34% less than Louvain. Leiden used 6% more peak RSS (4,715 MB against 4,443 MB). The Louvain runs agree with the first run (407.1 s), so the Python rebuild did not move kubernetes.
 
 ## Machine, versions and method
 
@@ -84,13 +84,14 @@ These came out of the refutation pass.
 
 ## Not measured
 
-- Upstream with Louvain and with Leiden on kubernetes in the same session.
 - graphify-go with the rest of vi5 closed.
 - A quiet machine, Linux, x86-64.
 
 ## Files
 
-`docs/benchmark-upstream-v0.9.88/`: `prep.py` and `bench.py` (updated), `queue-9e292de.sh`, `report-9e292de.py`, `results-9e292de.jsonl` (178 records), `venv.freeze.txt`, `venv-leiden.freeze.txt`. The scripts expect to sit in the scratch directory with `runs/`, `bin/`, `venv/` and the corpora, as before. The tables below are the output of `report-9e292de.py`.
+`docs/benchmark-upstream-v0.9.88/`: `prep.py` and `bench.py` (updated), `queue-9e292de.sh`, `report-9e292de.py`, `results-9e292de.jsonl` (178 records), `venv.freeze.txt`, `venv-leiden.freeze.txt`, `results-dma.jsonl` (kubernetes, same session, upstream Louvain, Leiden and `--no-cluster`, run with `queue-dma.sh`).
+
+`run1.py` and `bench.py` now also guard the disk: a run stops when free space falls below a floor or swap grows past a limit, and a session stops after it has lost 32 GB of free space (`BENCH_DISK_BUDGET_GB`) or gained 8 GB of swap, whatever the cause. Each record stores the lowest free space and the highest swap seen during its run. `guardtest.sh` checks both cases. The kubernetes runs used under 1 GB of disk and grew swap by nothing. The scripts expect to sit in the scratch directory with `runs/`, `bin/`, `venv/` and the corpora, as before. The tables below are the output of `report-9e292de.py`.
 
 ## Results per corpus
 

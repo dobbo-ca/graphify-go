@@ -5,6 +5,9 @@ usage: bench.py <runs> <corpus>...        appends to runs/results.jsonl
 env:   BENCH_RESULTS  file name under runs/ (default results.jsonl)
        BENCH_TOOLS    comma list of tool keys, in the order of run 1 (default go,cgo,up)
        BENCH_PHASES   cold,nochange (default) or cold
+       BENCH_DISK_BUDGET_GB  stop when the disk has lost this much free space since
+                             bench.py started, whatever the cause (default 32)
+       BENCH_SWAP_BUDGET_GB  stop when used swap has grown this much (default 8)
 One process tree at a time. Each run goes through run1.py (nice 19, RSS watchdog).
 """
 import json, os, shutil, subprocess, sys, time
@@ -27,6 +30,11 @@ TOOLS = {
 RESULTS = S / "runs" / os.environ.get("BENCH_RESULTS", "results.jsonl")
 ORDER = os.environ.get("BENCH_TOOLS", "go,cgo,up").split(",")
 PHASES = os.environ.get("BENCH_PHASES", "cold,nochange").split(",")
+OUTROOT.mkdir(parents=True, exist_ok=True)
+START_FREE = shutil.disk_usage(OUTROOT).free / 2**30
+MIN_FREE = max(10.0, START_FREE - float(os.environ.get("BENCH_DISK_BUDGET_GB", "32")))
+START_SWAP = float(subprocess.run(["sysctl", "-n", "vm.swapusage"], capture_output=True, text=True).stdout.split("used = ")[1].split("M")[0]) / 1024
+MAX_SWAP = START_SWAP + float(os.environ.get("BENCH_SWAP_BUDGET_GB", "8"))
 ENV = {k: v for k, v in os.environ.items() if not k.endswith("_API_KEY")}
 ENV.update(GRAPHIFY_NO_AUTO_REFRESH="1", GRAPHIFY_NO_TIPS="1", GRAPHIFY_NO_BACKUP="1",
            GRAPHIFY_VIZ_NODE_LIMIT="0", GRAPHIFY_MAX_GRAPH_BYTES="8GB")
@@ -50,12 +58,13 @@ def quiet():
 
 
 def one(corpus, tool, phase, run, cmd, out):
-    if shutil.disk_usage(OUTROOT).free < 2.5 * 2**30:
-        sys.exit("STOP: less than 2.5 GB free on the disk")
+    if shutil.disk_usage(OUTROOT).free / 2**30 < MIN_FREE:
+        sys.exit(f"STOP: free space below {MIN_FREE:.1f} GB (started at {START_FREE:.1f} GB)")
     i, waited = quiet()
     log = S / "runs" / f"{corpus}.{tool}.{phase}.{run}.log"
     r = subprocess.run([sys.executable, str(S / "run1.py"), str(S / "corp" / corpus), str(log), "--"] + cmd + [str(S / "corp" / corpus)],
-                       env={**ENV, "GRAPHIFY_OUT": str(out), "QUIET_LOAD": "999"}, capture_output=True, text=True)
+                       env={**ENV, "GRAPHIFY_OUT": str(out), "QUIET_LOAD": "999",
+                            "DISK_MIN_FREE_GB": str(MIN_FREE), "SWAP_MAX_GB": str(MAX_SWAP)}, capture_output=True, text=True)
     rec = json.loads(r.stdout.strip().splitlines()[-1])
     rec.update(corpus=corpus, tool=tool, phase=phase, run=run, out_dev="ram" if OUTROOT != S else "ssd", idle_before=i, idle_wait_s=waited,
                tail=log.read_text(errors="replace").strip().splitlines()[-1:][0:1])
@@ -80,6 +89,9 @@ def one(corpus, tool, phase, run, cmd, out):
             subprocess.run(["cp", "-c", str(gj), str(snap)])
     with open(RESULTS, "a") as f:
         f.write(json.dumps(rec) + "\n")
+    if rec["killed"] in ("disk_limit", "swap_limit"):
+        shutil.rmtree(out, ignore_errors=True)
+        sys.exit(f"STOP: {rec['killed']} in {corpus} {tool} {phase} {run}")
     print(json.dumps({k: rec.get(k) for k in ("corpus", "tool", "phase", "run", "wall", "user", "sys", "rss_tree_mb", "rss_max_mb", "procs", "exit", "killed", "nodes", "edges", "idle_before", "other_cpu_pct")}), flush=True)
     return rec
 
@@ -88,7 +100,7 @@ done = set()
 if RESULTS.exists():
     for l in open(RESULTS):
         r = json.loads(l)
-        if r["phase"] == PHASES[-1] or r["killed"] or r["exit"]:
+        if r["phase"] == PHASES[-1] or r["killed"] in ("rss_limit", "timeout") or (r["exit"] and not r["killed"]):
             done.add((r["corpus"], r["tool"], r["run"]))
 runs = int(sys.argv[1])
 for corpus in sys.argv[2:]:
