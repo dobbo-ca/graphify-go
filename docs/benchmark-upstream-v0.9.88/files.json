@@ -1,0 +1,397 @@
+{
+ "graphify": {
+  "corpus": "graphify",
+  "source": "~/.cache/nocgo-c41e/corpora/python",
+  "commit": "6478eb7",
+  "go_default": 886,
+  "up_default": 948,
+  "both": 885,
+  "both_mb": 14.1,
+  "up_detected": {
+   "code": 581,
+   "document": 378,
+   "paper": 1,
+   "image": 8,
+   "video": 0
+  },
+  "only_go": 1,
+  "only_go_ext": {
+   ".md": 1
+  },
+  "only_go_top": {
+   "worked": 1
+  },
+  "only_up": 63,
+  "only_up_ext": {
+   ".xaml": 7,
+   ".sql": 7,
+   ".pas": 5,
+   ".swift": 4,
+   ".toml": 3,
+   ".md": 2,
+   ".f90": 2,
+   ".groovy": 2,
+   ".ps1": 2,
+   ".csproj": 2,
+   ".m": 2,
+   ".psd1": 1,
+   ".dfm": 1,
+   ".lfm": 1,
+   ".robot": 1
+  },
+  "only_up_top": {
+   "tests": 60,
+   "docs": 2,
+   "(root)": 1
+  },
+  "both_ext": {
+   ".py": 463,
+   ".md": 365,
+   ".json": 9,
+   ".h": 8,
+   ".ts": 7,
+   ".cs": 7,
+   ".cpp": 6,
+   ".php": 5,
+   ".rs": 3,
+   ".js": 1,
+   ".c": 1,
+   ".go": 1,
+   ".java": 1,
+   ".jl": 1,
+   ".kt": 1
+  },
+  "manifests_added": 3,
+  "aligned_total": 888
+ },
+ "redis": {
+  "corpus": "redis",
+  "source": "~/.cache/nocgo-c41e/corpora/redis",
+  "commit": "940a4d7",
+  "go_default": 1458,
+  "up_default": 1460,
+  "both": 1457,
+  "both_mb": 14.5,
+  "up_detected": {
+   "code": 1433,
+   "document": 64,
+   "paper": 0,
+   "image": 3,
+   "video": 0
+  },
+  "only_go": 1,
+  "only_go_ext": {
+   ".markdown": 1
+  },
+  "only_go_top": {
+   "deps": 1
+  },
+  "only_up": 3,
+  "only_up_ext": {
+   ".sln": 2,
+   "(none)": 1
+  },
+  "only_up_top": {
+   "deps": 3
+  },
+  "both_ext": {
+   ".c": 476,
+   ".json": 465,
+   ".h": 312,
+   ".sh": 83,
+   ".py": 50,
+   ".md": 27,
+   ".lua": 20,
+   ".rb": 9,
+   ".cpp": 7,
+   "(none)": 6,
+   ".hpp": 1,
+   ".js": 1
+  }
+ },
+ "curl": {
+  "corpus": "curl",
+  "source": "~/.cache/nocgo-c41e/corpora/curl",
+  "commit": "2874cc6",
+  "go_default": 2068,
+  "up_default": 2086,
+  "both": 2068,
+  "both_mb": 12.1,
+  "up_detected": {
+   "code": 1172,
+   "document": 990,
+   "paper": 0,
+   "image": 0,
+   "video": 0
+  },
+  "only_go": 0,
+  "only_go_ext": {},
+  "only_go_top": {},
+  "only_up": 18,
+  "only_up_ext": {
+   ".inc": 12,
+   ".sln": 3,
+   ".md": 3
+  },
+  "only_up_top": {
+   "docs": 7,
+   "tests": 6,
+   "projects": 3,
+   "src": 1,
+   "lib": 1
+  },
+  "both_ext": {
+   ".md": 926,
+   ".c": 795,
+   ".h": 257,
+   ".py": 52,
+   ".sh": 30,
+   "(none)": 5,
+   ".cpp": 2,
+   ".json": 1
+  }
+ },
+ "opencv": {
+  "corpus": "opencv",
+  "source": "~/.cache/nocgo-c41e/corpora/opencv",
+  "commit": "73a26a4",
+  "go_default": 5003,
+  "up_default": 4783,
+  "both": 4485,
+  "both_mb": 69.9,
+  "up_detected": {
+   "code": 4737,
+   "document": 330,
+   "paper": 0,
+   "image": 1054,
+   "video": 6
+  },
+  "only_go": 518,
+  "only_go_ext": {
+   ".markdown": 296,
+   ".hh": 221,
+   ".hxx": 1
+  },
+  "only_go_top": {
+   "doc": 289,
+   "3rdparty": 222,
+   "modules": 7
+  },
+  "only_up": 298,
+  "only_up_ext": {
+   ".cl": 110,
+   ".mm": 67,
+   ".swift": 34,
+   ".cu": 32,
+   ".xaml": 21,
+   ".sln": 9,
+   ".inc": 8,
+   ".gradle": 3,
+   ".xml": 3,
+   ".json": 3,
+   ".csproj": 3,
+   ".m": 2,
+   ".md": 2,
+   ".ps1": 1
+  },
+  "only_up_top": {
+   "modules": 240,
+   "samples": 41,
+   "3rdparty": 7,
+   "platforms": 6,
+   ".github": 2,
+   "cmake": 1,
+   "doc": 1
+  },
+  "both_ext": {
+   ".cpp": 1681,
+   ".hpp": 824,
+   ".h": 624,
+   ".c": 520,
+   ".py": 368,
+   ".java": 193,
+   ".cc": 100,
+   ".md": 44,
+   ".json": 44,
+   ".js": 43,
+   ".sh": 15,
+   ".cs": 15,
+   "(none)": 6,
+   ".scala": 4,
+   ".kt": 3
+  },
+  "manifests_added": 3,
+  "aligned_total": 4488
+ },
+ "typescript": {
+  "corpus": "typescript",
+  "source": "~/.cache/nocgo-c41e/corpora/typescript",
+  "commit": "c0ca4744",
+  "go_default": 31924,
+  "up_default": 31973,
+  "both": 31924,
+  "both_mb": 90.5,
+  "up_detected": {
+   "code": 31906,
+   "document": 7698,
+   "paper": 0,
+   "image": 1,
+   "video": 0
+  },
+  "only_go": 0,
+  "only_go_ext": {},
+  "only_go_top": {},
+  "only_up": 49,
+  "only_up_ext": {
+   ".ts": 20,
+   ".js": 19,
+   ".json": 5,
+   ".mod": 3,
+   ".md": 1,
+   ".csproj": 1
+  },
+  "only_up_top": {
+   "packages": 41,
+   ".vscode": 4,
+   "tools": 3,
+   "tsc": 1
+  },
+  "both_ext": {
+   ".js": 13205,
+   ".ts": 12913,
+   ".go": 5168,
+   ".tsx": 351,
+   ".json": 198,
+   ".md": 66,
+   ".mts": 13,
+   ".mjs": 5,
+   "(none)": 3,
+   ".cjs": 1,
+   ".cts": 1
+  },
+  "manifests_added": 3,
+  "aligned_total": 31927
+ },
+ "k8s": {
+  "corpus": "k8s",
+  "source": "~/.cache/nocgo-c41e/corpora/k8s",
+  "commit": "ab4fb775",
+  "go_default": 15354,
+  "up_default": 20008,
+  "both": 15344,
+  "both_mb": 192.2,
+  "up_detected": {
+   "code": 19417,
+   "document": 7201,
+   "paper": 4,
+   "image": 15,
+   "video": 0
+  },
+  "only_go": 10,
+  "only_go_ext": {
+   ".json": 10
+  },
+  "only_go_top": {
+   "staging": 10
+  },
+  "only_up": 4664,
+  "only_up_ext": {
+   ".go": 4329,
+   ".md": 263,
+   ".mod": 40,
+   ".sh": 13,
+   ".json": 5,
+   ".psm1": 4,
+   ".c": 3,
+   ".js": 2,
+   ".ps1": 2,
+   ".bash": 2,
+   "(none)": 1
+  },
+  "only_up_top": {
+   "vendor": 4608,
+   "staging": 39,
+   "cluster": 5,
+   "pkg": 5,
+   "hack": 3,
+   "test": 3,
+   "(root)": 1
+  },
+  "both_ext": {
+   ".go": 13500,
+   ".json": 1219,
+   ".md": 328,
+   ".sh": 275,
+   "(none)": 15,
+   ".py": 7
+  },
+  "manifests_added": 40,
+  "aligned_total": 15384
+ },
+ "vscode": {
+  "corpus": "vscode",
+  "source": "~/.cache/nocgo-c41e/corpora/vscode",
+  "commit": "636f8117",
+  "go_default": 16376,
+  "up_default": 16514,
+  "both": 16376,
+  "both_mb": 215.0,
+  "up_detected": {
+   "code": 16166,
+   "document": 1206,
+   "paper": 1,
+   "image": 402,
+   "video": 44
+  },
+  "only_go": 0,
+  "only_go_ext": {},
+  "only_go_top": {},
+  "only_up": 138,
+  "only_up_ext": {
+   ".json": 70,
+   ".ts": 29,
+   ".ps1": 21,
+   ".xml": 2,
+   ".toml": 2,
+   ".js": 1,
+   ".dart": 1,
+   ".vb": 1,
+   ".r": 1,
+   ".cshtml": 1,
+   ".m": 1,
+   ".sql": 1,
+   ".groovy": 1,
+   ".psm1": 1,
+   ".mm": 1
+  },
+  "only_up_top": {
+   "extensions": 79,
+   ".vscode": 38,
+   "src": 10,
+   ".agents": 5,
+   "test": 2,
+   "scripts": 2,
+   ".github": 1,
+   "cli": 1
+  },
+  "both_ext": {
+   ".ts": 13985,
+   ".json": 1279,
+   ".md": 347,
+   ".tsx": 271,
+   ".js": 120,
+   ".rs": 89,
+   ".mts": 75,
+   ".py": 74,
+   ".sh": 66,
+   ".cpp": 17,
+   ".cs": 16,
+   ".java": 7,
+   ".rb": 5,
+   ".mjs": 4,
+   ".go": 4
+  },
+  "manifests_added": 4,
+  "aligned_total": 16380
+ }
+}
