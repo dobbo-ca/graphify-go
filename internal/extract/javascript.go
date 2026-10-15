@@ -348,7 +348,6 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 		return
 	}
 	var pending []*ts.Node // decorators written before the next member
-	var overloads []*ts.Node
 	for i := uint(0); i < body.ChildCount(); i++ {
 		m := body.Child(i)
 		if m.Kind() == "class_static_block" {
@@ -363,12 +362,9 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 		if !m.IsNamed() || m.Kind() == "comment" {
 			continue
 		}
-		// An overload signature adds its types to the method it overloads.
-		if m.Kind() == "method_signature" {
-			overloads = append(overloads, m)
-		}
 		decos := pending
 		pending = nil
+		fn := m // the node with the parameters and the body
 		if m.Kind() == "public_field_definition" || m.Kind() == "field_definition" {
 			// A field is no node: its type and its decorators are the class's.
 			b.jsTypeNames(classID, m.ChildByFieldName("type"), src, line(m))
@@ -376,34 +372,69 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 			for _, d := range decos {
 				b.jsDecorator(classID, d, src)
 			}
-			continue
-		}
-		if m.Kind() != "method_definition" && m.Kind() != "abstract_method_signature" {
+			// A function value makes the field a method too.
+			fn = m.ChildByFieldName("value")
+			if fn == nil || !jsFuncValue(fn) {
+				continue
+			}
+			decos = nil
+		} else if m.Kind() != "method_definition" && m.Kind() != "abstract_method_signature" && m.Kind() != "method_signature" {
 			continue
 		}
 		mname := fieldText(m, "name", src)
+		if mname == "" {
+			mname = fieldText(m, "property", src)
+		}
+		// `override abstract h()` parses as name "abstract" then ERROR "h".
+		if mname == "abstract" {
+			if e := jsChild(m, "ERROR"); e != nil && e.NamedChildCount() == 1 && e.NamedChild(0).Kind() == "identifier" {
+				mname = e.NamedChild(0).Utf8Text(src)
+			}
+		}
 		if degenerateName(mname) {
 			continue
 		}
 		mid := b.id(name, mname)
-		b.addNode(mid, name+"."+mname+"()", line(m))
-		b.res.Edges = append(b.res.Edges, model.Edge{
-			Source: classID, Target: mid, Relation: model.RelContains,
-			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
-		})
-		b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file, Abstract: m.Kind() == "abstract_method_signature"})
-		b.jsDecorators(mid, m, src)
+		// An overload's node sits at its first signature.
+		if !b.seen[mid] {
+			b.addNode(mid, name+"."+mname+"()", line(m))
+			b.res.Edges = append(b.res.Edges, model.Edge{
+				Source: classID, Target: mid, Relation: model.RelContains,
+				Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
+			})
+			b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file, Abstract: m.Kind() != "method_definition" && fn == m})
+		} else if m.Kind() == "method_definition" || fn != m {
+			// The implementation after overload signatures is no abstract method.
+			for j := len(b.res.Defs) - 1; j >= 0; j-- {
+				if b.res.Defs[j].ID == mid {
+					b.res.Defs[j].Abstract = false
+					break
+				}
+			}
+		}
+		if fn == m {
+			b.jsDecorators(mid, m, src)
+		}
 		for _, d := range decos {
 			b.jsDecorator(mid, d, src)
 		}
-		b.jsSignature(mid, m, src)
-		b.jsFnBody(m.ChildByFieldName("body"), mid, src)
-	}
-	for _, m := range overloads {
-		if mid := b.id(name, fieldText(m, "name", src)); b.seen[mid] {
-			b.jsSignature(mid, m, src)
+		b.jsSignature(mid, fn, src)
+		if fn == m {
+			b.jsFnBody(fn.ChildByFieldName("body"), mid, src)
+		} else {
+			// Upstream scans no declarations in a field's function.
+			b.jsCalls(fn.ChildByFieldName("body"), mid)
 		}
 	}
+}
+
+// jsFuncValue reports whether n is a function value.
+func jsFuncValue(n *ts.Node) bool {
+	switch n.Kind() {
+	case "arrow_function", "function_expression", "function", "generator_function":
+		return true
+	}
+	return false
 }
 
 // jsPrimitive holds the type names that are no symbols.

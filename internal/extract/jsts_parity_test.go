@@ -760,3 +760,68 @@ func TestJSImportJsSpecifierAndBarrelCycle(t *testing.T) {
 		}
 	}
 }
+
+// A function-valued field and a body-less signature are methods of the class.
+func TestJSClassMemberForms(t *testing.T) {
+	src := `function helper() {}
+export class C {
+  plain = 3;
+  declare d: number;
+  arrow = () => { helper(); };
+  static sarrow = () => { helper(); };
+  field = function () { helper(); function inField() {} };
+  typed: () => void = function () { helper(); };
+  over(a: string): void;
+  over(a: any) { helper(); }
+}
+export abstract class A {
+  abstract f(): void;
+  override abstract h(): void;
+}
+declare class D { constructor(); dsig(): void; }
+class S { only(); }
+`
+	nodes, edges := resolveSrc(t, [][2]string{{"m.ts", src}})
+	wantGraph(t, nodes, edges,
+		[][2]string{{"m.ts", "C.arrow()"}, {"m.ts", "C.sarrow()"}, {"m.ts", "C.field()"}, {"m.ts", "C.typed()"},
+			{"m.ts", "A.f()"}, {"m.ts", "A.h()"}, {"m.ts", "D.constructor()"}, {"m.ts", "D.dsig()"}, {"m.ts", "S.only()"}},
+		[][3]string{
+			{"m.ts:C", "contains", "m.ts:C.arrow()"},
+			{"m.ts:C", "contains", "m.ts:C.sarrow()"},
+			{"m.ts:C", "contains", "m.ts:C.field()"},
+			{"m.ts:D", "contains", "m.ts:D.dsig()"},
+			{"m.ts:S", "contains", "m.ts:S.only()"},
+			{"m.ts:C.arrow()", "calls", "m.ts:helper()"},
+			{"m.ts:C.sarrow()", "calls", "m.ts:helper()"},
+			{"m.ts:C.field()", "calls", "m.ts:helper()"},
+			{"m.ts:C.typed()", "calls", "m.ts:helper()"},
+		}, nil)
+	for _, n := range [][2]string{{"m.ts", "C.plain()"}, {"m.ts", "C.d()"}, {"m.ts", "A.abstract()"}, {"m.ts", "inField()"}} {
+		if nodes[n] {
+			t.Errorf("unexpected node %v", n)
+		}
+	}
+	// An overload's node sits at its first signature, as upstream.
+	ext := Resolve([]Result{FileFromBytes("m.ts", []byte(src))}, []string{"m.ts"})
+	for _, n := range ext.Nodes {
+		if n.Label == "C.over()" && n.SourceLocation != "L9" {
+			t.Errorf("C.over() at %s, want L9", n.SourceLocation)
+		}
+	}
+}
+
+// An overloaded method with a body is no abstract method: an abstract
+// one loses a call to an equal-named method elsewhere.
+func TestJSOverloadNotAbstract(t *testing.T) {
+	r := FileFromBytes("a.ts", []byte("export class API {\n  run(x: string): void;\n  run(x: any) {}\n  sig(): void;\n}\n"))
+	got := map[string]bool{}
+	for _, d := range r.Defs {
+		got[d.Name] = d.Abstract
+	}
+	if a, ok := got["run"]; !ok || a {
+		t.Errorf("run: present %v abstract %v, want a concrete def", ok, a)
+	}
+	if !got["sig"] {
+		t.Errorf("sig: want an abstract def")
+	}
+}
