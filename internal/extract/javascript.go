@@ -777,7 +777,7 @@ func (b *builder) jsProtoOwners() {
 		}
 		b.addNode(p.id, p.owner+"."+p.name+"()", p.loc)
 		b.contains(p.id, p.loc)
-		// An unknown owner's member is no call target, as upstream.
+		// No call target: a bare name never reaches a prototype member.
 		b.res.Defs = slices.DeleteFunc(b.res.Defs, func(d Def) bool { return d.ID == p.id })
 	}
 }
