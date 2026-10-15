@@ -718,14 +718,10 @@ func (b *builder) jsMemberAssign(n *ts.Node, src []byte) bool {
 		b.res.Defs = append(b.res.Defs, Def{ID: id, Name: name, File: b.file})
 	case kind == "object" && n.Parent() != nil && n.Parent().Kind() == "program" && b.jsExportedObj(n.Parent(), owner, src):
 		oid := b.id(owner)
-		if !b.seen[oid] {
-			b.constDef(oid, owner, line(n))
-		} else if !slices.ContainsFunc(b.res.Defs, func(d Def) bool { return d.ID == oid }) {
-			b.res.Defs = append(b.res.Defs, Def{ID: oid, Name: owner, File: b.file, Abstract: true, Value: true})
-		}
+		b.jsOwners = append(b.jsOwners, jsProto{id: oid, owner: owner, loc: line(n)})
 		id = b.id(owner, name)
 		b.jsMethodNode(oid, id, owner, name, line(n))
-		b.res.Defs = append(b.res.Defs, Def{ID: id, Name: name, File: b.file})
+		b.res.Defs = append(b.res.Defs, Def{ID: id, Name: name, File: b.file, Export: true})
 	default:
 		return false
 	}
@@ -769,8 +765,14 @@ type jsProto struct {
 // when the file declares no such owner.
 func (b *builder) jsProtoOwners() {
 	for _, p := range b.jsProto {
-		if b.seen[p.oid] {
-			b.jsMethodNode(p.oid, p.id, p.owner, p.name, p.loc)
+		// The namespace's own owner first, then the file's.
+		for _, oid := range []string{p.oid, idutil.MakeID(b.stem, p.owner)} {
+			if b.seen[oid] {
+				b.jsMethodNode(oid, p.id, p.owner, p.name, p.loc)
+				break
+			}
+		}
+		if b.seen[p.id] {
 			continue
 		}
 		b.addNode(p.id, p.owner+"."+p.name+"()", p.loc)

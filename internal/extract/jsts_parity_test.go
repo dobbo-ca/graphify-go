@@ -981,3 +981,19 @@ func TestJSExportedObjectMethodTarget(t *testing.T) {
 		{"ns.ts:Foo()", "contains", "ns.ts:Foo.x()"},
 	}, nil)
 }
+
+// Only a member of an exported object binds a bare call: a prototype
+// member never does, whatever its owner, and a class method never does.
+func TestJSBareCallFreesOnlyExportMembers(t *testing.T) {
+	nodes, edges := resolveSrc(t, [][2]string{
+		{"patch.js", "const Emitter = require('events');\nEmitter.prototype.emitAsync = function () {};\nconst Lit = {a: 1};\nLit.prototype.litProto = function () {};\n"},
+		{"r.js", "module.exports = Router;\nRouter.create = function () {};\nfunction Router() {}\nRouter.prototype.handleReq = function () {};\n"},
+		{"ns.ts", "function Foo() {}\nnamespace M { Foo.prototype.outer = function () {}; }\n"},
+		{"use.js", "function u() { emitAsync(); litProto(); handleReq(); }\n"},
+	})
+	wantGraph(t, nodes, edges, nil, [][3]string{{"ns.ts:Foo()", "contains", "ns.ts:Foo.outer()"}}, [][3]string{
+		{"use.js:u()", "calls", "patch.js:Emitter.emitAsync()"},
+		{"use.js:u()", "calls", "patch.js:Lit.litProto()"},
+		{"use.js:u()", "calls", "r.js:Router.handleReq()"},
+	})
+}

@@ -88,7 +88,8 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	// which is what a miss falls back to.
 	localC := map[[2]string][]string{}
 	globalC := map[string][]string{}
-	value := map[string]bool{} // def ids of consts
+	value := map[string]bool{}  // def ids of consts
+	export := map[string]bool{} // def ids of exported JS object members
 	// Filled beside the import targets below, which do not read them.
 	defsDone.Go(func() {
 		abstract := map[string]bool{}
@@ -110,6 +111,9 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				idFile[d.ID] = d.File
 				if d.Value {
 					value[d.ID] = true
+				}
+				if d.Export {
+					export[d.ID] = true
 				}
 				if !d.Abstract && abstract[d.Name] && !contains(localC[key], d.ID) {
 					globalC[d.Name] = append(globalC[d.Name], d.ID)
@@ -616,7 +620,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					if c.Recv == "" && langfamily.Of(r.File) == "jsts" {
 						// A bare JS/TS call names no class method; a member of
 						// an exported object is a module export.
-						free := func(id string) bool { return owner[id] == "" || value[owner[id]] }
+						free := func(id string) bool { return owner[id] == "" || export[id] }
 						here = keep(here, free)
 						ids, done := bareJS[c.Callee]
 						if !done {

@@ -33,6 +33,7 @@ type Def struct {
 	Owner          string
 	Abstract       bool // bodiless declaration
 	Value          bool // a const: no markdown span names it
+	Export         bool // a member of an exported JS object: a module export
 }
 
 // Call is an unresolved call site: CallerID invoked a symbol named Callee.
