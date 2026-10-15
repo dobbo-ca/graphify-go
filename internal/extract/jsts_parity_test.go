@@ -825,3 +825,9 @@ func TestJSOverloadNotAbstract(t *testing.T) {
 		t.Errorf("sig: want an abstract def")
 	}
 }
+
+// A class owns its member even when another symbol took the id first.
+func TestJSClassMemberCollisions(t *testing.T) {
+	nodes, edges := resolveSrc(t, [][2]string{{"c.ts", "function foo_bar() {}\nclass Foo { bar() {} }\n"}})
+	wantGraph(t, nodes, edges, nil, [][3]string{{"c.ts:Foo", "contains", "c.ts:foo_bar()"}}, nil)
+}

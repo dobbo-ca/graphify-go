@@ -395,13 +395,14 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 			continue
 		}
 		mid := b.id(name, mname)
+		// The class owns an id another symbol took first too, as upstream.
+		b.res.Edges = append(b.res.Edges, model.Edge{
+			Source: classID, Target: mid, Relation: model.RelContains,
+			Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
+		})
 		// An overload's node sits at its first signature.
 		if !b.seen[mid] {
 			b.addNode(mid, name+"."+mname+"()", line(m))
-			b.res.Edges = append(b.res.Edges, model.Edge{
-				Source: classID, Target: mid, Relation: model.RelContains,
-				Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(m),
-			})
 			b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file, Abstract: m.Kind() != "method_definition" && fn == m})
 		} else if m.Kind() == "method_definition" || fn != m {
 			// The implementation after overload signatures is no abstract method.
@@ -418,8 +419,8 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 		for _, d := range decos {
 			b.jsDecorator(mid, d, src)
 		}
-		b.jsSignature(mid, fn, src)
 		if fn == m {
+			b.jsSignature(mid, fn, src)
 			b.jsFnBody(fn.ChildByFieldName("body"), mid, src)
 		} else {
 			// Upstream scans no declarations in a field's function.
