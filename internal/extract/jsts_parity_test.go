@@ -989,11 +989,14 @@ func TestJSBareCallFreesOnlyExportMembers(t *testing.T) {
 		{"patch.js", "const Emitter = require('events');\nEmitter.prototype.emitAsync = function () {};\nconst Lit = {a: 1};\nLit.prototype.litProto = function () {};\n"},
 		{"r.js", "module.exports = Router;\nRouter.create = function () {};\nfunction Router() {}\nRouter.prototype.handleReq = function () {};\n"},
 		{"ns.ts", "function Foo() {}\nnamespace M { Foo.prototype.outer = function () {}; }\n"},
-		{"use.js", "function u() { emitAsync(); litProto(); handleReq(); }\n"},
+		{"d.js", "var M1 = Base.extend({});\nM1.prototype.p1 = function () {};\nUndeclared.prototype.p4 = function () {};\n"},
+		{"use.js", "function u() { emitAsync(); litProto(); handleReq(); p1(); p4(); }\n"},
 	})
 	wantGraph(t, nodes, edges, nil, [][3]string{{"ns.ts:Foo()", "contains", "ns.ts:Foo.outer()"}}, [][3]string{
 		{"use.js:u()", "calls", "patch.js:Emitter.emitAsync()"},
 		{"use.js:u()", "calls", "patch.js:Lit.litProto()"},
 		{"use.js:u()", "calls", "r.js:Router.handleReq()"},
+		{"use.js:u()", "calls", "d.js:M1.p1()"},
+		{"use.js:u()", "calls", "d.js:Undeclared.p4()"},
 	})
 }
