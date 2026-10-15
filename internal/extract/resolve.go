@@ -614,11 +614,13 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 						here, all = local[lkey], global[c.Callee]
 					}
 					if c.Recv == "" && langfamily.Of(r.File) == "jsts" {
-						// A bare JS/TS call names no class method.
-						here = keep(here, func(id string) bool { return owner[id] == "" })
+						// A bare JS/TS call names no class method; a member of
+						// an exported object is a module export.
+						free := func(id string) bool { return owner[id] == "" || value[owner[id]] }
+						here = keep(here, free)
 						ids, done := bareJS[c.Callee]
 						if !done {
-							ids = keep(all, func(id string) bool { return owner[id] == "" })
+							ids = keep(all, free)
 							bareJS[c.Callee] = ids
 						}
 						all = ids

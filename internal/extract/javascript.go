@@ -40,7 +40,6 @@ func extractJS(rel string, src []byte, langPtr *gositter.Language) Result {
 	// bodies are in source order and nest, so a stack holds the open ones and
 	// its top is the innermost body of the call.
 	slices.SortStableFunc(b.jsBodies, func(x, y jsBody) int { return cmp.Compare(x.start, y.start) })
-	b.jsProtoOwners()
 	next := 0
 	var open []jsBody
 	walkKinds(root, langPtr.KindMask("call_expression"), func(cv ts.Node) bool {
@@ -73,6 +72,7 @@ func extractJS(rel string, src []byte, langPtr *gositter.Language) Result {
 			b.constNode(o.id, o.owner, o.loc)
 		}
 	}
+	b.jsProtoOwners()
 	b.jsRationale(src)
 	return b.res
 }
@@ -714,13 +714,18 @@ func (b *builder) jsMemberAssign(n *ts.Node, src []byte) bool {
 		b.def(id, name, name+"()", line(n))
 	case kind == "prototype":
 		id = b.id(owner, name)
-		b.jsProto = append(b.jsProto, jsProto{id: id, owner: owner, name: name, loc: line(n)})
+		b.jsProto = append(b.jsProto, jsProto{id: id, owner: owner, name: name, loc: line(n), oid: b.id(owner)})
 		b.res.Defs = append(b.res.Defs, Def{ID: id, Name: name, File: b.file})
 	case kind == "object" && n.Parent() != nil && n.Parent().Kind() == "program" && b.jsExportedObj(n.Parent(), owner, src):
 		oid := b.id(owner)
-		b.jsOwners = append(b.jsOwners, jsProto{id: oid, owner: owner, loc: line(n)})
+		if !b.seen[oid] {
+			b.constDef(oid, owner, line(n))
+		} else if !slices.ContainsFunc(b.res.Defs, func(d Def) bool { return d.ID == oid }) {
+			b.res.Defs = append(b.res.Defs, Def{ID: oid, Name: owner, File: b.file, Abstract: true, Value: true})
+		}
 		id = b.id(owner, name)
 		b.jsMethodNode(oid, id, owner, name, line(n))
+		b.res.Defs = append(b.res.Defs, Def{ID: id, Name: name, File: b.file})
 	default:
 		return false
 	}
@@ -756,16 +761,16 @@ func jsReceiver(o *ts.Node, src []byte) (string, string) {
 
 // jsProto is a prototype member; its owner may be declared further down.
 type jsProto struct {
-	id, owner, name string
-	loc             model.Loc
+	id, owner, name, oid string
+	loc                  model.Loc
 }
 
 // jsProtoOwners hangs each prototype member on its owner, or on the file
 // when the file declares no such owner.
 func (b *builder) jsProtoOwners() {
 	for _, p := range b.jsProto {
-		if oid := b.id(p.owner); b.seen[oid] {
-			b.jsMethodNode(oid, p.id, p.owner, p.name, p.loc)
+		if b.seen[p.oid] {
+			b.jsMethodNode(p.oid, p.id, p.owner, p.name, p.loc)
 			continue
 		}
 		b.addNode(p.id, p.owner+"."+p.name+"()", p.loc)

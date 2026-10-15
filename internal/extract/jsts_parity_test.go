@@ -967,3 +967,17 @@ class D extends C {
 	nodes, edges := resolveSrc(t, [][2]string{{"i.js", src}})
 	wantGraph(t, nodes, edges, nil, [][3]string{{"i.js:D.foo()", "calls", "i.js:C.foo()"}}, nil)
 }
+
+// A method on an exported object is a call target of other files, and a
+// prototype member finds an owner declared in a namespace.
+func TestJSExportedObjectMethodTarget(t *testing.T) {
+	nodes, edges := resolveSrc(t, [][2]string{
+		{"lib.js", "var api = {};\nmodule.exports = api;\napi.pubFn = function () {};\n"},
+		{"use.js", "const { pubFn } = require('./lib');\nfunction main() { pubFn(); }\n"},
+		{"ns.ts", "namespace N { function Foo() {} Foo.prototype.x = function () {}; }\n"},
+	})
+	wantGraph(t, nodes, edges, nil, [][3]string{
+		{"use.js:main()", "calls", "lib.js:api.pubFn()"},
+		{"ns.ts:Foo()", "contains", "ns.ts:Foo.x()"},
+	}, nil)
+}
