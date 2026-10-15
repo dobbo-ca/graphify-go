@@ -66,7 +66,7 @@ end
 
 func TestGapJSMemberAssignedFunction(t *testing.T) {
 	edges, nodes := gapEdges(t, "a.js", `function helper2() {}
-res.format = function () { helper2() }
+exports.format = function () { helper2() }
 `)
 	if !nodes["format()"] || !edges["format() calls helper2()"] {
 		t.Errorf("nodes=%v edges=%v", nodes, edges)

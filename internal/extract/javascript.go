@@ -2,6 +2,7 @@ package extract
 
 import (
 	"bytes"
+	"cmp"
 	"github.com/dobbo-ca/gositter"
 	tsjs "github.com/dobbo-ca/gositter/grammars/javascript"
 	tstsx "github.com/dobbo-ca/gositter/grammars/tsx"
@@ -38,6 +39,8 @@ func extractJS(rel string, src []byte, langPtr *gositter.Language) Result {
 	// One walk serves the import calls and every body jsCalls registered. The
 	// bodies are in source order and nest, so a stack holds the open ones and
 	// its top is the innermost body of the call.
+	slices.SortStableFunc(b.jsBodies, func(x, y jsBody) int { return cmp.Compare(x.start, y.start) })
+	b.jsProtoOwners()
 	next := 0
 	var open []jsBody
 	walkKinds(root, langPtr.KindMask("call_expression"), func(cv ts.Node) bool {
@@ -64,6 +67,12 @@ func extractJS(rel string, src []byte, langPtr *gositter.Language) Result {
 		}
 	}
 	b.jsExportOrphans(root, src, langPtr)
+	// An owner node never takes the id of a declaration.
+	for _, o := range b.jsOwners {
+		if !b.seen[o.id] {
+			b.constNode(o.id, o.owner, o.loc)
+		}
+	}
 	b.jsRationale(src)
 	return b.res
 }
@@ -148,18 +157,25 @@ func (b *builder) jsStatement(n *ts.Node, src []byte, owner string) {
 	case "lexical_declaration", "variable_declaration":
 		b.jsVarFuncs(n, src, owner)
 	case "expression_statement":
-		if p := n.Parent(); p == nil || p.Kind() != "program" || !b.jsMemberAssign(n, src) {
+		if !b.jsMemberAssign(n, src) {
 			// Only a closure in a call statement is the file's call.
 			for i := uint(0); i < n.ChildCount(); i++ {
 				if k := n.Child(i).Kind(); k == "call_expression" || k == "new_expression" {
 					owner = b.fileID
+					// Its closures' members belong to the file.
+					var cs []*ts.Node
+					jsTopClosures(n.Child(i), &cs)
+					for _, c := range cs {
+						b.jsMemberScan(c.ChildByFieldName("body"), b.fileID, "", b.fileID, src)
+					}
 				}
 			}
 			b.jsChildren(n, src, owner)
 		}
 	case "internal_module", "module":
 		b.jsNamespace(n, src, owner)
-	case "method_definition":
+	case "method_definition", "method_signature":
+		b.jsLitMethod(n, src)
 	case "arrow_function", "function_expression", "function", "generator_function":
 		if owner != "" {
 			b.jsCalls(n.ChildByFieldName("body"), owner)
@@ -319,6 +335,7 @@ func (b *builder) jsFunc(n *ts.Node, src []byte) {
 	id := b.id(name)
 	b.def(id, name, name+"()", line(n))
 	b.jsFnBody(n.ChildByFieldName("body"), id, src)
+	b.jsMemberScan(n.ChildByFieldName("body"), id, name, id, src)
 }
 
 func (b *builder) jsClass(n *ts.Node, src []byte) {
@@ -348,6 +365,7 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 		return
 	}
 	var pending []*ts.Node // decorators written before the next member
+	var scans [][2]any     // method bodies to scan once every member has its node
 	for i := uint(0); i < body.ChildCount(); i++ {
 		m := body.Child(i)
 		if m.Kind() == "class_static_block" {
@@ -422,10 +440,15 @@ func (b *builder) jsClass(n *ts.Node, src []byte) {
 		if fn == m {
 			b.jsSignature(mid, fn, src)
 			b.jsFnBody(fn.ChildByFieldName("body"), mid, src)
+			scans = append(scans, [2]any{fn.ChildByFieldName("body"), mid})
 		} else {
 			// Upstream scans no declarations in a field's function.
 			b.jsCalls(fn.ChildByFieldName("body"), mid)
 		}
+	}
+	// `this.x = fn` is the class's; a local object stays the method's.
+	for _, sc := range scans {
+		b.jsMemberScan(sc[0].(*ts.Node), classID, name, sc[1].(string), src)
 	}
 }
 
@@ -551,6 +574,11 @@ func (b *builder) jsVarFuncs(n *ts.Node, src []byte, owner string) {
 			b.jsBare[id] = true
 		}
 		val := d.ChildByFieldName("value")
+		// A type literal's method signatures are the walk's too, where no
+		// value takes the declarator.
+		if t := d.ChildByFieldName("type"); t != nil && (val == nil || !jsFuncValue(val) && !(top && n.Kind() == "lexical_declaration" && jsConstValue(d, val, exported))) {
+			b.jsStatement(t, src, owner)
+		}
 		if val == nil {
 			continue
 		}
@@ -569,6 +597,9 @@ func (b *builder) jsVarFuncs(n *ts.Node, src []byte, owner string) {
 		id := b.id(name)
 		b.def(id, name, name+"()", line(d))
 		b.jsFnBody(val.ChildByFieldName("body"), id, src)
+		if n.Kind() == "lexical_declaration" {
+			b.jsMemberScan(val.ChildByFieldName("body"), id, name, id, src)
+		}
 	}
 }
 
@@ -581,12 +612,8 @@ func (b *builder) jsConst(d, val *ts.Node, exported bool, src []byte) bool {
 	if nm == nil {
 		return false
 	}
-	switch val.Kind() {
-	case "object", "array", "as_expression", "satisfies_expression", "call_expression", "new_expression":
-	default:
-		if !exported || nm.Kind() != "identifier" {
-			return false
-		}
+	if !jsConstValue(d, val, exported) {
+		return false
 	}
 	if nm.Kind() == "object_pattern" && exported {
 		for i := uint(0); i < nm.NamedChildCount(); i++ {
@@ -625,6 +652,16 @@ func (b *builder) jsConst(d, val *ts.Node, exported bool, src []byte) bool {
 	return true
 }
 
+// jsConstValue reports whether jsConst takes the declarator d.
+func jsConstValue(d, val *ts.Node, exported bool) bool {
+	switch val.Kind() {
+	case "object", "array", "as_expression", "satisfies_expression", "call_expression", "new_expression":
+		return d.ChildByFieldName("name") != nil
+	}
+	nm := d.ChildByFieldName("name")
+	return exported && nm != nil && nm.Kind() == "identifier"
+}
+
 // constNode adds a node the file contains, with no Def: a namespace marker
 // is no call target.
 func (b *builder) constNode(id, name string, loc model.Loc) {
@@ -652,31 +689,347 @@ func (b *builder) jsClosures(n *ts.Node, id string) {
 	}
 }
 
-// jsMemberAssign captures `obj.name = function () {}` / `() => {}`, named by
-// the property. It reports whether the statement was one.
+// jsMemberAssign captures `exports.x = fn`, `module.exports.x = fn` as a
+// file function, `Foo.prototype.x = fn` as a method of Foo and `o.x = fn`
+// as a method of o when the file exports o. Any other receiver names no
+// owner: no node. It reports whether the statement was one.
 func (b *builder) jsMemberAssign(n *ts.Node, src []byte) bool {
-	if n.NamedChildCount() == 0 {
-		return false
-	}
-	a := n.NamedChild(0)
-	if a.Kind() != "assignment_expression" {
+	a := firstNamed(n)
+	if a == nil || a.Kind() != "assignment_expression" {
 		return false
 	}
 	l, r := a.ChildByFieldName("left"), a.ChildByFieldName("right")
-	if l == nil || r == nil || l.Kind() != "member_expression" {
-		return false
-	}
-	if k := r.Kind(); k != "arrow_function" && k != "function_expression" && k != "function" && k != "generator_function" {
+	if l == nil || r == nil || l.Kind() != "member_expression" || !jsFuncValue(r) {
 		return false
 	}
 	name := fieldText(l, "property", src)
-	if degenerateName(name) {
-		return true
+	o := l.ChildByFieldName("object")
+	if o == nil || degenerateName(name) {
+		return false
 	}
-	id := b.id(name)
-	b.def(id, name, name+"()", line(n))
+	var id string
+	switch kind, owner := jsReceiver(o, src); {
+	case kind == "exports":
+		id = b.id(name)
+		b.def(id, name, name+"()", line(n))
+	case kind == "prototype":
+		id = b.id(owner, name)
+		b.jsProto = append(b.jsProto, jsProto{id: id, owner: owner, name: name, loc: line(n)})
+		b.res.Defs = append(b.res.Defs, Def{ID: id, Name: name, File: b.file})
+	case kind == "object" && n.Parent() != nil && n.Parent().Kind() == "program" && b.jsExportedObj(n.Parent(), owner, src):
+		oid := b.id(owner)
+		b.jsOwners = append(b.jsOwners, jsProto{id: oid, owner: owner, loc: line(n)})
+		id = b.id(owner, name)
+		b.jsMethodNode(oid, id, owner, name, line(n))
+	default:
+		return false
+	}
 	b.jsCalls(r.ChildByFieldName("body"), id)
 	return true
+}
+
+// jsReceiver classifies the object of a member assignment: "this",
+// "exports" (also module.exports), "prototype" with the owner of
+// Foo.prototype, "object" with an identifier's name, or "" for any other.
+func jsReceiver(o *ts.Node, src []byte) (string, string) {
+	switch o.Kind() {
+	case "this":
+		return "this", ""
+	case "identifier":
+		if t := o.Utf8Text(src); t != "exports" {
+			return "object", t
+		}
+		return "exports", ""
+	case "member_expression":
+		io, p := o.ChildByFieldName("object"), fieldText(o, "property", src)
+		if io == nil || io.Kind() != "identifier" {
+			return "", ""
+		}
+		if t := io.Utf8Text(src); t == "module" && p == "exports" {
+			return "exports", ""
+		} else if p == "prototype" {
+			return "prototype", t
+		}
+	}
+	return "", ""
+}
+
+// jsProto is a prototype member; its owner may be declared further down.
+type jsProto struct {
+	id, owner, name string
+	loc             model.Loc
+}
+
+// jsProtoOwners hangs each prototype member on its owner, or on the file
+// when the file declares no such owner.
+func (b *builder) jsProtoOwners() {
+	for _, p := range b.jsProto {
+		if oid := b.id(p.owner); b.seen[oid] {
+			b.jsMethodNode(oid, p.id, p.owner, p.name, p.loc)
+			continue
+		}
+		b.addNode(p.id, p.owner+"."+p.name+"()", p.loc)
+		b.contains(p.id, p.loc)
+	}
+}
+
+// jsMethodNode adds the method node id of the owner node ownerID.
+func (b *builder) jsMethodNode(ownerID, id, owner, name string, loc model.Loc) {
+	if b.seen[id] {
+		return
+	}
+	b.addNode(id, owner+"."+name+"()", loc)
+	b.res.Edges = append(b.res.Edges, model.Edge{
+		Source: ownerID, Target: id, Relation: model.RelContains,
+		Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: loc,
+	})
+}
+
+// jsExportedObj reports whether a module-level statement of prog exports
+// name, as upstream's _js_find_exported_objects reads them.
+func (b *builder) jsExportedObj(prog *ts.Node, name string, src []byte) bool {
+	if b.jsExpObjs != nil {
+		return b.jsExpObjs[name]
+	}
+	b.jsExpObjs = map[string]bool{}
+	add := func(n *ts.Node) {
+		if n != nil && n.Kind() == "identifier" {
+			b.jsExpObjs[n.Utf8Text(src)] = true
+		}
+	}
+	isExports := func(t string) bool {
+		return t == "module.exports" || t == "exports" || strings.HasPrefix(t, "module.exports.") || strings.HasPrefix(t, "exports.")
+	}
+	for i := uint(0); i < prog.NamedChildCount(); i++ {
+		st := prog.NamedChild(i)
+		switch st.Kind() {
+		case "export_statement":
+			for j := uint(0); j < st.ChildCount(); j++ {
+				switch c := st.Child(j); c.Kind() {
+				case "identifier":
+					add(c)
+				case "export_clause":
+					for k := uint(0); k < c.NamedChildCount(); k++ {
+						add(c.NamedChild(k).ChildByFieldName("name"))
+					}
+				case "lexical_declaration", "variable_declaration":
+					for k := uint(0); k < c.NamedChildCount(); k++ {
+						add(c.NamedChild(k).ChildByFieldName("name"))
+					}
+				}
+			}
+		case "lexical_declaration", "variable_declaration":
+			// `var x = module.exports = ...` or `var x = exports`.
+			for k := uint(0); k < st.NamedChildCount(); k++ {
+				d := st.NamedChild(k)
+				nm, v := d.ChildByFieldName("name"), d.ChildByFieldName("value")
+				if nm == nil || nm.Kind() != "identifier" || v == nil {
+					continue
+				}
+				for v != nil && v.Kind() == "assignment_expression" {
+					if l := v.ChildByFieldName("left"); l != nil && isExports(l.Utf8Text(src)) {
+						add(nm)
+						break
+					}
+					v = v.ChildByFieldName("right")
+				}
+				if v != nil && v.Kind() != "assignment_expression" && (v.Utf8Text(src) == "module.exports" || v.Utf8Text(src) == "exports") {
+					add(nm)
+				}
+			}
+		case "expression_statement":
+			a := firstNamed(st)
+			if a == nil || a.Kind() != "assignment_expression" {
+				continue
+			}
+			if l := a.ChildByFieldName("left"); l == nil || !isExports(l.Utf8Text(src)) {
+				continue
+			}
+			v := a.ChildByFieldName("right")
+			for v != nil && v.Kind() == "assignment_expression" {
+				add(v.ChildByFieldName("left"))
+				v = v.ChildByFieldName("right")
+			}
+			if v != nil && v.Kind() == "identifier" {
+				add(v)
+			} else if v != nil && v.Kind() == "object" {
+				for k := uint(0); k < v.NamedChildCount(); k++ {
+					switch pr := v.NamedChild(k); pr.Kind() {
+					case "shorthand_property_identifier":
+						b.jsExpObjs[pr.Utf8Text(src)] = true
+					case "pair":
+						add(pr.ChildByFieldName("value"))
+					}
+				}
+			}
+		}
+	}
+	return b.jsExpObjs[name]
+}
+
+// jsTopClosures collects the outermost closures under n.
+func jsTopClosures(n *ts.Node, out *[]*ts.Node) {
+	for i := uint(0); i < n.ChildCount(); i++ {
+		if c := n.Child(i); jsFuncValue(c) {
+			*out = append(*out, c)
+		} else {
+			jsTopClosures(c, out)
+		}
+	}
+}
+
+// jsMemberScan makes the members a function body assigns in its own
+// statements: `this.x = fn` a method of thisID (owner its label, "" for the
+// file: then x() is a file function), `o.x = fn` a method of o when o is
+// an object literal the body declares, o itself under scope.
+func (b *builder) jsMemberScan(body *ts.Node, thisID, owner, scope string, src []byte) {
+	if body == nil {
+		return
+	}
+	objs := map[string]*ts.Node{}
+	for i := uint(0); i < body.NamedChildCount(); i++ {
+		st := body.NamedChild(i)
+		if st.Kind() != "lexical_declaration" && st.Kind() != "variable_declaration" {
+			continue
+		}
+		for j := uint(0); j < st.NamedChildCount(); j++ {
+			d := st.NamedChild(j)
+			nm, v := d.ChildByFieldName("name"), d.ChildByFieldName("value")
+			if d.Kind() == "variable_declarator" && nm != nil && nm.Kind() == "identifier" && v != nil && v.Kind() == "object" {
+				objs[nm.Utf8Text(src)] = d
+			}
+		}
+	}
+	for i := uint(0); i < body.NamedChildCount(); i++ {
+		st := body.NamedChild(i)
+		a := firstNamed(st)
+		if st.Kind() != "expression_statement" || a == nil || a.Kind() != "assignment_expression" {
+			continue
+		}
+		l, r := a.ChildByFieldName("left"), a.ChildByFieldName("right")
+		if l == nil || r == nil || l.Kind() != "member_expression" || !jsFuncValue(r) {
+			continue
+		}
+		name := fieldText(l, "property", src)
+		o := l.ChildByFieldName("object")
+		if o == nil || degenerateName(name) {
+			continue
+		}
+		var id string
+		switch kind, on := jsReceiver(o, src); {
+		case kind == "this" && owner == "":
+			id = idutil.MakeID(thisID, name)
+			b.addNode(id, name+"()", line(st))
+			b.res.Edges = append(b.res.Edges, model.Edge{
+				Source: thisID, Target: id, Relation: model.RelContains,
+				Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(st),
+			})
+		case kind == "this":
+			id = idutil.MakeID(thisID, name)
+			b.jsMethodNode(thisID, id, owner, name, line(st))
+		case kind == "object" && objs[on] != nil:
+			oid := idutil.MakeID(scope, on)
+			if !b.seen[oid] {
+				b.addNode(oid, on, line(objs[on]))
+				b.res.Edges = append(b.res.Edges, model.Edge{
+					Source: scope, Target: oid, Relation: model.RelContains,
+					Confidence: model.ConfExtracted, SourceFile: b.src, SourceLocation: line(objs[on]),
+				})
+			}
+			id = idutil.MakeID(oid, name)
+			b.jsMethodNode(oid, id, on, name, line(st))
+		default:
+			continue
+		}
+		b.jsCalls(r.ChildByFieldName("body"), id)
+	}
+}
+
+// jsLitMethod makes a node for a method the walk meets outside a class
+// declaration: one of an object literal, a class expression or a type
+// literal. Its owner is the module-level name the value is bound to, else
+// the class expression's name, else the file.
+func (b *builder) jsLitMethod(n *ts.Node, src []byte) {
+	name := fieldText(n, "name", src)
+	if degenerateName(name) {
+		return
+	}
+	// No Def: a literal's method is no call target of other files.
+	owner, at := jsLitOwner(n, src)
+	var id, thisID string
+	if owner == "" {
+		id = b.id(name)
+		if !b.seen[id] {
+			b.addNode(id, name+"()", line(n))
+			b.contains(id, line(n))
+		}
+		thisID = id
+	} else {
+		oid := b.id(owner)
+		b.jsOwners = append(b.jsOwners, jsProto{id: oid, owner: owner, loc: at})
+		id = b.id(owner, name)
+		b.jsMethodNode(oid, id, owner, name, line(n))
+		thisID = oid
+	}
+	body := n.ChildByFieldName("body")
+	b.jsFnBody(body, id, src)
+	if owner == "" {
+		owner = name
+	}
+	b.jsMemberScan(body, thisID, owner, id, src)
+}
+
+// jsLitOwner names the owner of the method n and the line of its binding.
+// Only a module-level binding owns: a local one is not seen from outside.
+func jsLitOwner(n *ts.Node, src []byte) (string, model.Loc) {
+	cur := n.Parent()
+	if cur == nil {
+		return "", 0
+	}
+	cls := ""
+	if cur.Kind() == "class_body" {
+		if cur = cur.Parent(); cur == nil {
+			return "", 0
+		}
+		cls = fieldText(cur, "name", src)
+	}
+	for p := cur.Parent(); p != nil; cur, p = p, p.Parent() {
+		switch p.Kind() {
+		case "pair", "object", "array", "parenthesized_expression", "as_expression", "satisfies_expression",
+			"ternary_expression", "type_annotation", "object_type":
+			continue
+		case "variable_declarator":
+			d := p.Parent()
+			if d != nil && d.Parent() != nil && d.Parent().Kind() == "export_statement" {
+				d = d.Parent()
+			}
+			if nm := p.ChildByFieldName("name"); nm != nil && nm.Kind() == "identifier" && d != nil && d.Parent() != nil && d.Parent().Kind() == "program" {
+				return nm.Utf8Text(src), line(p)
+			}
+		case "assignment_expression":
+			l := p.ChildByFieldName("left")
+			st := p.Parent()
+			if l == nil || st == nil || st.Kind() != "expression_statement" || st.Parent() == nil || st.Parent().Kind() != "program" {
+				break
+			}
+			if l.Kind() == "identifier" {
+				return l.Utf8Text(src), line(p)
+			}
+			if o := l.ChildByFieldName("object"); l.Kind() == "member_expression" && o != nil {
+				switch kind, on := jsReceiver(o, src); kind {
+				case "exports":
+					return fieldText(l, "property", src), line(p)
+				case "prototype":
+					return on, line(p)
+				}
+			}
+		}
+		break
+	}
+	if !degenerateName(cls) {
+		return cls, line(cur)
+	}
+	return "", 0
 }
 
 // jsBody is a function body whose calls belong to callerID.
@@ -744,6 +1097,14 @@ func (b *builder) jsCalls(body *ts.Node, callerID string) {
 	if body == nil {
 		return
 	}
+	// The first owner of a body keeps it: a member scan runs before the walk.
+	if b.jsBodySeen == nil {
+		b.jsBodySeen = map[uint]bool{}
+	}
+	if b.jsBodySeen[body.StartByte()] {
+		return
+	}
+	b.jsBodySeen[body.StartByte()] = true
 	b.jsBodies = append(b.jsBodies, jsBody{body.StartByte(), body.EndByte(), callerID, slices.Clone(b.jsNS)})
 }
 
