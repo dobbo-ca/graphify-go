@@ -1,37 +1,37 @@
 # Graph Report - .
 
 ## Summary
-- 2443 nodes · 7978 edges · 61 communities
+- 2460 nodes · 8080 edges · 61 communities
 - Extraction: 58% EXTRACTED · 41% INFERRED · 0% AMBIGUOUS
 
 ## Graph Freshness
-- Built from commit: `ffd72b07`
+- Built from commit: `fcbc114c`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify build .` after code changes to rebuild.
 
 ## God Nodes (most connected - your core abstractions)
-1. `Node` - 273 edges
-2. `line()` - 123 edges
-3. `FileFromBytes()` - 91 edges
-4. `Node.ChildByFieldName()` - 91 edges
-5. `Node.Child()` - 75 edges
-6. `Node.ChildCount()` - 73 edges
-7. `Result` - 66 edges
-8. `Resolve()` - 65 edges
-9. `fieldText()` - 63 edges
-10. `resolveSrc()` - 62 edges
+1. `Node` - 280 edges
+2. `line()` - 126 edges
+3. `Node.ChildByFieldName()` - 94 edges
+4. `FileFromBytes()` - 91 edges
+5. `Node.Child()` - 76 edges
+6. `Node.ChildCount()` - 74 edges
+7. `resolveSrc()` - 68 edges
+8. `fieldText()` - 67 edges
+9. `Result` - 66 edges
+10. `Resolve()` - 65 edges
 
 ## Surprising Connections (you probably didn't know these)
+- `runOut()` --calls--> `captureStdout()`  [INFERRED]
+  cmd/graphify/budget_test.go → cmd/graphify/maintenance_test.go  _bridges separate communities_
+- `TestBuildCargoFlag()` --calls--> `cmdBuild()`  [INFERRED]
+  cmd/graphify/cargo_test.go → cmd/graphify/main.go  _bridges separate communities_
 - `TestCmdPathAnnotatesHops()` --calls--> `captureStdout()`  [INFERRED]
   cmd/graphify/explain_path_test.go → cmd/graphify/maintenance_test.go  _bridges separate communities_
 - `TestCmdPathDirectedContainsReverse()` --calls--> `captureStdout()`  [INFERRED]
   cmd/graphify/explain_path_test.go → cmd/graphify/maintenance_test.go  _bridges separate communities_
-- `cmdBuild()` --calls--> `CollectFilesReport()`  [INFERRED]
-  cmd/graphify/main.go → internal/detect/detect.go  _bridges separate communities_
-- `cmdGodNodes()` --calls--> `GodNodes()`  [INFERRED]
-  cmd/graphify/main.go → internal/analyze/analyze.go  _bridges separate communities_
-- `cmdMergeDriver()` --calls--> `Merge()`  [INFERRED]
-  cmd/graphify/main.go → internal/query/merge.go  _bridges separate communities_
+- `cmdAffected()` --calls--> `Affected()`  [INFERRED]
+  cmd/graphify/main.go → internal/query/affected.go  _bridges separate communities_
 
 ## Import Cycles
 - None detected.
@@ -40,79 +40,79 @@
 
 ### Community 0
 Cohesion: 0.03
-Nodes (335): github.com/dobbo-ca/gositter/grammars/golang, github.com/dobbo-ca/gositter/grammars/java, github.com/dobbo-ca/gositter/grammars/julia, github.com/dobbo-ca/gositter/grammars/kotlin, github.com/dobbo-ca/gositter/grammars/lua, github.com/dobbo-ca/gositter/grammars/python, github.com/dobbo-ca/gositter/grammars/scala, github.com/dobbo-ca/gositter/grammars/verilog (+327 more)
+Nodes (348): cmp, github.com/dobbo-ca/gositter/grammars/c, github.com/dobbo-ca/gositter/grammars/cpp, github.com/dobbo-ca/gositter/grammars/csharp, github.com/dobbo-ca/gositter/grammars/golang, github.com/dobbo-ca/gositter/grammars/java, github.com/dobbo-ca/gositter/grammars/julia, github.com/dobbo-ca/gositter/grammars/kotlin (+340 more)
 
 ### Community 1
-Cohesion: 0.03
-Nodes (169): bufio, bytes, testing.T, TestReadPathList(), testing.T, TestIsBrokenPipe(), TestQueryExitsZeroOnBrokenPipe(), cmdInstall() (+161 more)
+Cohesion: 0.02
+Nodes (226): cmdExtract(), Entry, extractBash(), TestExtractBash(), testing.T, TestBudgetScalesWithSize(), TestBudgetSetting(), testing.T (+218 more)
 
 ### Community 2
-Cohesion: 0.02
-Nodes (229): cmdExtract(), Entry, extractBash(), TestExtractBash(), testing.T, TestBudgetScalesWithSize(), TestBudgetSetting(), testing.T (+221 more)
+Cohesion: 0.03
+Nodes (164): bufio, bytes, testing.T, TestIsBrokenPipe(), TestQueryExitsZeroOnBrokenPipe(), runOut(), testing.T, TestParseBudgetEndToEnd() (+156 more)
 
 ### Community 3
-Cohesion: 0.02
-Nodes (240): TestCmdAskGraphTraversal(), TestCmdAskNegativeBudget(), testing.T, TestExplainErrorKeepsAllCandidates(), TestExplainErrorSanitizesCandidates(), testing.T, TestCmdExplainPathGraphOverride(), TestCmdExplainPathGraphTraversal() (+232 more)
+Cohesion: 0.03
+Nodes (170): TestExplainErrorKeepsAllCandidates(), TestExplainErrorSanitizesCandidates(), testing.T, load(), argInt(), argString(), argStrings(), argTokenBudget() (+162 more)
 
 ### Community 4
-Cohesion: 0.04
-Nodes (147): golang.org/x/exp/rand, golang.org/x/text/unicode/norm, Cycle, entityLoc(), GodNode, GodNodes(), ImportCycles(), isConceptNode() (+139 more)
+Cohesion: 0.03
+Nodes (146): 📚 Documentation, 🚀 Features, 🔧 Miscellaneous Tasks, Unreleased, golang.org/x/exp/rand, golang.org/x/text/unicode/norm, Cycle, entityLoc() (+138 more)
 
 ### Community 5
 Cohesion: 0.03
-Nodes (105): 1. Think Before Coding, 2. Simplicity First, 3. Surgical Changes, 4. Goal-Driven Execution, Agent Context Profiles, Beads Issue Tracker, Quick Reference, Rules (+97 more)
+Nodes (132): gitRun(), hookInstalled(), TestHookInstallHonoursHooksPath(), TestHookInstallLinkedWorktree(), TestHookStatusOutOfDate(), testing.T, TestMergeDriverStatus(), TestUninstallPreservesOtherAttributes() (+124 more)
 
 ### Community 6
 Cohesion: 0.04
-Nodes (108): collectNotes(), streamGraph(), IntrospectCargo(), memberManifestPaths(), packageName(), resolvePath(), testing.T, TestIntrospectCargoHonorsPackageRename() (+100 more)
+Nodes (121): streamGraph(), IntrospectCargo(), memberManifestPaths(), packageName(), resolvePath(), testing.T, TestIntrospectCargoHonorsPackageRename(), TestIntrospectCargoInheritedRegistryNameIsNoEdge() (+113 more)
 
 ### Community 7
-Cohesion: 0.04
-Nodes (103): readGraph(), TestBuildCargoFlag(), testing.T, TestParseBuildArgs(), TestAssembleLargeFilesInFlight(), TestAssembleLargeFirst(), testing.T, assemble() (+95 more)
+Cohesion: 0.03
+Nodes (105): 1. Think Before Coding, 2. Simplicity First, 3. Surgical Changes, 4. Goal-Driven Execution, Agent Context Profiles, Beads Issue Tracker, Quick Reference, Rules (+97 more)
 
 ### Community 8
-Cohesion: 0.04
-Nodes (77): 📚 Documentation, 🚀 Features, 🔧 Miscellaneous Tasks, Unreleased, defs.svh, build(), Imp, ImportAlias (+69 more)
+Cohesion: 0.07
+Nodes (78): callTargets(), testing.T, TestJSAliasedExports(), TestJSBareCallFreesOnlyExportMembers(), TestJSBareCallSkipsMethods(), TestJSClassMemberCollisions(), TestJSClassMemberForms(), TestJSConstCallTargets() (+70 more)
 
 ### Community 9
-Cohesion: 0.08
-Nodes (72): callTargets(), testing.T, TestJSAliasedExports(), TestJSBareCallSkipsMethods(), TestJSClassMemberCollisions(), TestJSClassMemberForms(), TestJSConstCallTargets(), TestJSConstClosureCalls() (+64 more)
+Cohesion: 0.05
+Nodes (73): testing.T, TestReadPathList(), TestCmdAskGraphTraversal(), TestCmdAskNegativeBudget(), testing.T, TestCmdExplainPathGraphOverride(), TestCmdExplainPathGraphTraversal(), TestCmdExplainPathSourceFile() (+65 more)
 
 ### Community 10
-Cohesion: 0.07
-Nodes (65): hasScriptCall(), resolveFiles(), TestBashPhpDashEKeepsEdge(), TestBashRunnerModuleFlagNoEdge(), TestBashRunnerNonShellTargets(), TestBashScriptInvocation(), TestBashScriptInvocationFromFunction(), TestBashScriptInvocationPrunesMissing() (+57 more)
+Cohesion: 0.06
+Nodes (68): Imp, ImportAlias, TypeRef, TestGoImportTargetsMatchPerImportFilter(), testing.T, jsLike(), jsMods, jsMods.aliases() (+60 more)
 
 ### Community 11
-Cohesion: 0.06
-Nodes (60): Benchmark re-run: graphify-go 9e292de against upstream graphify 0.9.88, Cells that got worse, Cold build, curl/curl, Files, Graphify-Labs/graphify, kubernetes/kubernetes, Limits (+52 more)
+Cohesion: 0.07
+Nodes (65): startManifests(), hasScriptCall(), resolveFiles(), TestBashPhpDashEKeepsEdge(), TestBashRunnerModuleFlagNoEdge(), TestBashRunnerNonShellTargets(), TestBashScriptInvocation(), TestBashScriptInvocationFromFunction() (+57 more)
 
 ### Community 12
+Cohesion: 0.06
+Nodes (67): Benchmark re-run: graphify-go 9e292de against upstream graphify 0.9.88, Cells that got worse, Cold build, curl/curl, Files, Graphify-Labs/graphify, kubernetes/kubernetes, Limits (+59 more)
+
+### Community 13
 Cohesion: 0.03
 Nodes (60): Add PR graph-impact MCP tools (list_prs, get_pr_impact, triage_prs), Beads (from synthesis), Critic: misclassified beads, Critic: missed capabilities, [critic] p0 `build` `core-cli` — Render the induced subgraph in ask/query_graph, not just traversal-tree edges, [critic] p1 `build` `core-cli` — Cite the traversed edge's call-site line in explain, not the neighbour's definition line, [critic] p2 `build` `core-cli` — Annotate the `path` CLI route with relation, confidence and direction, [critic] p2 `build` `core-cli` — Cap and group explain's connection list instead of dumping every neighbour (+52 more)
 
-### Community 13
-Cohesion: 0.05
-Nodes (54): Final verification (run before opening a PR), Reference: cloudposse `id` algorithm (what composeID reimplements), Reference: tree-sitter-hcl v1.2.0 node shapes (verified empirically), Self-review notes (author), Stage A — Foundation: null-label marker + inherits_context edge, Stage B — Single-block literal name reconstruction, Stage C — Whole-corpus context-chain reconstruction, Task A1: `isNullLabel` helper + `[null-label]` marker on module nodes (+46 more)
-
 ### Community 14
-Cohesion: 0.07
-Nodes (46): collections, idle(), one(), quiet(), Interleaved cold build + no-change update for three tools on the aligned corpora, Wait until other work leaves the CPUs (another session can run a job)., _demo(), _key() (+38 more)
+Cohesion: 0.05
+Nodes (55): Final verification (run before opening a PR), Reference: cloudposse `id` algorithm (what composeID reimplements), Reference: tree-sitter-hcl v1.2.0 node shapes (verified empirically), Self-review notes (author), Stage A — Foundation: null-label marker + inherits_context edge, Stage B — Single-block literal name reconstruction, Stage C — Whole-corpus context-chain reconstruction, Task A1: `isNullLabel` helper + `[null-label]` marker on module nodes (+47 more)
 
 ### Community 15
-Cohesion: 0.09
-Nodes (44): runOut(), testing.T, TestParseBudgetEndToEnd(), TestParseBudgetSameAtAnyGOMAXPROCS(), writeTree(), gitRun(), hookInstalled(), TestHookInstallHonoursHooksPath() (+36 more)
+Cohesion: 0.07
+Nodes (46): collections, idle(), one(), quiet(), Interleaved cold build + no-change update for three tools on the aligned corpora, Wait until other work leaves the CPUs (another session can run a job)., _demo(), _key() (+38 more)
 
 ### Community 16
 Cohesion: 0.05
 Nodes (38): Beads, [critic] p0 `build` `core-cli`: Skip nested git worktrees and dot-dir worktrees/ in detect, [critic] p1 `build` `core-cli`: Redact secrets in Terraform attribute values that fall through to raw source text, [critic] p1 `build` `core-cli`: Route .h headers containing C++ to the C++ extractor, [critic] p3 `build` `core-cli`: Record calls to plainly imported external Python modules, Critic verdict, Summary, [synth] p0 `build` `core-cli`: Redirect `update <subdir>` and `watch` to the recorded scan root (+30 more)
 
 ### Community 17
-Cohesion: 0.06
-Nodes (31): github.com/anthropics/anthropic-sdk-go, github.com/aws/aws-sdk-go-v2, github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream, github.com/aws/aws-sdk-go-v2/config, github.com/aws/aws-sdk-go-v2/credentials, github.com/aws/aws-sdk-go-v2/feature/ec2/imds, github.com/aws/aws-sdk-go-v2/internal/configsources, github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 (+23 more)
+Cohesion: 0.14
+Nodes (30): Affected(), AffectedOptions, AffectedResult, Graph.collect(), normalizeSeed(), impacted(), loadJSON(), TestAffectedDepth() (+22 more)
 
 ### Community 18
-Cohesion: 0.13
-Nodes (21): Graph.UnclassifiedSummary(), testing.T, TestUnclassifiedSummaryEmptyWhenNoneSkipped(), TestUnclassifiedSummaryRanksAndCaps(), TestUnclassifiedSummarySanitizesExtensions(), Validate(), testing.T, TestValidateClean() (+13 more)
+Cohesion: 0.06
+Nodes (31): github.com/anthropics/anthropic-sdk-go, github.com/aws/aws-sdk-go-v2, github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream, github.com/aws/aws-sdk-go-v2/config, github.com/aws/aws-sdk-go-v2/credentials, github.com/aws/aws-sdk-go-v2/feature/ec2/imds, github.com/aws/aws-sdk-go-v2/internal/configsources, github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 (+23 more)
 
 ### Community 19
 Cohesion: 0.18
@@ -143,12 +143,12 @@ Cohesion: 0.22
 Nodes (8): Beads - AI-Native Issue Tracking, Essential Commands, Get Started with Beads, Learn More, Quick Start, What is Beads?, Why Beads?, Working with Issues
 
 ### Community 26
-Cohesion: 0.44
-Nodes (8): os.File, profFile(), startProf(), keepMemProfileRate(), testing.T, TestProfBadPathDoesNotPanic(), TestProfUnsetIsNoOp(), TestProfWritesBothProfiles()
-
-### Community 27
 Cohesion: 0.32
 Nodes (6): add(), double(), boot(), Server, Server.start(), std
+
+### Community 27
+Cohesion: 0.38
+Nodes (6): defs.svh, add(), alu, compute(), Counter, Counter.step()
 
 ### Community 28
 Cohesion: 0.33
