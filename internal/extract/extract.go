@@ -33,6 +33,7 @@ type Def struct {
 	Owner          string
 	Abstract       bool // bodiless declaration
 	Value          bool // a const: no markdown span names it
+	Export         bool // a member of an exported JS object: a module export
 }
 
 // Call is an unresolved call site: CallerID invoked a symbol named Callee.
@@ -362,6 +363,10 @@ type builder struct {
 	jsExp       map[string]bool      // exported namespace member ids
 	jsBare      map[string]bool      // namespace variables: nodes, no call targets
 	jsOwned     map[string]bool      // names the file contains, built on first use
+	jsExpObjs   map[string]bool      // module-level names the file exports, built on first use
+	jsProto     []jsProto            // prototype members awaiting their owner
+	jsOwners    []jsProto            // owner nodes made after every declaration
+	jsBodySeen  map[uint]bool        // start bytes of the registered bodies
 	strs        map[string]uint32    // text -> its number in res.CallText
 }
 

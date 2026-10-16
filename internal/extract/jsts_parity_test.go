@@ -480,7 +480,7 @@ exports.gen = async function* () { helper(); };
 	}
 	wantGraph(t, nodes, edges, nil, [][3]string{
 		{"e.ts:run()", "calls", "e.ts:helper()"}, {"e.ts:go()", "calls", "e.ts:helper()"},
-		{"e.ts:m()", "calls", "e.ts:helper()"}, {"e.ts:gen()", "calls", "e.ts:helper()"},
+		{"e.ts:Ctor.m()", "calls", "e.ts:helper()"}, {"e.ts:gen()", "calls", "e.ts:helper()"},
 	}, nil)
 }
 
@@ -576,12 +576,13 @@ var v = function* () { t(); };
 var w = function () {};
 `
 	nodes, _ := resolveSrc(t, [][2]string{{"a.js", src}})
-	for _, l := range []string{"top()", "w()"} {
+	// An unexported receiver proves no owner: no node, as upstream.
+	for _, l := range []string{"w()"} {
 		if !nodes[[2]string{"a.js", l}] {
 			t.Errorf("missing node %s", l)
 		}
 	}
-	for _, l := range []string{"nested()", "iife()", "stat()", "v()"} {
+	for _, l := range []string{"top()", "nested()", "iife()", "stat()", "v()"} {
 		if nodes[[2]string{"a.js", l}] {
 			t.Errorf("unexpected node %s", l)
 		}
@@ -830,4 +831,172 @@ func TestJSOverloadNotAbstract(t *testing.T) {
 func TestJSClassMemberCollisions(t *testing.T) {
 	nodes, edges := resolveSrc(t, [][2]string{{"c.ts", "function foo_bar() {}\nclass Foo { bar() {} }\n"}})
 	wantGraph(t, nodes, edges, nil, [][3]string{{"c.ts:Foo", "contains", "c.ts:foo_bar()"}}, nil)
+}
+
+// A member assignment hangs on the owner its receiver proves; an unproven
+// receiver makes nothing.
+func TestJSMemberAssignOwners(t *testing.T) {
+	src := `function helper() {}
+Foo.prototype.early = function () { helper(); };
+function Foo() {}
+Foo.prototype.bar = function () { helper(); };
+Undef.prototype.pm = function () { helper(); };
+export const xapi = { run() {} };
+xapi.later = function () { helper(); };
+other.z = function () { helper(); };
+function factory() {
+  const o = {};
+  o.x = function () { helper(); };
+  this.y = function () { helper(); };
+  if (c) { this.no = function () {}; }
+}
+class K { init() { const p = {}; p.px = () => {}; this.cb = function () { helper(); }; } }
+const arrow = () => { this.ax = function () {}; };
+reg(function () { this.cx = function () { helper(); }; });
+(function () { Foo.prototype.inIife = function () {}; })();
+`
+	nodes, edges := resolveSrc(t, [][2]string{{"a.js", src}})
+	wantGraph(t, nodes, edges, nil,
+		[][3]string{
+			{"a.js:Foo()", "contains", "a.js:Foo.early()"},
+			{"a.js:Foo()", "contains", "a.js:Foo.bar()"},
+			{"a.js:Foo()", "contains", "a.js:Foo.inIife()"},
+			{"a.js:a.js", "contains", "a.js:Undef.pm()"},
+			{"a.js:xapi", "contains", "a.js:xapi.later()"},
+			{"a.js:factory()", "contains", "a.js:o"},
+			{"a.js:o", "contains", "a.js:o.x()"},
+			{"a.js:factory()", "contains", "a.js:factory.y()"},
+			{"a.js:K", "contains", "a.js:K.cb()"},
+			{"a.js:K.init()", "contains", "a.js:p"},
+			{"a.js:p", "contains", "a.js:p.px()"},
+			{"a.js:arrow()", "contains", "a.js:arrow.ax()"},
+			{"a.js:a.js", "contains", "a.js:cx()"},
+			{"a.js:Foo.bar()", "calls", "a.js:helper()"},
+			{"a.js:o.x()", "calls", "a.js:helper()"},
+			{"a.js:factory.y()", "calls", "a.js:helper()"},
+			{"a.js:K.cb()", "calls", "a.js:helper()"},
+			{"a.js:cx()", "calls", "a.js:helper()"},
+		},
+		[][3]string{{"a.js:factory()", "calls", "a.js:helper()"}, {"a.js:K.init()", "calls", "a.js:helper()"}})
+	for _, l := range []string{"z()", "other.z()", "no()", "factory.no()"} {
+		if nodes[[2]string{"a.js", l}] {
+			t.Errorf("unexpected node %s", l)
+		}
+	}
+}
+
+// A method of an object literal or a class expression hangs on the
+// module-level name it is bound to, else on the class expression's name,
+// else on the file. A const or let object keeps no methods, as upstream.
+func TestJSLiteralMethodOwners(t *testing.T) {
+	src := `function helper() {}
+const CE = class { cm() { helper(); } };
+const N1 = class Named { nm() {} };
+reg(class Reg { rm() {} });
+var vo = { vm() { helper(); }, inner: { deep() {} }, arr: [{ am() {} }] };
+late = { lm() {} };
+const q = cond ? { qm() {} } : null;
+exports.K = class { kv() {} };
+module.exports = { mm() { helper(); } };
+export default { dm() {} };
+call({ cm2() { helper(); } });
+const api = { run() {} };
+let lo = { lom() {} };
+function f() { var local = { fm() {} }; return { rm2() {} }; }
+reg(() => { var inCb = { cbm() {} }; });
+var tv: { vsig(): void } = null as any;
+type TL = { tm(): void };
+`
+	nodes, edges := resolveSrc(t, [][2]string{{"a.ts", src}})
+	wantGraph(t, nodes, edges, nil,
+		[][3]string{
+			{"a.ts:a.ts", "contains", "a.ts:CE"},
+			{"a.ts:CE", "contains", "a.ts:CE.cm()"},
+			{"a.ts:N1", "contains", "a.ts:N1.nm()"},
+			{"a.ts:Reg", "contains", "a.ts:Reg.rm()"},
+			{"a.ts:vo", "contains", "a.ts:vo.vm()"},
+			{"a.ts:vo", "contains", "a.ts:vo.deep()"},
+			{"a.ts:vo", "contains", "a.ts:vo.am()"},
+			{"a.ts:late", "contains", "a.ts:late.lm()"},
+			{"a.ts:q", "contains", "a.ts:q.qm()"},
+			{"a.ts:K", "contains", "a.ts:K.kv()"},
+			{"a.ts:a.ts", "contains", "a.ts:mm()"},
+			{"a.ts:a.ts", "contains", "a.ts:dm()"},
+			{"a.ts:a.ts", "contains", "a.ts:cm2()"},
+			{"a.ts:a.ts", "contains", "a.ts:cbm()"},
+			{"a.ts:tv", "contains", "a.ts:tv.vsig()"},
+			{"a.ts:CE.cm()", "calls", "a.ts:helper()"},
+			{"a.ts:vo.vm()", "calls", "a.ts:helper()"},
+			{"a.ts:mm()", "calls", "a.ts:helper()"},
+			{"a.ts:cm2()", "calls", "a.ts:helper()"},
+		}, nil)
+	for _, l := range []string{"api.run()", "run()", "lo.lom()", "lom()", "fm()", "rm2()", "tm()", "TL.tm()"} {
+		if nodes[[2]string{"a.ts", l}] {
+			t.Errorf("unexpected node %s", l)
+		}
+	}
+}
+
+// An owner node never takes the id of a later declaration, and a literal's
+// method is no call target of another file.
+func TestJSLiteralOwnerNoSteal(t *testing.T) {
+	nodes, edges := resolveSrc(t, [][2]string{
+		{"a.ts", "var r1 = { dispose() {} };\nexport type R1 = typeof r1;\ndeclare var fs: { readFileSync(f: string): string };\n"},
+		{"b.ts", "function go() { fs.readFileSync('x'); readFileSync('y'); dispose(); }\n"},
+	})
+	if !nodes[[2]string{"a.ts", "R1"}] {
+		t.Errorf("missing node R1")
+	}
+	wantGraph(t, nodes, edges, nil, nil, [][3]string{
+		{"b.ts:go()", "calls", "a.ts:fs.readFileSync()"},
+		{"b.ts:go()", "calls", "a.ts:R1.dispose()"},
+		{"b.ts:go()", "calls", "a.ts:r1.dispose()"},
+	})
+}
+
+// A `this.x = fn` in the constructor does not hide the method x from super.
+func TestJSThisMemberKeepsMethod(t *testing.T) {
+	src := `class C {
+  constructor() { this.foo = () => {}; }
+  foo() {}
+}
+class D extends C {
+  foo() { super.foo(); }
+}
+`
+	nodes, edges := resolveSrc(t, [][2]string{{"i.js", src}})
+	wantGraph(t, nodes, edges, nil, [][3]string{{"i.js:D.foo()", "calls", "i.js:C.foo()"}}, nil)
+}
+
+// A method on an exported object is a call target of other files, and a
+// prototype member finds an owner declared in a namespace.
+func TestJSExportedObjectMethodTarget(t *testing.T) {
+	nodes, edges := resolveSrc(t, [][2]string{
+		{"lib.js", "var api = {};\nmodule.exports = api;\napi.pubFn = function () {};\n"},
+		{"use.js", "const { pubFn } = require('./lib');\nfunction main() { pubFn(); }\n"},
+		{"ns.ts", "namespace N { function Foo() {} Foo.prototype.x = function () {}; }\n"},
+	})
+	wantGraph(t, nodes, edges, nil, [][3]string{
+		{"use.js:main()", "calls", "lib.js:api.pubFn()"},
+		{"ns.ts:Foo()", "contains", "ns.ts:Foo.x()"},
+	}, nil)
+}
+
+// Only a member of an exported object binds a bare call: a prototype
+// member never does, whatever its owner, and a class method never does.
+func TestJSBareCallFreesOnlyExportMembers(t *testing.T) {
+	nodes, edges := resolveSrc(t, [][2]string{
+		{"patch.js", "const Emitter = require('events');\nEmitter.prototype.emitAsync = function () {};\nconst Lit = {a: 1};\nLit.prototype.litProto = function () {};\n"},
+		{"r.js", "module.exports = Router;\nRouter.create = function () {};\nfunction Router() {}\nRouter.prototype.handleReq = function () {};\n"},
+		{"ns.ts", "function Foo() {}\nnamespace M { Foo.prototype.outer = function () {}; }\n"},
+		{"d.js", "var M1 = Base.extend({});\nM1.prototype.p1 = function () {};\nUndeclared.prototype.p4 = function () {};\n"},
+		{"use.js", "function u() { emitAsync(); litProto(); handleReq(); p1(); p4(); }\n"},
+	})
+	wantGraph(t, nodes, edges, nil, [][3]string{{"ns.ts:Foo()", "contains", "ns.ts:Foo.outer()"}}, [][3]string{
+		{"use.js:u()", "calls", "patch.js:Emitter.emitAsync()"},
+		{"use.js:u()", "calls", "patch.js:Lit.litProto()"},
+		{"use.js:u()", "calls", "r.js:Router.handleReq()"},
+		{"use.js:u()", "calls", "d.js:M1.p1()"},
+		{"use.js:u()", "calls", "d.js:Undeclared.p4()"},
+	})
 }

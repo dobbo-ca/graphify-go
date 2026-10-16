@@ -15,7 +15,7 @@ export class K {
   o() { eight(); }
 }
 between();
-obj.p = () => { nine(); };
+exports.p = () => { nine(); };
 export default function d() { ten(); }
 after.all();
 `
