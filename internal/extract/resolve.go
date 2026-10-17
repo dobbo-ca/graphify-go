@@ -160,7 +160,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	type impRec struct {
 		imp                *Imp // source, file and location
 		tgt                string
-		rel                model.Relation // 0 is imports_from, or imports if external
+		rel                model.Relation // imports if external
 		typeOnly, external bool
 		deferred           bool
 	}
@@ -259,7 +259,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 								continue
 							}
 							dynSeen[key] = true
-							// upstream lets deferred win a static pair
+							// deferred wins, as upstream
 							if tn, ok := tgtNum[t]; ok {
 								if i, ok := impEdge[uint64(src)<<32|uint64(tn)]; ok && im.Dyn == dynDeferred {
 									impEdges[i/impPart][i%impPart].deferred = true
@@ -634,7 +634,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		bareJS := map[string][]string{}    // callee -> its global list without class members
 		for _, r := range results {
 			rf := model.FileOf(r.File)
-			var named map[string]bool // definitions a name import of r binds
+			var named map[string]bool
 			symImp := func(id string) bool {
 				if named == nil {
 					named = map[string]bool{}
@@ -751,9 +751,9 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					// Two types in one file can each own a method of the same name; a
 					// bare call then has no unambiguous local target, so fall through
 					// to disambiguate rather than guess.
-					if c.Recv == "" {
+					if c.Recv == "" && !(isNew && len(all) > 1) {
 						tgt = jsAlias[lkey]
-						// new binds by the class's own name
+						// new binds by class name
 						if isNew && !slices.Contains(local[[2]string{idFile[tgt], c.Callee}], tgt) {
 							tgt = ""
 						}
@@ -761,10 +761,12 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					if tgt == "" && len(here) == 1 {
 						tgt = here[0]
 					}
-					if tgt == "" && isNew {
-						tgt = unique(all, symImp)
-					}
-					if tgt == "" {
+					if tgt == "" && isNew && len(all) > 1 {
+						// upstream never breaks a tie by directory
+						if tgt = unique(all, symImp); tgt == "" {
+							tgt = unique(all, func(id string) bool { return imported.of(r.File)[idFile[id]] })
+						}
+					} else if tgt == "" {
 						tgt = disambiguate(all, r.File, idFile, &imported)
 					}
 				}

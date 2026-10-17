@@ -349,7 +349,7 @@ func TestJSImportJsSelfSkip(t *testing.T) {
 }
 
 // `new X()` binds an imported class by its own name, once, outside its own
-// members and any local declaration of the name.
+// members; a local class does not hide it, as upstream has no node for one.
 func TestJSNewBinding(t *testing.T) {
 	got := edgeSet(t, [][2]string{
 		{"x.ts", "export class X {}\nexport class Y {}\nexport class Widget {}\nexport default class Thing {}\n"},
@@ -371,7 +371,7 @@ export function shadowFn() { function Y() {} return new Y(); }
 export function shadowCls() { class Y {} return new Y(); }
 `},
 	}, "calls")
-	checkEdges(t, got, []string{"b.ts:B.noRetM() calls x.ts:Y"}, []string{
+	checkEdges(t, got, []string{"b.ts:B.noRetM() calls x.ts:Y", "b.ts:shadowCls() calls x.ts:Y"}, []string{
 		"b.ts:B.retM() calls x.ts:X", // a references edge is there already
 		"b.ts:B.paramM() calls x.ts:X",
 		"b.ts:B.make() calls b.ts:B", // upstream drops the owner pair
@@ -379,17 +379,19 @@ export function shadowCls() { class Y {} return new Y(); }
 		"b.ts:dflt() calls x.ts:Thing",
 		"b.ts:barrel() calls item.ts:Other",
 		"b.ts:shadowFn() calls x.ts:Y",
-		"b.ts:shadowCls() calls x.ts:Y",
 	})
 }
 
-// A namespace class binds like a bare call, a nested block's class shadows
-// nothing, and an aliased import falls back to the class of that name.
+// A namespace class binds like a bare call, but not from its own member; a
+// local class shadows nothing, and an aliased import falls back to the class
+// of that name.
 func TestJSNewScopes(t *testing.T) {
 	got := edgeSet(t, [][2]string{
 		{"ns.ts", `namespace Foo.Bar { class Greeter {} function foo() { return new Greeter(); } }
 module m1 { class C2 {} export function f11() { return new C2(); } }
 namespace Solo { export class Box {} export function mk() { return new Box(); } }
+namespace N { export class A { m() { const f = () => new A(); } static s() { return new A(); } } export class C { n() { return new C(); } } export class D { g() { return new A(); } } }
+module P.Q { export class E { static mk() { return new E(); } } }
 `},
 		{"m.ts", "export class Widget {}\n"},
 		{"u.ts", `import { Widget } from './m';
@@ -411,9 +413,14 @@ export function own() { class Widget {} return new Widget(); }
 		"u.ts:sh3() calls m.ts:Widget",
 		"u.ts:sh5() calls m.ts:Widget",
 		"u.ts:sh6() calls m.ts:Widget",
+		"u.ts:own() calls m.ts:Widget",
+		"ns.ts:D.g() calls ns.ts:A",
 		"use.ts:mk() calls lib.ts:IPCClient",
 		"two.ts:b2() calls st/a.ts:Store",
-	}, []string{"u.ts:own() calls m.ts:Widget", "use.ts:mk() calls lib.ts:ChannelClient"})
+	}, []string{
+		"use.ts:mk() calls lib.ts:ChannelClient",
+		"ns.ts:A.m() calls ns.ts:A", "ns.ts:A.s() calls ns.ts:A", "ns.ts:C.n() calls ns.ts:C", "ns.ts:E.mk() calls ns.ts:E",
+	})
 }
 
 // An external module imported statically still gets the file's dynamic_import.
@@ -446,4 +453,43 @@ func TestJSDynamicImportBehindStaticImport(t *testing.T) {
 	}, "imports_from", "dynamic_import")
 	checkEdges(t, got, []string{"s.ts:g() imports_from a.ts:a.ts deferred", "late.ts:late.ts imports_from a.ts:a.ts"},
 		[]string{"s.ts:s.ts dynamic_import a.ts:a.ts", "late.ts:late.ts dynamic_import a.ts:a.ts"})
+}
+
+// An ambiguous new X() binds only by a unique symbol import, then by a unique
+// imported file; never by directory, and never past a second symbol import.
+func TestJSNewAmbiguous(t *testing.T) {
+	got := edgeSet(t, [][2]string{
+		{"a.ts", "export class X {}\n"},
+		{"sub/b.ts", "export class X {}\n"},
+		{"c.ts", "import './a';\nimport './sub/b';\nexport function f() { return new X(); }\n"},
+		{"d.ts", "import * as A from './a';\nimport * as B from './sub/b';\nexport function g() { return new X(); }\n"},
+		{"sub/s.ts", "import '../a';\nimport './b';\nexport function k() { return new X(); }\n"},
+		{"e.ts", "import './sub/b';\nexport function h() { return new X(); }\n"},
+		{"st/a.ts", "export class Store {}\n"},
+		{"st/b.ts", "export class Store {}\n"},
+		{"u1.ts", "import { Store } from './st/a';\nimport { Store as S2 } from './st/b';\nexport function f1() { return new Store(); }\n"},
+		{"u2.ts", "import { Store } from './st/a';\nimport type { Store as T2 } from './st/b';\nexport function g2() { return new Store(); }\n"},
+		{"u3.ts", "import { Store } from './st/a';\nexport function h3() { return new Store(); }\n"},
+	}, "calls")
+	checkEdges(t, got, []string{"e.ts:h() calls sub/b.ts:X", "u3.ts:h3() calls st/a.ts:Store"}, []string{
+		"c.ts:f() calls a.ts:X", "c.ts:f() calls sub/b.ts:X",
+		"d.ts:g() calls a.ts:X", "d.ts:g() calls sub/b.ts:X",
+		"sub/s.ts:k() calls a.ts:X", "sub/s.ts:k() calls sub/b.ts:X",
+		"u1.ts:f1() calls st/a.ts:Store", "u1.ts:f1() calls st/b.ts:Store",
+		"u2.ts:g2() calls st/a.ts:Store", "u2.ts:g2() calls st/b.ts:Store",
+	})
+}
+
+// The regex pass tracks lines and `//` per line while it scans once.
+func TestJSDynamicImportLines(t *testing.T) {
+	src := "import('./a');\n\nconst x = 1; import('./b'); // import('./c')\n// import('./d')\nf(import('./e'), import('./f'));\n"
+	var got []string
+	for _, im := range FileFromBytes("m.ts", []byte(src)).Imps {
+		if im.Dyn == dynImport {
+			got = append(got, im.Spec+"@"+im.Loc.String())
+		}
+	}
+	if want := "./a@L1 ./b@L3 ./e@L5 ./f@L5"; strings.Join(got, " ") != want {
+		t.Errorf("got %v, want %s", got, want)
+	}
 }

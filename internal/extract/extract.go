@@ -358,7 +358,6 @@ type builder struct {
 	rubyMethods map[string]bool
 	jsBodies    []jsBody             // function bodies awaiting the JS call walk
 	jsNested    map[[2]string]string // parent id, name -> nested function id
-	jsLocalCls  map[[2]string]bool   // parent id, name of a class declared inside
 	jsParent    map[string]string    // nested function id -> parent id
 	jsLinked    map[[2]string]bool   // nested calls already linked
 	jsNS        []string             // enclosing namespace names

@@ -95,6 +95,7 @@ func extractJSFile(rel string, src []byte, langPtr *gositter.Language) Result {
 		}
 		return i
 	}
+	line, prev, slash := 1, 0, false // slash: a // opens the current line
 	for i := 0; ; {
 		j := bytes.Index(src[i:], []byte("import"))
 		if j < 0 {
@@ -124,10 +125,18 @@ func extractJSFile(rel string, src []byte, langPtr *gositter.Language) Result {
 		if c := skipSpace(end + 1); c >= len(src) || src[c] != ')' {
 			continue
 		}
-		if bytes.Contains(src[bytes.LastIndexByte(src[:at], '\n')+1:at], []byte("//")) {
+		// incremental, keeps it linear
+		seg := src[prev:at]
+		prev = at
+		if n := bytes.Count(seg, []byte{'\n'}); n > 0 {
+			line, slash = line+n, false
+			seg = seg[bytes.LastIndexByte(seg, '\n')+1:]
+		}
+		slash = slash || bytes.Contains(seg, []byte("//"))
+		if slash {
 			continue
 		}
-		res.Imps = append(res.Imps, Imp{FileID: fileID, File: rel, Spec: string(src[k+1 : end]), Loc: model.Line(lineOf(src, at)), Dyn: dynImport})
+		res.Imps = append(res.Imps, Imp{FileID: fileID, File: rel, Spec: string(src[k+1 : end]), Loc: model.Line(line), Dyn: dynImport})
 	}
 	return res
 }
@@ -1131,15 +1140,6 @@ type jsBody struct {
 // jsFnBody registers a function body and the functions declared inside it.
 func (b *builder) jsFnBody(body *ts.Node, callerID string, src []byte) {
 	b.jsCalls(body, callerID)
-	// only a class of the body itself shadows an imported one
-	for i := uint(0); body != nil && i < body.ChildCount(); i++ {
-		if c := body.Child(i); c.Kind() == "class_declaration" {
-			if b.jsLocalCls == nil {
-				b.jsLocalCls = map[[2]string]bool{}
-			}
-			b.jsLocalCls[[2]string{callerID, fieldText(c, "name", src)}] = true
-		}
-	}
 	b.jsNestedFuncs(body, callerID, src)
 }
 
@@ -1256,9 +1256,6 @@ func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte) {
 	case "identifier":
 		name := fn.Utf8Text(src)
 		for s := callerID; s != ""; s = b.jsParent[s] {
-			if isNew && b.jsLocalCls[[2]string{s, name}] {
-				return
-			}
 			if id, ok := b.jsNested[[2]string{s, name}]; ok {
 				if !isNew {
 					b.jsNestedCall(callerID, id, line(c))
@@ -1273,7 +1270,12 @@ func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte) {
 		for k := len(body.ns); k > 0; k-- {
 			id := idutil.MakeID(append(append([]string{b.stem, "ns"}, body.ns[:k]...), name)...)
 			if b.seen[id] && !b.jsBare[id] {
-				b.jsNestedCall(callerID, id, line(c))
+				// no self edge
+				if !isNew || !slices.ContainsFunc(b.res.Edges, func(e model.Edge) bool {
+					return e.Source == id && e.Target == callerID && e.Relation == model.RelContains
+				}) {
+					b.jsNestedCall(callerID, id, line(c))
+				}
 				return
 			}
 		}
