@@ -121,6 +121,12 @@ func (r *Result) AppendJSON(b []byte) ([]byte, error) {
 			return model.AppendJSONString(b, *s), nil
 		})
 	}
+	if len(r.JavaRets) > 0 {
+		b = append(b, `,"JavaRets":`...)
+		b, _ = appendJSONArr(b, r.JavaRets, func(b []byte, s *string) ([]byte, error) {
+			return model.AppendJSONString(b, *s), nil
+		})
+	}
 	if r.OverBudget {
 		b = append(b, `,"OverBudget":true`...)
 	}

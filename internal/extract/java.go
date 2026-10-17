@@ -2,11 +2,14 @@ package extract
 
 import (
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	tsjava "github.com/dobbo-ca/gositter/grammars/java"
 	ts "github.com/dobbo-ca/graphify-go/internal/ts"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
+	"github.com/dobbo-ca/graphify-go/internal/langfamily"
 	"github.com/dobbo-ca/graphify-go/internal/model"
 )
 
@@ -29,8 +32,34 @@ func extractJava(rel string, src []byte) Result {
 			b.javaImport(n, src)
 		}
 	}
+	for _, d := range b.res.Defs {
+		if t := b.javaRets[d.ID]; t != "" {
+			b.res.JavaRets = append(b.res.JavaRets, d.ID+" "+t)
+			delete(b.javaRets, d.ID)
+		}
+	}
+	// Upstream's nested and anonymous types shadow namesakes.
+	seen := map[string]bool{}
+	walkKinds(root, javaShadowKinds, func(cv ts.Node) bool {
+		n, name := &cv, ""
+		if n.Kind() != "object_creation_expression" {
+			if n.Parent().Kind() != "program" {
+				name = fieldText(n, "name", src)
+			}
+		} else if t := n.ChildByFieldName("type"); t != nil && t.Kind() == "type_identifier" && childByKind(n, "class_body") != nil {
+			name = t.Utf8Text(src)
+		}
+		if name != "" && !seen[name] {
+			seen[name] = true
+			b.res.JavaRets = append(b.res.JavaRets, " "+name)
+		}
+		return true
+	})
 	return b.res
 }
+
+var javaShadowKinds = tsjava.Language().KindMask("class_declaration", "interface_declaration",
+	"enum_declaration", "record_declaration", "annotation_type_declaration", "object_creation_expression")
 
 // javaType records a type definition and the methods/constructors in its body,
 // scoping each method under the type's name.
@@ -90,6 +119,13 @@ func (b *builder) javaMember(ownerID, ownerName string, m *ts.Node, skip map[str
 	})
 	b.res.Defs = append(b.res.Defs, Def{ID: mid, Name: mname, File: b.file})
 	b.javaCalls(m.ChildByFieldName("body"), mid, src)
+	if m.Kind() == "method_declaration" {
+		if b.javaRets == nil {
+			b.javaRets = map[string]string{}
+		}
+		// Overloads share a node: keep agreement.
+		bindType(b.javaRets, mid, javaRecvType(m.ChildByFieldName("type"), src))
+	}
 
 	skip = javaTypeParams(m, src, skip)
 	if ps := m.ChildByFieldName("parameters"); ps != nil {
@@ -158,10 +194,103 @@ func (b *builder) javaCalls(body *ts.Node, callerID string, src []byte) {
 	walkKinds(body, javaCallKinds, func(cv ts.Node) bool {
 		c := &cv
 		if name := c.ChildByFieldName("name"); name != nil {
-			b.callRecv(callerID, name.Utf8Text(src), recvText(c, name, src), line(c))
+			recv := recvText(c, name, src)
+			if obj := c.ChildByFieldName("object"); obj != nil {
+				if k := obj.Kind(); k != "identifier" && k != "this" && k != "super" && !javaInNestedType(c, body) {
+					if chain, ok := javaChain(obj, src, 0); ok {
+						recv = "#" + chain
+					}
+				}
+			}
+			b.callRecv(callerID, name.Utf8Text(src), recv, line(c))
 		}
 		return true
 	})
+}
+
+// javaInNestedType: upstream's caller there is the inner method.
+func javaInNestedType(c, body *ts.Node) bool {
+	for p := c.Parent(); p != nil && p.StartByte() > body.StartByte(); p = p.Parent() {
+		switch p.Kind() {
+		case "class_body", "enum_body", "interface_body":
+			return true
+		}
+	}
+	return false
+}
+
+// javaChain encodes root then ".call" per link.
+func javaChain(n *ts.Node, src []byte, depth int) (string, bool) {
+	if n == nil || depth > 16 {
+		return "", false
+	}
+	switch n.Kind() {
+	case "parenthesized_expression":
+		if n.NamedChildCount() == 1 {
+			return javaChain(n.NamedChild(0), src, depth+1)
+		}
+	case "object_creation_expression", "cast_expression":
+		t := javaRecvType(n.ChildByFieldName("type"), src)
+		return t, t != ""
+	case "this", "super":
+		return n.Kind(), true
+	case "identifier":
+		// Untyped without a local type table.
+		t := n.Utf8Text(src)
+		r, _ := utf8.DecodeRuneInString(t)
+		return t, unicode.IsUpper(r)
+	case "method_invocation":
+		name := n.ChildByFieldName("name")
+		if name == nil {
+			return "", false
+		}
+		inner := ""
+		if obj := n.ChildByFieldName("object"); obj != nil {
+			var ok bool
+			if inner, ok = javaChain(obj, src, depth+1); !ok {
+				return "", false
+			}
+		}
+		return inner + "." + name.Utf8Text(src), true
+	}
+	return "", false
+}
+
+// javaRecvType names a resolvable declared type.
+func javaRecvType(t *ts.Node, src []byte) string {
+	if t == nil {
+		return ""
+	}
+	name := ""
+	switch t.Kind() {
+	case "type_identifier":
+		name = t.Utf8Text(src)
+	case "scoped_type_identifier":
+		raw := t.Utf8Text(src)
+		name = raw[strings.LastIndex(raw, ".")+1:]
+	case "generic_type":
+		for i := uint(0); i < t.ChildCount(); i++ {
+			if c := t.Child(i); c.Kind() == "type_identifier" || c.Kind() == "scoped_type_identifier" {
+				return javaRecvType(c, src)
+			}
+		}
+		return ""
+	default:
+		return ""
+	}
+	if name == "" || javaBuiltin[name] {
+		return ""
+	}
+	for p := t.Parent(); p != nil; p = p.Parent() {
+		switch p.Kind() {
+		case "class_declaration", "interface_declaration", "record_declaration",
+			"method_declaration", "constructor_declaration":
+			if javaTypeParams(p, src, nil)[name] {
+				return ""
+			}
+		}
+	}
+	return name
 }
 
 // javaSupertypes records the declared parents of a type: `extends X` on a class
@@ -430,4 +559,182 @@ func (b *builder) javaClassLiterals(id string, n *ts.Node, skip, seen map[string
 	for i := uint(0); i < n.NamedChildCount(); i++ {
 		b.javaClassLiterals(id, n.NamedChild(i), skip, seen, src)
 	}
+}
+
+// resolveJavaChains binds the calls javaChain encoded, as upstream does.
+func resolveJavaChains(results []Result, owner, idFile map[string]string, methods, supers map[string][]string, edgedSuper map[string]bool, edges [][]model.Edge) []model.Edge {
+	type chainCall struct {
+		c    callText
+		file model.File
+	}
+	var chains []chainCall
+	for i := range results {
+		r := &results[i]
+		if !strings.HasSuffix(r.File, ".java") {
+			continue
+		}
+		for _, n := range r.Calls {
+			if strings.HasPrefix(r.CallText[n.Recv], "#") {
+				chains = append(chains, chainCall{r.call(n), model.FileOf(r.File)})
+			}
+		}
+	}
+	if len(chains) == 0 {
+		return nil
+	}
+
+	rets := map[string]string{}    // method id -> declared return type
+	types := map[string][]string{} // type name -> its definitions
+	for _, r := range results {
+		for _, s := range r.JavaRets {
+			if id, t, _ := strings.Cut(s, " "); id != "" {
+				rets[id], types[t] = t, nil
+			}
+		}
+	}
+	for _, ch := range chains {
+		root, _, _ := strings.Cut(ch.c.Recv[1:], ".")
+		types[root] = nil
+	}
+	nodeFile := map[string]string{} // candidate type node -> its file
+	label := map[string]string{}
+	for _, r := range results {
+		for _, n := range r.Nodes {
+			if _, ok := types[n.Label]; ok && n.Label != "" && n.SourceFile != "" && n.FileType == "code" {
+				nodeFile[n.ID], label[n.ID] = n.SourceFile, n.Label
+			}
+		}
+	}
+	for _, p := range edges {
+		for _, e := range p {
+			if l, ok := label[e.Target]; ok && e.Relation == model.RelContains && !contains(types[l], e.Target) {
+				types[l] = append(types[l], e.Target)
+			}
+		}
+	}
+	for _, r := range results {
+		for _, s := range r.JavaRets {
+			if t, ok := strings.CutPrefix(s, " "); ok {
+				if _, ok := types[t]; ok {
+					nodeFile["#"+r.File] = r.File
+					types[t] = append(types[t], "#"+r.File)
+				}
+			}
+		}
+	}
+	// A name defined twice is the near file's.
+	typeNamed := func(name, near string) string {
+		defs := types[name]
+		if len(defs) > 1 {
+			defs = keep(defs, func(id string) bool { return nodeFile[id] == idFile[near] })
+		}
+		// A "#" def has no node to bind.
+		if len(defs) == 1 && !strings.HasPrefix(defs[0], "#") {
+			return defs[0]
+		}
+		return ""
+	}
+	jvmBases := func(t string) ([]string, bool) {
+		if edgedSuper[t] {
+			return nil, false
+		}
+		for _, b := range supers[t] {
+			if b == t || langfamily.Of(idFile[b]) != "jvm" {
+				return nil, false
+			}
+		}
+		return supers[t], true
+	}
+	// Exactly one declaration across the bases.
+	methodOn := func(t, name string) string {
+		var hits []string
+		seen := map[string]bool{}
+		frontier := []string{t}
+		for len(frontier) > 0 {
+			nid := frontier[len(frontier)-1]
+			frontier = frontier[:len(frontier)-1]
+			if seen[nid] {
+				continue
+			}
+			seen[nid] = true
+			if declared := methods[nid+"\x00"+name]; len(declared) > 0 {
+				for _, id := range declared {
+					if !contains(hits, id) {
+						hits = append(hits, id)
+					}
+				}
+				continue
+			}
+			bases, ok := jvmBases(nid)
+			if !ok {
+				return ""
+			}
+			frontier = append(frontier, bases...)
+		}
+		if len(hits) == 1 {
+			return hits[0]
+		}
+		return ""
+	}
+	chainType := func(enc, caller string) string {
+		links := strings.Split(enc, ".")
+		t := owner[caller]
+		switch links[0] {
+		case "", "this":
+		case "super":
+			bases, ok := jvmBases(t)
+			if t = ""; ok && len(bases) == 1 {
+				t = bases[0]
+			}
+		default:
+			t = typeNamed(links[0], caller)
+		}
+		for _, call := range links[1:] {
+			if t == "" {
+				return ""
+			}
+			m := methodOn(t, call)
+			t = typeNamed(rets[m], m)
+		}
+		return t
+	}
+
+	type found struct {
+		ch  *chainCall
+		tgt string
+	}
+	var hits []found
+	pairs := map[[2]string]bool{} // caller, target -> already linked
+	for i := range chains {
+		ch := &chains[i]
+		t := chainType(ch.c.Recv[1:], ch.c.CallerID)
+		if t == "" {
+			continue
+		}
+		if m := methodOn(t, ch.c.Callee); m != "" && m != ch.c.CallerID {
+			hits = append(hits, found{ch, m})
+			pairs[[2]string{ch.c.CallerID, m}] = false
+		}
+	}
+	for _, p := range edges {
+		for _, e := range p {
+			if _, ok := pairs[[2]string{e.Source, e.Target}]; ok {
+				pairs[[2]string{e.Source, e.Target}] = true
+			}
+		}
+	}
+	var out []model.Edge
+	for _, h := range hits {
+		k := [2]string{h.ch.c.CallerID, h.tgt}
+		if pairs[k] {
+			continue
+		}
+		pairs[k] = true
+		out = append(out, model.Edge{
+			Source: k[0], Target: k[1], Relation: model.RelCalls,
+			Confidence: model.ConfInferred, ConfidenceScore: 0.85,
+			SourceFile: h.ch.file, SourceLocation: h.ch.c.Loc,
+		})
+	}
+	return out
 }
