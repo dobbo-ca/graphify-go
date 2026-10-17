@@ -1536,9 +1536,14 @@ func importTargets(im Imp, corpus map[string]bool, goPkgs map[string][]string, g
 		}
 		// TypeScript names the output file: `./x.js` is x.ts on disk.
 		if ext := path.Ext(spec); jsLike(im.File) && (ext == ".js" || ext == ".jsx") {
-			ts := strings.TrimSuffix(spec, ext) + ".t" + ext[2:]
-			if t := resolveRelImport(im.File, ts, corpus); t != "" && t != from {
-				return []string{t}
+			tos := []string{".ts", ".tsx"}
+			if ext == ".jsx" {
+				tos = tos[1:]
+			}
+			for _, to := range tos {
+				if t := resolveRelImport(im.File, strings.TrimSuffix(spec, ext)+to, corpus); t != "" && t != from {
+					return []string{t}
+				}
 			}
 		}
 	}
