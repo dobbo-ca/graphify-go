@@ -82,6 +82,56 @@ func extractJS(rel string, src []byte, langPtr *gositter.Language) Result {
 	return b.res
 }
 
+// extractJSFile adds dynamic_import edges, found by regex as upstream does.
+func extractJSFile(rel string, src []byte, langPtr *gositter.Language) Result {
+	res := extractJS(rel, src, langPtr)
+	fileID := idutil.MakeID(rel)
+	isWord := func(c byte) bool {
+		return c == '_' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80
+	}
+	skipSpace := func(i int) int {
+		for i < len(src) && strings.IndexByte(" \t\n\r\f\v", src[i]) >= 0 {
+			i++
+		}
+		return i
+	}
+	for i := 0; ; {
+		j := bytes.Index(src[i:], []byte("import"))
+		if j < 0 {
+			break
+		}
+		at := i + j
+		i = at + len("import")
+		if at > 0 && isWord(src[at-1]) {
+			continue
+		}
+		k := skipSpace(i)
+		if k >= len(src) || src[k] != '(' {
+			continue
+		}
+		k = skipSpace(k + 1)
+		if k >= len(src) || src[k] != '\'' && src[k] != '"' && src[k] != '`' {
+			continue
+		}
+		q := src[k]
+		end := k + 1
+		for end < len(src) && src[end] != q && src[end] != '\n' && (q != '`' || src[end] != '$') {
+			end++
+		}
+		if end == k+1 || end >= len(src) || src[end] != q {
+			continue
+		}
+		if c := skipSpace(end + 1); c >= len(src) || src[c] != ')' {
+			continue
+		}
+		if bytes.Contains(src[bytes.LastIndexByte(src[:at], '\n')+1:at], []byte("//")) {
+			continue
+		}
+		res.Imps = append(res.Imps, Imp{FileID: fileID, File: rel, Spec: string(src[k+1 : end]), Loc: model.Line(lineOf(src, at)), Dyn: dynImport})
+	}
+	return res
+}
+
 // jsExportOrphans gives every exported declarator that has no node yet a
 // node with no edge, as upstream's export facts do. Any export statement
 // counts, nested or under a parse error. A const or let with an identifier
@@ -209,8 +259,8 @@ func (b *builder) jsChildren(n *ts.Node, src []byte, owner string) {
 	}
 }
 
-// jsCallImport records `require("m")` and dynamic `import("m")` as imports;
-// caller is the function holding the call. A computed spec names no file.
+// jsCallImport records `require("m")` and `import("m")` as imports; caller is
+// the function holding the call. A computed spec names no file.
 func (b *builder) jsCallImport(n *ts.Node, src []byte, caller string) {
 	if n.Kind() != "call_expression" {
 		return
@@ -219,23 +269,37 @@ func (b *builder) jsCallImport(n *ts.Node, src []byte, caller string) {
 	if fn == nil || args == nil || args.NamedChildCount() == 0 {
 		return
 	}
-	a := args.NamedChild(0)
+	one := args.NamedChildCount() == 1 && args.NamedChild(0).Kind() == "string"
 	switch {
 	case fn.Kind() == "identifier" && fn.Utf8Text(src) == "require":
-		if args.NamedChildCount() == 1 && a.Kind() == "string" {
-			b.imp(unquote(a.Utf8Text(src)), line(n))
+		if one {
+			b.imp(unquote(args.NamedChild(0).Utf8Text(src)), line(n))
 		}
 	case fn.Kind() == "import":
-		switch a.Kind() {
+		// import x = require() recovers as a call
+		if strings.TrimSpace(string(src[fn.EndByte():args.StartByte()])) != "" && one {
+			b.imp(unquote(args.NamedChild(0).Utf8Text(src)), line(n))
+		}
+		b.impDeferred(jsImportSpec(args, src), line(n), caller)
+	}
+}
+
+// jsImportSpec is the first literal argument of an import(), "" if computed.
+func jsImportSpec(args *ts.Node, src []byte) string {
+	for i := uint(0); i < args.NamedChildCount(); i++ {
+		switch a := args.NamedChild(i); a.Kind() {
 		case "string":
-			b.impDynamic(unquote(a.Utf8Text(src)), line(n), caller)
+			return unquote(a.Utf8Text(src))
 		case "template_string":
-			// a substitution makes the spec computed
-			if spec := strings.Trim(a.Utf8Text(src), "`"); !strings.Contains(spec, "$") {
-				b.impDynamic(spec, line(n), caller)
+			for j := uint(0); j < a.NamedChildCount(); j++ {
+				if a.NamedChild(j).Kind() == "template_substitution" {
+					return ""
+				}
 			}
+			return strings.Trim(a.Utf8Text(src), "`")
 		}
 	}
+	return ""
 }
 
 // jsTypeOnlyImport reports whether an import or re-export statement is a
@@ -1095,6 +1159,12 @@ func (b *builder) jsNestedFuncs(n *ts.Node, parent string, src []byte) {
 				b.jsScope(parent, name, id)
 			}
 			b.jsFnBody(c.ChildByFieldName("body"), id, src)
+		case "class_declaration":
+			if b.jsLocalCls == nil {
+				b.jsLocalCls = map[[2]string]bool{}
+			}
+			b.jsLocalCls[[2]string{parent, fieldText(c, "name", src)}] = true
+			b.jsNestedFuncs(c, parent, src)
 		case "method_definition":
 			b.jsCalls(c.ChildByFieldName("body"), "")
 			b.jsNestedFuncs(c, parent, src)
@@ -1169,7 +1239,7 @@ func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte) {
 	if isNew {
 		fn = c.ChildByFieldName("constructor")
 	}
-	// A file-level `new` makes no edge upstream.
+	// no edge upstream
 	if fn == nil || callerID == "" || isNew && callerID == b.fileID {
 		return
 	}
@@ -1182,17 +1252,22 @@ func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte) {
 	switch fn.Kind() {
 	case "identifier":
 		name := fn.Utf8Text(src)
+		for s := callerID; s != ""; s = b.jsParent[s] {
+			if isNew && b.jsLocalCls[[2]string{s, name}] {
+				return
+			}
+			if id, ok := b.jsNested[[2]string{s, name}]; ok {
+				if !isNew {
+					b.jsNestedCall(callerID, id, line(c))
+				}
+				return
+			}
+		}
 		if isNew {
 			if !jsNewBuiltins[name] {
 				b.callRecv(callerID, name, jsNewRecv, line(c))
 			}
 			return
-		}
-		for s := callerID; s != ""; s = b.jsParent[s] {
-			if id, ok := b.jsNested[[2]string{s, name}]; ok {
-				b.jsNestedCall(callerID, id, line(c))
-				return
-			}
 		}
 		// Innermost namespace first; a name in none is a plain global call.
 		for k := len(body.ns); k > 0; k-- {

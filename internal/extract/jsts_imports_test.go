@@ -254,3 +254,142 @@ func TestSFCDynamicImport(t *testing.T) {
 		"Lay.astro:Lay.astro imports_from a.ts:a.ts",
 	})
 }
+
+// Only a lone literal in `import(` makes a file dynamic_import; a recovered
+// call, a comment argument or a `$` template still defers.
+func TestJSDynamicImportShapes(t *testing.T) {
+	srcs := [][2]string{
+		{"main.js", "import a = require(\"./a\");\nfunction f() { import c = require(\"./c\") }\nimport.defer(\"./e\");\n"},
+		{"m.ts", `export function x() { return import("./a", { with: { type: "json" } }); }
+export const top = import("./b", { with: {} });
+export function w() { return import(/* chunk */ './c'); }
+export function d() { return import(` + "`./e$f`" + `); }
+`},
+	}
+	for _, f := range []string{"a", "b", "c", "e"} {
+		srcs = append(srcs, [2]string{f + ".ts", "export const " + f + " = 1;\n"})
+	}
+	got := edgeSet(t, srcs, "imports_from", "dynamic_import")
+	checkEdges(t, got, []string{
+		"main.js:f() imports_from c.ts:c.ts deferred",
+		"m.ts:x() imports_from a.ts:a.ts deferred",
+		"m.ts:w() imports_from c.ts:c.ts deferred",
+		"m.ts:d() imports_from :./e$f deferred",
+		"main.js:main.js imports_from a.ts:a.ts", // as on main
+	}, []string{
+		"main.js:main.js dynamic_import a.ts:a.ts",
+		"main.js:main.js dynamic_import c.ts:c.ts",
+		"main.js:main.js dynamic_import e.ts:e.ts",
+		"m.ts:m.ts dynamic_import a.ts:a.ts",
+		"m.ts:m.ts dynamic_import b.ts:b.ts",
+		"m.ts:m.ts dynamic_import c.ts:c.ts",
+	})
+}
+
+// Upstream finds dynamic_import by regex: comments and strings count, a
+// line comment or a longer name does not, and a static import hides it.
+func TestJSDynamicImportRegex(t *testing.T) {
+	srcs := [][2]string{
+		{"r.ts", `import { s } from './s';
+import type { ty } from './ty';
+export * from './re';
+/** @type {import("./a").A} */
+const str = "import('./b')";
+/* import('./c') */
+// import('./d')
+const x = reimport('./e'), y = import('./s'), z = import('./ty'), w = import('./re');
+`},
+	}
+	for _, f := range []string{"a", "b", "c", "d", "e", "s", "ty", "re"} {
+		srcs = append(srcs, [2]string{f + ".ts", "export const " + f + " = 1;\n"})
+	}
+	got := edgeSet(t, srcs, "imports_from", "dynamic_import", "re_exports")
+	checkEdges(t, got, []string{
+		"r.ts:r.ts dynamic_import a.ts:a.ts",
+		"r.ts:r.ts dynamic_import b.ts:b.ts",
+		"r.ts:r.ts dynamic_import c.ts:c.ts",
+		"r.ts:r.ts imports_from ty.ts:ty.ts",
+	}, []string{
+		"r.ts:r.ts dynamic_import d.ts:d.ts",
+		"r.ts:r.ts dynamic_import e.ts:e.ts",
+		"r.ts:r.ts dynamic_import s.ts:s.ts",
+		"r.ts:r.ts dynamic_import ty.ts:ty.ts",
+		"r.ts:r.ts dynamic_import re.ts:re.ts",
+	})
+}
+
+// A component's dynamic_import is its regex alone: no template literal, no
+// extra argument. The script still defers.
+func TestSFCDynamicImportShapes(t *testing.T) {
+	got := edgeSet(t, [][2]string{
+		{"a.ts", "export const a = 1;\n"},
+		{"b.ts", "export const b = 1;\n"},
+		{"c.ts", "export const c = 1;\n"},
+		{"R.vue", "<script setup lang=\"ts\">\nasync function load() { await import(`./a`); await import('./b', { with: {} }); }\nfunction f() { return import(/* c */ './c') }\n</script>\n"},
+	}, "imports_from", "dynamic_import")
+	checkEdges(t, got, []string{
+		"R.vue:load() imports_from a.ts:a.ts deferred",
+		"R.vue:load() imports_from b.ts:b.ts deferred",
+		"R.vue:f() imports_from c.ts:c.ts deferred",
+	}, []string{
+		"R.vue:R.vue dynamic_import a.ts:a.ts",
+		"R.vue:R.vue dynamic_import b.ts:b.ts",
+		"R.vue:R.vue dynamic_import c.ts:c.ts",
+	})
+}
+
+// './self.js' in self.ts never falls through to the self.tsx sibling.
+func TestJSImportJsSelfSkip(t *testing.T) {
+	got := edgeSet(t, [][2]string{
+		{"self.ts", "import { X } from './self.js';\nexport class X {}\nexport function s() { return new X(); }\n"},
+		{"self.tsx", "export class Z {}\n"},
+	}, "imports_from", "imports", "calls")
+	checkEdges(t, got, []string{"self.ts:s() calls self.ts:X"},
+		[]string{"self.ts:self.ts imports_from self.tsx:self.tsx", "self.ts:s() calls self.tsx:X"})
+}
+
+// `new X()` binds an imported class by its own name, once, outside its own
+// members and any local declaration of the name.
+func TestJSNewBinding(t *testing.T) {
+	got := edgeSet(t, [][2]string{
+		{"x.ts", "export class X {}\nexport class Y {}\nexport class Widget {}\nexport default class Thing {}\n"},
+		{"item.ts", "export class Other {}\n"},
+		{"barrel.ts", "export { Other as Renamed } from './item';\n"},
+		{"b.ts", `import { X, Y, Widget as W } from './x';
+import Def from './x';
+import { Renamed } from './barrel';
+export class B {
+  retM(): X { return new X(1); }
+  noRetM() { return new Y(2); }
+  paramM(x: X) { return new X(3); }
+  static make() { return new B(); }
+}
+export function alias() { return new W(); }
+export function dflt() { return new Def(); }
+export function barrel() { return new Renamed(); }
+export function shadowFn() { function Y() {} return new Y(); }
+export function shadowCls() { class Y {} return new Y(); }
+`},
+	}, "calls")
+	checkEdges(t, got, []string{"b.ts:B.noRetM() calls x.ts:Y"}, []string{
+		"b.ts:B.retM() calls x.ts:X", // a references edge is there already
+		"b.ts:B.paramM() calls x.ts:X",
+		"b.ts:B.make() calls b.ts:B", // upstream drops the owner pair
+		"b.ts:alias() calls x.ts:Widget",
+		"b.ts:dflt() calls x.ts:Thing",
+		"b.ts:barrel() calls item.ts:Other",
+		"b.ts:shadowFn() calls x.ts:Y",
+		"b.ts:shadowCls() calls x.ts:Y",
+	})
+}
+
+// A static import of the target hides the file's dynamic_import.
+func TestJSDynamicImportBehindStaticImport(t *testing.T) {
+	got := edgeSet(t, [][2]string{
+		{"a.ts", "export const a = 1;\n"},
+		{"s.ts", "import './a';\nexport function g() { return import('./a'); }\n"},
+		{"late.ts", "export function g() { return import('./a'); }\nimport './a';\n"},
+	}, "imports_from", "dynamic_import")
+	checkEdges(t, got, []string{"s.ts:g() imports_from a.ts:a.ts deferred", "late.ts:late.ts imports_from a.ts:a.ts"},
+		[]string{"s.ts:s.ts dynamic_import a.ts:a.ts", "late.ts:late.ts dynamic_import a.ts:a.ts"})
+}

@@ -111,9 +111,7 @@ type Imp struct {
 	Rel bool
 	// Export marks a JS/TS `export ... from Spec`.
 	Export bool `json:",omitempty"`
-	// Dyn marks a JS/TS `import(Spec)`: dynImport asks for a file-level
-	// dynamic_import, dynDeferred for a deferred imports_from from FileID,
-	// which is then the function holding the call.
+	// Dyn: JS/TS import(Spec), see dynImport.
 	Dyn uint8 `json:",omitempty"`
 	// Names are the names a Python `from Spec import ...` or Rust `use Spec::...`
 	// binds; each may be a module. For JS/TS see jsImp: a name costs 16 bytes and
@@ -244,11 +242,11 @@ func fileFromBytes(rel string, src []byte) Result {
 	case ".go":
 		return extractGo(rel, src)
 	case ".js", ".jsx", ".mjs", ".cjs":
-		return extractJS(rel, src, tsjs.Language())
+		return extractJSFile(rel, src, tsjs.Language())
 	case ".tsx":
-		return extractJS(rel, src, tstsx.Language())
+		return extractJSFile(rel, src, tstsx.Language())
 	case ".ts", ".mts", ".cts":
-		return extractJS(rel, src, tsts.Language())
+		return extractJSFile(rel, src, tsts.Language())
 	case ".tf", ".tfvars", ".hcl":
 		return extractTerraform(rel, src)
 	case ".json":
@@ -360,6 +358,7 @@ type builder struct {
 	rubyMethods map[string]bool
 	jsBodies    []jsBody             // function bodies awaiting the JS call walk
 	jsNested    map[[2]string]string // parent id, name -> nested function id
+	jsLocalCls  map[[2]string]bool   // parent id, name of a class declared inside
 	jsParent    map[string]string    // nested function id -> parent id
 	jsLinked    map[[2]string]bool   // nested calls already linked
 	jsNS        []string             // enclosing namespace names
@@ -530,19 +529,15 @@ func (b *builder) impTyped(spec string, loc model.Loc, typeOnly bool) {
 	}
 }
 
+// Imp.Dyn values: a file's dynamic_import, a function's deferred import.
 const (
 	dynImport uint8 = iota + 1
 	dynDeferred
 )
 
-// impDynamic records `import(spec)`: the file depends on it late, and so does
-// caller, the function holding the call, when there is one.
-func (b *builder) impDynamic(spec string, loc model.Loc, caller string) {
-	if spec == "" {
-		return
-	}
-	b.res.Imps = append(b.res.Imps, Imp{FileID: b.fileID, File: b.file, Spec: spec, Loc: loc, Dyn: dynImport})
-	if caller != "" {
+// impDeferred records an import() inside caller, a function of the file.
+func (b *builder) impDeferred(spec string, loc model.Loc, caller string) {
+	if spec != "" && caller != "" {
 		b.res.Imps = append(b.res.Imps, Imp{FileID: caller, File: b.file, Spec: spec, Loc: loc, Dyn: dynDeferred})
 	}
 }
