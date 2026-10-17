@@ -26,15 +26,16 @@ func Ask(g *Graph, question string, dfs bool, depth, tokenBudget int, relations 
 	if len(seeds) == 0 {
 		return "No matching nodes found."
 	}
-	adj := relationAdj(g, relations)
+	want := relationSet(relations)
+	adj, deg := relationAdj(g, want)
 	var nodes map[string]bool
 	var edges [][2]string
 	mode := "BFS"
 	if dfs {
 		mode = "DFS"
-		nodes, edges = dfsTraverse(g, adj, seeds, depth)
+		nodes, edges = dfsTraverse(g, adj, deg, seeds, depth)
 	} else {
-		nodes, edges = bfsTraverse(g, adj, seeds, depth)
+		nodes, edges = bfsTraverse(g, adj, deg, seeds, depth)
 	}
 	seedLabels := make([]string, len(seeds))
 	for i, id := range seeds {
@@ -42,7 +43,16 @@ func Ask(g *Graph, question string, dfs bool, depth, tokenBudget int, relations 
 	}
 	header := fmt.Sprintf("Traversal: %s depth=%d | Start: [%s] | %d nodes found\n\n",
 		mode, depth, strings.Join(seedLabels, ", "), len(nodes))
-	return header + subgraphToText(g, nodes, edges, tokenBudget, seeds)
+	// only the subgraph's links, to keep big graphs cheap
+	pairs := map[[2]string][]*Link{}
+	for i := range g.Links {
+		l := &g.Links[i]
+		if (want == nil || want[l.Relation]) && nodes[l.Source] && nodes[l.Target] {
+			k := pairKey(l.Source, l.Target)
+			pairs[k] = append(pairs[k], l)
+		}
+	}
+	return header + subgraphToText(g, adj, deg, pairs, nodes, edges, tokenBudget, seeds)
 }
 
 // wordRe is Unicode-aware to mirror Python's re `\w+` (RE2's bare `\w` is
@@ -278,41 +288,68 @@ func pickSeeds(g *Graph, scored []scoredNode, maxK int, gapRatio float64) []stri
 	return seeds
 }
 
-// relationAdj returns the adjacency to traverse: the graph's full adjacency when
-// relations is empty, otherwise one built only from links whose relation is
-// listed (upstream's context_filter).
-func relationAdj(g *Graph, relations []string) map[string]map[string]bool {
+// relationSet returns the relations to keep, or nil for all of them.
+func relationSet(relations []string) map[string]bool {
 	if len(relations) == 0 {
-		return g.adj
+		return nil
 	}
 	want := make(map[string]bool, len(relations))
 	for _, r := range relations {
 		want[r] = true
 	}
-	adj := map[string]map[string]bool{}
+	return want
+}
+
+// relationAdj returns the adjacency and degree to traverse: the whole graph's
+// when want is nil, otherwise only links whose relation is listed (upstream's
+// context_filter). Degree counts every link, a self-loop twice, as upstream's
+// multigraph view does.
+func relationAdj(g *Graph, want map[string]bool) (map[string]map[string]bool, map[string]int) {
+	adj := g.adj
+	if want != nil {
+		adj = map[string]map[string]bool{}
+	}
+	deg := make(map[string]int, len(g.adj))
 	for i := range g.Links {
 		l := &g.Links[i]
-		if !want[l.Relation] {
-			continue
+		if want != nil {
+			if !want[l.Relation] {
+				continue
+			}
+			if adj[l.Source] == nil {
+				adj[l.Source] = map[string]bool{}
+			}
+			if adj[l.Target] == nil {
+				adj[l.Target] = map[string]bool{}
+			}
+			adj[l.Source][l.Target] = true
+			adj[l.Target][l.Source] = true
 		}
-		if adj[l.Source] == nil {
-			adj[l.Source] = map[string]bool{}
-		}
-		if adj[l.Target] == nil {
-			adj[l.Target] = map[string]bool{}
-		}
-		adj[l.Source][l.Target] = true
-		adj[l.Target][l.Source] = true
+		deg[l.Source]++
+		deg[l.Target]++
 	}
-	return adj
+	return adj, deg
+}
+
+func pairKey(a, b string) [2]string {
+	if b < a {
+		a, b = b, a
+	}
+	return [2]string{a, b}
 }
 
 // hubThreshold is the degree above which non-seed nodes are treated as hubs and
-// not expanded as transit: the p99 of the degree distribution, floored at 50.
-func hubThreshold(adj map[string]map[string]bool) int {
-	degrees := make([]int, 0, len(adj))
-	for id := range adj {
-		degrees = append(degrees, len(adj[id]))
+// not expanded as transit: the p99 of the degree distribution over every node,
+// floored at 50.
+func hubThreshold(g *Graph, deg map[string]int) int {
+	degrees := make([]int, 0, len(g.byID))
+	for id := range g.byID {
+		degrees = append(degrees, deg[id])
+	}
+	for id := range g.adj {
+		if g.byID[id] == nil { // dangling endpoints are nodes upstream
+			degrees = append(degrees, deg[id])
+		}
 	}
 	if len(degrees) == 0 {
 		return 50
@@ -331,8 +368,8 @@ func hubThreshold(adj map[string]map[string]bool) int {
 // bfsTraverse expands outward from the seeds up to depth hops, skipping
 // expansion through high-degree hubs (except seeds). It returns the visited node
 // set and the edges traversed, in discovery order.
-func bfsTraverse(g *Graph, adj map[string]map[string]bool, seeds []string, depth int) (map[string]bool, [][2]string) {
-	hub := hubThreshold(adj)
+func bfsTraverse(g *Graph, adj map[string]map[string]bool, deg map[string]int, seeds []string, depth int) (map[string]bool, [][2]string) {
+	hub := hubThreshold(g, deg)
 	seedSet := toSet(seeds)
 	visited := toSet(seeds)
 	frontier := append([]string(nil), seeds...)
@@ -341,7 +378,7 @@ func bfsTraverse(g *Graph, adj map[string]map[string]bool, seeds []string, depth
 		var next []string
 		nextSet := map[string]bool{}
 		for _, n := range frontier {
-			if !seedSet[n] && len(adj[n]) >= hub {
+			if !seedSet[n] && deg[n] >= hub {
 				continue
 			}
 			for _, nb := range neighbors(adj, n) {
@@ -359,13 +396,13 @@ func bfsTraverse(g *Graph, adj map[string]map[string]bool, seeds []string, depth
 		}
 		frontier = next
 	}
-	return visited, completeInducedEdges(g, adj, visited, edges)
+	return visited, completeInducedEdges(adj, visited, edges)
 }
 
 // dfsTraverse explores depth-first from the seeds up to depth hops, with the
 // same hub-skipping rule as bfsTraverse.
-func dfsTraverse(g *Graph, adj map[string]map[string]bool, seeds []string, depth int) (map[string]bool, [][2]string) {
-	hub := hubThreshold(adj)
+func dfsTraverse(g *Graph, adj map[string]map[string]bool, deg map[string]int, seeds []string, depth int) (map[string]bool, [][2]string) {
+	hub := hubThreshold(g, deg)
 	seedSet := toSet(seeds)
 	visited := map[string]bool{}
 	var edges [][2]string
@@ -384,7 +421,7 @@ func dfsTraverse(g *Graph, adj map[string]map[string]bool, seeds []string, depth
 			continue
 		}
 		visited[top.node] = true
-		if !seedSet[top.node] && len(adj[top.node]) >= hub {
+		if !seedSet[top.node] && deg[top.node] >= hub {
 			continue
 		}
 		for _, nb := range neighbors(adj, top.node) {
@@ -394,13 +431,14 @@ func dfsTraverse(g *Graph, adj map[string]map[string]bool, seeds []string, depth
 			}
 		}
 	}
-	return visited, completeInducedEdges(g, adj, visited, edges)
+	return visited, completeInducedEdges(adj, visited, edges)
 }
 
 // completeInducedEdges appends every edge between two visited nodes that the
 // traversal did not record, so the result is the induced subgraph rather than a
-// spanning tree. It only scans adjacency incident to the visited set.
-func completeInducedEdges(g *Graph, adj map[string]map[string]bool, visited map[string]bool, edges [][2]string) [][2]string {
+// spanning tree. It only scans adjacency incident to the visited set. Self-loops
+// are skipped, as upstream never renders them.
+func completeInducedEdges(adj map[string]map[string]bool, visited map[string]bool, edges [][2]string) [][2]string {
 	seen := make(map[[2]string]bool, len(edges))
 	for _, e := range edges {
 		seen[e] = true
@@ -413,24 +451,22 @@ func completeInducedEdges(g *Graph, adj map[string]map[string]bool, visited map[
 	sort.Strings(ids)
 	for _, u := range ids {
 		for _, v := range neighbors(adj, u) {
-			if !visited[v] || seen[[2]string{u, v}] {
+			if u == v || !visited[v] || seen[[2]string{u, v}] {
 				continue
-			}
-			e := [2]string{u, v}
-			if g.edge[e] == nil && g.edge[[2]string{v, u}] != nil {
-				e = [2]string{v, u}
 			}
 			seen[[2]string{u, v}] = true
 			seen[[2]string{v, u}] = true
-			edges = append(edges, e)
+			edges = append(edges, [2]string{u, v})
 		}
 	}
 	return edges
 }
 
 // subgraphToText renders the traversed subgraph as NODE/EDGE lines, seeds first
-// then the rest ordered by degree, cutting at the token budget (~3 chars/token).
-func subgraphToText(g *Graph, nodes map[string]bool, edges [][2]string, tokenBudget int, seeds []string) string {
+// then the rest by hop distance from the seeds and degree, cutting at the token
+// budget (~3 chars/token). Each link of a pair gets its own EDGE line in stored
+// direction.
+func subgraphToText(g *Graph, adj map[string]map[string]bool, deg map[string]int, pairs map[[2]string][]*Link, nodes map[string]bool, edges [][2]string, tokenBudget int, seeds []string) string {
 	charBudget := tokenBudget * 3
 	seedSet := toSet(seeds)
 	var ordered []string
@@ -439,18 +475,41 @@ func subgraphToText(g *Graph, nodes map[string]bool, edges [][2]string, tokenBud
 			ordered = append(ordered, s)
 		}
 	}
+	// keeps the answer above incidental hubs (upstream #BUG2)
+	dist := make(map[string]int, len(nodes))
+	for _, s := range ordered {
+		dist[s] = 0
+	}
+	for hop, frontier := 1, ordered; len(frontier) > 0; hop++ {
+		var next []string
+		for _, n := range frontier {
+			for nb := range adj[n] {
+				if _, ok := dist[nb]; nodes[nb] && !ok {
+					dist[nb] = hop
+					next = append(next, nb)
+				}
+			}
+		}
+		frontier = next
+	}
 	var rest []string
 	for id := range nodes {
 		if !seedSet[id] {
 			rest = append(rest, id)
+			if _, ok := dist[id]; !ok {
+				dist[id] = 1 << 30
+			}
 		}
 	}
 	sort.Slice(rest, func(i, j int) bool {
-		di, dj := len(g.adj[rest[i]]), len(g.adj[rest[j]])
-		if di != dj {
-			return di > dj
+		a, b := rest[i], rest[j]
+		if dist[a] != dist[b] {
+			return dist[a] < dist[b]
 		}
-		return rest[i] < rest[j]
+		if deg[a] != deg[b] {
+			return deg[a] > deg[b]
+		}
+		return a < b
 	})
 	ordered = append(ordered, rest...)
 
@@ -474,15 +533,15 @@ func subgraphToText(g *Graph, nodes map[string]bool, edges [][2]string, tokenBud
 		if !nodes[u] || !nodes[v] {
 			continue
 		}
-		var relation, confidence string
-		if l := g.edge[[2]string{u, v}]; l != nil {
-			relation, confidence = l.Relation, l.Confidence
-		} else if l := g.edge[[2]string{v, u}]; l != nil {
-			relation, confidence = l.Relation, l.Confidence
+		for _, l := range pairs[pairKey(u, v)] {
+			at := ""
+			if l.SourceLocation != "" {
+				at = " at=" + security.SanitizeLabel(l.SourceFile) + ":" + security.SanitizeLabel(l.SourceLocation)
+			}
+			lines = append(lines, fmt.Sprintf("EDGE %s --%s [%s]--> %s%s",
+				security.SanitizeLabel(nodeLabel(g, l.Source)), security.SanitizeLabel(l.Relation),
+				security.SanitizeLabel(l.Confidence), security.SanitizeLabel(nodeLabel(g, l.Target)), at))
 		}
-		lines = append(lines, fmt.Sprintf("EDGE %s --%s [%s]--> %s",
-			security.SanitizeLabel(nodeLabel(g, u)), security.SanitizeLabel(relation),
-			security.SanitizeLabel(confidence), security.SanitizeLabel(nodeLabel(g, v))))
 	}
 	output := strings.Join(lines, "\n")
 	if charBudget > 0 && len(output) > charBudget {

@@ -3,6 +3,7 @@ package query
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -171,5 +172,30 @@ func TestAffectedSeedPathForms(t *testing.T) {
 	// into a "../.." seed that could collide with a node.
 	if res := Affected(g, []string{"/elsewhere/util.go"}, AffectedOptions{}); len(res.Changed) != 0 {
 		t.Errorf("outside-cwd seed matched: %+v", res.Changed)
+	}
+}
+
+func TestAffectedDefaultFollowsInherits(t *testing.T) {
+	g := loadJSON(t, graphJSON([]string{
+		nodeJSON("base_py", "base.py", "base.py", "L1"),
+		nodeJSON("base_py_base", "Base", "base.py", "L1"),
+		nodeJSON("base_py_base_run", "Base.run()", "base.py", "L2"),
+		nodeJSON("child_py", "child.py", "child.py", "L1"),
+		nodeJSON("child_py_child", "Child", "child.py", "L2"),
+	}, []string{
+		linkJSON("base_py", "base_py_base", "contains", "EXTRACTED", "base.py", "L1", ""),
+		linkJSON("base_py_base", "base_py_base_run", "contains", "EXTRACTED", "base.py", "L2", ""),
+		linkJSON("child_py", "base_py", "imports_from", "EXTRACTED", "child.py", "L1", ""),
+		linkJSON("child_py", "base_py_base", "imports", "EXTRACTED", "child.py", "L1", ""),
+		linkJSON("child_py", "child_py_child", "contains", "EXTRACTED", "child.py", "L2", ""),
+		linkJSON("child_py_child", "base_py_base", "inherits", "INFERRED", "child.py", "L2", ""),
+	}))
+	res := Affected(g, []string{"base.py"}, AffectedOptions{})
+	var ids []string
+	for _, n := range res.Impacted {
+		ids = append(ids, n.ID)
+	}
+	if want := "child_py_child,child_py"; strings.Join(ids, ",") != want {
+		t.Errorf("impacted %v, want %s", ids, want)
 	}
 }

@@ -10,8 +10,12 @@ import (
 // depRelations are the edge relations that mean "source depends on target", so
 // reversing them finds the things impacted when the target changes.
 var depRelations = map[string]bool{
-	"calls": true, "imports": true, "imports_from": true,
-	"references": true, "depends_on": true, "inherits_context": true,
+	"calls": true, "indirect_call": true, "references": true,
+	"imports": true, "imports_from": true, "dynamic_import": true,
+	"re_exports": true, "inherits": true, "extends": true,
+	"implements": true, "uses": true, "mixes_in": true, "embeds": true,
+	"defines": true, "requires": true,
+	"depends_on": true, "inherits_context": true,
 }
 
 // AffectedResult separates the symbols defined in the changed files from the
