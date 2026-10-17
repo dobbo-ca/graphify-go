@@ -51,3 +51,16 @@ export function main() { Button(); render(); bothTs(); realJs(); jsxTs() }
 		}
 	}
 }
+
+// A call from a component never binds to a Python definition.
+func TestSFCCallDoesNotCrossToPython(t *testing.T) {
+	_, edges := resolveSrc(t, [][2]string{
+		{"App.vue", "<script setup lang=\"ts\">\nfunction run() { processData() }\n</script>\n"},
+		{"util.py", "def processData():\n    pass\n"},
+	})
+	for e := range edges {
+		if e[1] == "calls" && e[0][:3] == "App" {
+			t.Errorf("unexpected edge %v", e)
+		}
+	}
+}

@@ -1,7 +1,6 @@
 package extract
 
 import (
-	"path"
 	"strings"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
@@ -11,10 +10,6 @@ import (
 
 // jsLike reports whether a file's imports are JS/TS ones (see jsImp).
 func jsLike(file string) bool {
-	switch path.Ext(file) {
-	case ".vue", ".svelte", ".astro":
-		return true
-	}
 	return langfamily.Of(file) == "jsts"
 }
 

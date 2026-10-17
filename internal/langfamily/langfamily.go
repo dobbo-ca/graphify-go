@@ -26,6 +26,8 @@ var byExt = map[string]string{
 	// JS/TS module graph
 	".js": "jsts", ".jsx": "jsts", ".mjs": "jsts", ".cjs": "jsts",
 	".ts": "jsts", ".mts": "jsts", ".cts": "jsts", ".tsx": "jsts",
+	// Single-file components script as JS/TS
+	".vue": "jsts", ".svelte": "jsts", ".astro": "jsts", ".ejs": "jsts",
 	// Python
 	".py": "py",
 	// JVM interop (Java/Kotlin/Scala)

@@ -15,6 +15,10 @@ func TestCross(t *testing.T) {
 		{"a.ts", "b.tsx", false},         // both jsts
 		{"a.py", "b.py", false},          // same family
 		{"a.go", "b.go", false},          // same family
+		{"App.vue", "util.py", true},     // sfc vs python
+		{"App.svelte", "lib.ts", false},  // sfc is jsts
+		{"Page.astro", "a.js", false},    // sfc is jsts
+		{"App.vue", "Other.vue", false},  // both jsts
 		{"README.md", "a.py", false},     // unknown family stays permissive
 		{"a.py", "", false},              // empty file stays permissive
 	}
