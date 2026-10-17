@@ -31,6 +31,7 @@ const (
 	RelCites
 	RelImplements
 	RelReExports
+	RelDynamicImport
 )
 
 const (
@@ -41,7 +42,7 @@ const (
 
 var (
 	relTable = newCodeTable("", "contains", "calls", "imports", "imports_from", "references", "inherits",
-		"depends_on", "crate_depends_on", "case_of", "dispatches_to", "rationale_for", "cites", "implements", "re_exports")
+		"depends_on", "crate_depends_on", "case_of", "dispatches_to", "rationale_for", "cites", "implements", "re_exports", "dynamic_import")
 	confTable = newCodeTable("", "EXTRACTED", "INFERRED", "AMBIGUOUS")
 )
 
@@ -111,19 +112,21 @@ func (c *Confidence) UnmarshalText(b []byte) error {
 // Loc is a source location. A line "L<n>" is held as the number n+1 and any
 // other text as locText plus a code into a process-wide table; 0 is none.
 // It takes 4 bytes of an Edge or a call record, not 16 and a string.
-// Bit 30 is an Edge's type-only flag, which the methods ignore.
+// Bits 30 and 29 are an Edge's type-only and deferred flags, which the methods ignore.
 type Loc uint32
 
 const (
 	locText     = 1 << 31
 	locTypeOnly = 1 << 30
+	locDeferred = 1 << 29
+	locFlags    = locTypeOnly | locDeferred
 )
 
 var locTable = newCodeTable("")
 
 // Line returns the location of line n.
 func Line(n int) Loc {
-	if n < 0 || n > locTypeOnly-2 {
+	if n < 0 || n > locDeferred-2 {
 		return LocOf("L" + strconv.Itoa(n))
 	}
 	return Loc(n + 1)
@@ -144,15 +147,15 @@ func LocOf(s string) Loc {
 			}
 			n = n*10 + int(s[i]-'0')
 		}
-		if n >= 0 && n <= locTypeOnly-2 {
+		if n >= 0 && n <= locDeferred-2 {
 			return Loc(n + 1)
 		}
 	}
-	return locText | Loc(locTable.code(s))&(locTypeOnly-1)
+	return locText | Loc(locTable.code(s))&(locDeferred-1)
 }
 
 func (l Loc) String() string {
-	l &^= locTypeOnly
+	l &^= locFlags
 	if l == 0 || l >= locText {
 		return locTable.name(uint32(l &^ locText))
 	}
@@ -161,7 +164,7 @@ func (l Loc) String() string {
 
 // AppendJSON appends l as a JSON string.
 func (l Loc) AppendJSON(b []byte) []byte {
-	l &^= locTypeOnly
+	l &^= locFlags
 	if l == 0 || l >= locText {
 		return AppendJSONString(b, l.String())
 	}
@@ -172,9 +175,9 @@ func (l Loc) AppendJSON(b []byte) []byte {
 
 func (l Loc) MarshalText() ([]byte, error) { return []byte(l.String()), nil }
 
-// Keeps bit 30: "type_only" may come first.
+// Keeps the flag bits: "type_only" may come first.
 func (l *Loc) UnmarshalText(b []byte) error {
-	*l = *l&locTypeOnly | LocOf(string(b))
+	*l = *l&locFlags | LocOf(string(b))
 	return nil
 }
 

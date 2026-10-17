@@ -52,7 +52,7 @@ func extractComponent(rel string, src []byte, isAstro bool) Result {
 		if spec == "" {
 			continue
 		}
-		res.Imps = append(res.Imps, Imp{FileID: fileID, File: rel, Spec: spec, Loc: model.Line(lineOf(src, m[0]))})
+		res.Imps = append(res.Imps, Imp{FileID: fileID, File: rel, Spec: spec, Loc: model.Line(lineOf(src, m[0])), Dyn: dynImport})
 	}
 	return res
 }

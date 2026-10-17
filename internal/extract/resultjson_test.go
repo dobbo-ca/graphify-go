@@ -24,7 +24,7 @@ func fillJSON(v reflect.Value, n *int) {
 		v.SetFloat(float64(*n) / 4)
 	case reflect.Int, reflect.Int64:
 		v.SetInt(int64(*n))
-	case reflect.Uint16, reflect.Uint32: // an edge code that both tables hold
+	case reflect.Uint8, reflect.Uint16, reflect.Uint32: // an edge code that both tables hold
 		v.SetUint(uint64(1 + *n%3))
 	case reflect.Slice:
 		v.Set(reflect.MakeSlice(v.Type(), 2, 2))
@@ -61,6 +61,8 @@ func TestResultAppendJSONMatchesMarshal(t *testing.T) {
 	typeOnly, typeOnlyAt := model.Edge{Weight: 3}, model.Edge{SourceLocation: model.Line(7)}
 	typeOnly.SetTypeOnly(true)
 	typeOnlyAt.SetTypeOnly(true)
+	deferred := model.Edge{SourceLocation: model.Line(4)}
+	deferred.SetDeferred(true)
 	cases := map[string]Result{
 		"zero": {},
 		"full": full,
@@ -69,10 +71,10 @@ func TestResultAppendJSONMatchesMarshal(t *testing.T) {
 			ImportAliases: []ImportAlias{}, MDRefs: []MDRef{}, GoMods: map[string]string{}},
 		"omitted and escaped": {
 			Nodes: []model.Node{{ID: odd, Label: odd}, {Attributes: map[string]string{}}, {Attributes: map[string]string{"b": odd, "a": "1"}}},
-			Edges: []model.Edge{{Source: odd}, {Weight: 1e-7, ConfidenceScore: 1e21}, {Weight: math.Copysign(0, -1), ConfidenceScore: -2.5}, typeOnly, typeOnlyAt},
+			Edges: []model.Edge{{Source: odd}, {Weight: 1e-7, ConfidenceScore: 1e21}, {Weight: math.Copysign(0, -1), ConfidenceScore: -2.5}, typeOnly, typeOnlyAt, deferred},
 			Defs:  []Def{{ID: odd, Abstract: true, Value: true}, {}},
 			Calls: []Call{{Callee: 1}}, CallText: []string{"", odd},
-			Imps: []Imp{{Spec: odd, Names: []string{odd, ""}}, {Rel: true}, {TypeOnly: true}},
+			Imps: []Imp{{Spec: odd, Names: []string{odd, ""}}, {Rel: true}, {TypeOnly: true}, {Dyn: 2}},
 		},
 	}
 	for name, r := range cases {

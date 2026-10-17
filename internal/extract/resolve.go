@@ -160,7 +160,9 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	type impRec struct {
 		imp                *Imp // source, file and location
 		tgt                string
+		rel                model.Relation // 0 is imports_from, or imports if external
 		typeOnly, external bool
+		deferred           bool
 	}
 	var impEdges [][]impRec // parts of impPart
 	type impBatch struct {
@@ -185,6 +187,12 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 			num uint32
 		}
 		ids := map[string]tgtID{}
+		// An import() makes one edge of each kind per source and target.
+		type dynKey struct {
+			src, tgt string
+			rel      model.Relation
+		}
+		dynSeen := map[dynKey]bool{}
 		n := 0
 		add := func(e impRec) {
 			if n%impPart == 0 {
@@ -196,6 +204,21 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		for b := range batches {
 			nextImp := 0
 			for _, r := range b.results {
+				// A closure of the file that defers a target replaces its dynamic_import.
+				var fileDeferred map[string]bool
+				for k := range r.Imps {
+					if im := &r.Imps[k]; im.Dyn == dynDeferred && im.FileID == idutil.MakeID(im.File) {
+						if fileDeferred == nil {
+							fileDeferred = map[string]bool{}
+						}
+						for _, t := range b.targets[nextImp+k] {
+							fileDeferred[idutil.MakeID(t)] = true
+						}
+						if len(b.targets[nextImp+k]) == 0 {
+							fileDeferred[idutil.MakeID(im.Spec)] = true
+						}
+					}
+				}
 				for k := range r.Imps {
 					im := &r.Imps[k]
 					src, ok := srcNum[im.FileID]
@@ -205,6 +228,37 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					}
 					targets := b.targets[nextImp]
 					nextImp++
+					if im.Dyn != 0 {
+						rel := model.RelDynamicImport
+						if im.Dyn == dynDeferred {
+							rel = model.RelImportsFrom
+						}
+						var tgts []string
+						for _, t := range targets {
+							tgts = append(tgts, idutil.MakeID(t))
+						}
+						external := len(tgts) == 0
+						if external {
+							depID := idutil.MakeID(im.Spec)
+							if depID == "" {
+								continue
+							}
+							if !extSeen[depID] {
+								extSeen[depID] = true
+								impNodes = append(impNodes, model.Node{ID: depID, Label: im.Spec, FileType: "concept"})
+							}
+							tgts = append(tgts, depID)
+						}
+						for _, t := range tgts {
+							key := dynKey{im.FileID, t, rel}
+							if dynSeen[key] || rel == model.RelDynamicImport && fileDeferred[t] {
+								continue
+							}
+							dynSeen[key] = true
+							add(impRec{imp: im, tgt: t, rel: rel, external: external, deferred: im.Dyn == dynDeferred})
+						}
+						continue
+					}
 					for _, target := range targets {
 						t, ok := ids[target]
 						if !ok {
@@ -254,7 +308,8 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				targets := importTargets(im, corpus, goPkgs, goMods, goTargets)
 				b.targets = append(b.targets, targets)
 				external[[2]string{im.File, im.Spec}] = len(targets) == 0
-				if len(targets) > 0 {
+				// Only a closure of the file imports for the file; a function's import() runs late.
+				if len(targets) > 0 && (im.Dyn == 0 || im.Dyn == dynDeferred && im.FileID == idutil.MakeID(im.File)) {
 					impTargets[im.File] = append(impTargets[im.File], targets)
 				}
 			}
@@ -564,6 +619,10 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					continue
 				}
 				tgt, conf := "", model.ConfInferred
+				isNew := c.Recv == jsNewRecv
+				if isNew {
+					c.Recv = ""
+				}
 				super, isSelf := selfRecv[c.Recv]
 				if ext := langRecv[c.Recv]; ext != "" && path.Ext(r.File) != ext {
 					isSelf = false
@@ -679,6 +738,10 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				if tgt != "" && langfamily.Cross(r.File, idFile[tgt]) {
 					tgt = ""
 				}
+				// A class of another file binds to `new` only if the file imports it.
+				if isNew && tgt != "" && idFile[tgt] != r.File && jsAlias[[2]string{r.File, c.Callee}] != tgt && !imported.of(r.File)[idFile[tgt]] {
+					tgt = ""
+				}
 				// A call on an external module has no definition to bind, so it
 				// lands on the module's import node.
 				if tgt == "" && i < len(r.CallMods) && r.CallMods[i] != "" && external[[2]string{r.File, r.CallMods[i]}] {
@@ -760,15 +823,19 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	for _, recs := range impEdges {
 		part := make([]model.Edge, 0, len(recs))
 		for _, e := range recs {
-			rel := model.RelImportsFrom
-			if e.external {
-				rel = model.RelImports
+			rel := e.rel
+			if rel == 0 {
+				rel = model.RelImportsFrom
+				if e.external {
+					rel = model.RelImports
+				}
 			}
 			part = append(part, model.Edge{
 				Source: e.imp.FileID, Target: e.tgt, Relation: rel,
 				Confidence: model.ConfExtracted, SourceFile: fc.of(e.imp.File), SourceLocation: e.imp.Loc,
 			})
 			part[len(part)-1].SetTypeOnly(e.typeOnly)
+			part[len(part)-1].SetDeferred(e.deferred)
 		}
 		edges = append(edges, part)
 	}

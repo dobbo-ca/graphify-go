@@ -146,6 +146,20 @@ func TestAffectedRelation(t *testing.T) {
 	}
 }
 
+// A dynamic import() is a dependency: changing the target reaches the importer.
+func TestAffectedDynamicImport(t *testing.T) {
+	g := loadJSON(t, `{"directed":true,"multigraph":false,"graph":{},
+"nodes":[
+ {"id":"lazy","label":"lazy.ts","file_type":"code","source_file":"lazy.ts","source_location":"L1"},
+ {"id":"app","label":"app.ts","file_type":"code","source_file":"app.ts","source_location":"L1"}
+],
+"links":[{"source":"app","target":"lazy","relation":"dynamic_import","confidence":"EXTRACTED"}],
+"hyperedges":[]}`)
+	if got := impacted(Affected(g, []string{"lazy.ts"}, AffectedOptions{})); !got["app"] {
+		t.Errorf("app.ts should be impacted through dynamic_import, got %v", got)
+	}
+}
+
 // A seed naming the same file in bare, "./"-prefixed and absolute form must
 // return the identical result — agents hold whichever form they already have.
 func TestAffectedSeedPathForms(t *testing.T) {

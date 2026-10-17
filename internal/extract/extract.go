@@ -111,6 +111,10 @@ type Imp struct {
 	Rel bool
 	// Export marks a JS/TS `export ... from Spec`.
 	Export bool `json:",omitempty"`
+	// Dyn marks a JS/TS `import(Spec)`: dynImport asks for a file-level
+	// dynamic_import, dynDeferred for a deferred imports_from from FileID,
+	// which is then the function holding the call.
+	Dyn uint8 `json:",omitempty"`
 	// Names are the names a Python `from Spec import ...` or Rust `use Spec::...`
 	// binds; each may be a module. For JS/TS see jsImp: a name costs 16 bytes and
 	// its text, a bare import nothing; Export fits the padding after Rel.
@@ -523,6 +527,23 @@ func (b *builder) imp(spec string, loc model.Loc) { b.impTyped(spec, loc, false)
 func (b *builder) impTyped(spec string, loc model.Loc, typeOnly bool) {
 	if spec != "" {
 		b.res.Imps = append(b.res.Imps, Imp{FileID: b.fileID, File: b.file, Spec: spec, Loc: loc, TypeOnly: typeOnly})
+	}
+}
+
+const (
+	dynImport uint8 = iota + 1
+	dynDeferred
+)
+
+// impDynamic records `import(spec)`: the file depends on it late, and so does
+// caller, the function holding the call, when there is one.
+func (b *builder) impDynamic(spec string, loc model.Loc, caller string) {
+	if spec == "" {
+		return
+	}
+	b.res.Imps = append(b.res.Imps, Imp{FileID: b.fileID, File: b.file, Spec: spec, Loc: loc, Dyn: dynImport})
+	if caller != "" {
+		b.res.Imps = append(b.res.Imps, Imp{FileID: caller, File: b.file, Spec: spec, Loc: loc, Dyn: dynDeferred})
 	}
 }
 

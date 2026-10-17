@@ -10,7 +10,7 @@ import (
 // depRelations are the edge relations that mean "source depends on target", so
 // reversing them finds the things impacted when the target changes.
 var depRelations = map[string]bool{
-	"calls": true, "imports": true, "imports_from": true,
+	"calls": true, "imports": true, "imports_from": true, "dynamic_import": true,
 	"references": true, "depends_on": true, "inherits_context": true,
 }
 

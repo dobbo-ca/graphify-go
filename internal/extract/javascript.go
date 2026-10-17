@@ -21,6 +21,7 @@ import (
 func init() {
 	for _, l := range []*gositter.Language{tsjs.Language(), tsts.Language(), tstsx.Language()} {
 		l.KindMask("call_expression")
+		l.KindMask("new_expression")
 		l.KindMask("export_statement")
 	}
 }
@@ -42,9 +43,8 @@ func extractJS(rel string, src []byte, langPtr *gositter.Language) Result {
 	slices.SortStableFunc(b.jsBodies, func(x, y jsBody) int { return cmp.Compare(x.start, y.start) })
 	next := 0
 	var open []jsBody
-	walkKinds(root, langPtr.KindMask("call_expression"), func(cv ts.Node) bool {
+	walkKinds(root, langPtr.KindMask("call_expression")|langPtr.KindMask("new_expression"), func(cv ts.Node) bool {
 		c := &cv
-		b.jsCallImport(c, src)
 		for len(open) > 0 && c.StartByte() >= open[len(open)-1].end {
 			open = open[:len(open)-1]
 		}
@@ -54,6 +54,11 @@ func extractJS(rel string, src []byte, langPtr *gositter.Language) Result {
 			}
 			next++
 		}
+		caller := ""
+		if len(open) > 0 {
+			caller = open[len(open)-1].callerID
+		}
+		b.jsCallImport(c, src, caller)
 		if len(open) > 0 {
 			b.jsCall(c, open[len(open)-1], src)
 		}
@@ -204,21 +209,32 @@ func (b *builder) jsChildren(n *ts.Node, src []byte, owner string) {
 	}
 }
 
-// jsCallImport records `require("m")` and dynamic `import("m")` as imports.
-// Only a lone string literal counts; a computed spec names no file.
-func (b *builder) jsCallImport(n *ts.Node, src []byte) {
+// jsCallImport records `require("m")` and dynamic `import("m")` as imports;
+// caller is the function holding the call. A computed spec names no file.
+func (b *builder) jsCallImport(n *ts.Node, src []byte, caller string) {
 	if n.Kind() != "call_expression" {
 		return
 	}
 	fn, args := n.ChildByFieldName("function"), n.ChildByFieldName("arguments")
-	if fn == nil || args == nil || args.NamedChildCount() != 1 {
+	if fn == nil || args == nil || args.NamedChildCount() == 0 {
 		return
 	}
-	if fn.Kind() != "import" && (fn.Kind() != "identifier" || fn.Utf8Text(src) != "require") {
-		return
-	}
-	if a := args.NamedChild(0); a.Kind() == "string" {
-		b.imp(unquote(a.Utf8Text(src)), line(n))
+	a := args.NamedChild(0)
+	switch {
+	case fn.Kind() == "identifier" && fn.Utf8Text(src) == "require":
+		if args.NamedChildCount() == 1 && a.Kind() == "string" {
+			b.imp(unquote(a.Utf8Text(src)), line(n))
+		}
+	case fn.Kind() == "import":
+		switch a.Kind() {
+		case "string":
+			b.impDynamic(unquote(a.Utf8Text(src)), line(n), caller)
+		case "template_string":
+			// a substitution makes the spec computed
+			if spec := strings.Trim(a.Utf8Text(src), "`"); !strings.Contains(spec, "$") {
+				b.impDynamic(spec, line(n), caller)
+			}
+		}
 	}
 }
 
@@ -1117,11 +1133,44 @@ func (b *builder) jsCalls(body *ts.Node, callerID string) {
 	b.jsBodies = append(b.jsBodies, jsBody{body.StartByte(), body.EndByte(), callerID, slices.Clone(b.jsNS)})
 }
 
-// jsCall records the call site c, a call_expression, for the body's caller.
+// jsNewBuiltins are the names upstream never binds a `new` to: its one
+// builtin list for every language, Swift types included.
+var jsNewBuiltins = map[string]bool{}
+
+func init() {
+	for _, n := range strings.Fields(`String Number Boolean Object Array Symbol BigInt Date RegExp Error
+		TypeError RangeError SyntaxError ReferenceError EvalError URIError Promise Map Set WeakMap
+		WeakSet JSON Math Reflect Proxy Intl parseInt parseFloat isNaN isFinite encodeURIComponent
+		decodeURIComponent encodeURI decodeURI URL URLSearchParams FormData Blob File Headers
+		Request Response AbortController AbortSignal TextEncoder TextDecoder console str int float
+		bool list dict set tuple bytes len range enumerate zip map filter sum min max print open
+		isinstance type super sorted reversed any all abs round next iter hash id repr callable
+		getattr setattr hasattr delattr vars dir Int Int8 Int16 Int32 Int64 UInt UInt8 UInt16
+		UInt32 UInt64 Double Float Bool Character Sendable Codable Decodable Encodable Equatable
+		Hashable Identifiable Comparable CaseIterable RawRepresentable CustomStringConvertible
+		CustomDebugStringConvertible AnyObject LocalizedError Data UUID Decimal Calendar Locale
+		TimeZone Bundle IndexPath IndexSet NotificationCenter UserDefaults FileManager URLSession
+		URLRequest URLComponents JSONDecoder JSONEncoder DateFormatter NumberFormatter
+		ISO8601DateFormatter NSObject NSString NSError NSLock NSAttributedString DispatchQueue
+		DispatchGroup OperationQueue RunLoop View Color Font`) {
+		jsNewBuiltins[n] = true
+	}
+}
+
+// jsNewRecv marks the call of a `new X()`, which binds only with import evidence.
+const jsNewRecv = "\x00new"
+
+// jsCall records the call site c, a call_expression or new_expression, for
+// the body's caller.
 func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte) {
 	callerID := body.callerID
+	isNew := c.Kind() == "new_expression"
 	fn := c.ChildByFieldName("function")
-	if fn == nil || callerID == "" {
+	if isNew {
+		fn = c.ChildByFieldName("constructor")
+	}
+	// A file-level `new` makes no edge upstream.
+	if fn == nil || callerID == "" || isNew && callerID == b.fileID {
 		return
 	}
 	// A method body is a boundary: its calls are no caller's.
@@ -1133,6 +1182,12 @@ func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte) {
 	switch fn.Kind() {
 	case "identifier":
 		name := fn.Utf8Text(src)
+		if isNew {
+			if !jsNewBuiltins[name] {
+				b.callRecv(callerID, name, jsNewRecv, line(c))
+			}
+			return
+		}
 		for s := callerID; s != ""; s = b.jsParent[s] {
 			if id, ok := b.jsNested[[2]string{s, name}]; ok {
 				b.jsNestedCall(callerID, id, line(c))
@@ -1153,7 +1208,7 @@ func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte) {
 		}
 		b.call(callerID, name, line(c))
 	case "member_expression":
-		if p := fn.ChildByFieldName("property"); p != nil {
+		if p := fn.ChildByFieldName("property"); p != nil && !isNew {
 			b.callRecv(callerID, p.Utf8Text(src), recvText(fn, p, src), line(c))
 		}
 	}

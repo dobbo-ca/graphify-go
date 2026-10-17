@@ -70,6 +70,9 @@ func (r *Result) AppendJSON(b []byte) ([]byte, error) {
 		if i.Export {
 			b = append(b, `"Export":true,`...)
 		}
+		if i.Dyn != 0 {
+			b = append(strconv.AppendUint(append(b, `"Dyn":`...), uint64(i.Dyn), 10), ',')
+		}
 		b = append(b, `"Names":`...)
 		b, _ = appendJSONArr(b, i.Names, func(b []byte, s *string) ([]byte, error) {
 			return model.AppendJSONString(b, *s), nil
@@ -195,6 +198,9 @@ func appendJSONEdge(b []byte, e *model.Edge) ([]byte, error) {
 	b = appendJSONFields(b, `{"source":`, e.Source, `,"target":`, e.Target, `,"relation":`, e.Relation.String(), `,"confidence":`, e.Confidence.String())
 	if e.TypeOnly() {
 		b = append(b, `,"type_only":true`...)
+	}
+	if e.Deferred() {
+		b = append(b, `,"deferred":true`...)
 	}
 	if e.SourceFile != 0 {
 		b = appendJSONFields(b, `,"source_file":`, e.SourceFile.String())
