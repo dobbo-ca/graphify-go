@@ -383,6 +383,60 @@ export function shadowCls() { class Y {} return new Y(); }
 	})
 }
 
+// A namespace class binds like a bare call, a nested block's class shadows
+// nothing, and an aliased import falls back to the class of that name.
+func TestJSNewScopes(t *testing.T) {
+	got := edgeSet(t, [][2]string{
+		{"ns.ts", `namespace Foo.Bar { class Greeter {} function foo() { return new Greeter(); } }
+module m1 { class C2 {} export function f11() { return new C2(); } }
+namespace Solo { export class Box {} export function mk() { return new Box(); } }
+`},
+		{"m.ts", "export class Widget {}\n"},
+		{"u.ts", `import { Widget } from './m';
+export function sh3() { if (true) { class Widget {} return new Widget(); } }
+export function sh5() { { class Widget {} } return new Widget(); }
+export function sh6() { const g = () => { class Widget {} return 1; }; return new Widget(); }
+export function own() { class Widget {} return new Widget(); }
+`},
+		{"lib.ts", "export class ChannelClient {}\nexport class IPCClient {}\n"},
+		{"use.ts", "import { ChannelClient as IPCClient } from './lib';\nexport function mk() { return new IPCClient(); }\n"},
+		{"st/a.ts", "export class Store {}\n"},
+		{"st/b.ts", "export class Store {}\n"},
+		{"two.ts", "import { Store as S } from './st/a';\nimport './st/b';\nexport function b2() { return new Store(); }\n"},
+	}, "calls")
+	checkEdges(t, got, []string{
+		"ns.ts:foo() calls ns.ts:Greeter",
+		"ns.ts:f11() calls ns.ts:C2",
+		"ns.ts:mk() calls ns.ts:Box",
+		"u.ts:sh3() calls m.ts:Widget",
+		"u.ts:sh5() calls m.ts:Widget",
+		"u.ts:sh6() calls m.ts:Widget",
+		"use.ts:mk() calls lib.ts:IPCClient",
+		"two.ts:b2() calls st/a.ts:Store",
+	}, []string{"u.ts:own() calls m.ts:Widget", "use.ts:mk() calls lib.ts:ChannelClient"})
+}
+
+// An external module imported statically still gets the file's dynamic_import.
+func TestJSDynamicImportExternalBehindStatic(t *testing.T) {
+	got := edgeSet(t, [][2]string{
+		{"a.ts", "import React from 'react';\nexport function f() { return import('react'); }\n"},
+	}, "imports_from", "dynamic_import")
+	checkEdges(t, got, []string{"a.ts:a.ts dynamic_import :react", "a.ts:f() imports_from :react deferred"}, nil)
+}
+
+// A file-level deferred import marks the static one of the pair, whatever the order.
+func TestJSDeferredBeatsStaticEitherOrder(t *testing.T) {
+	b := [2]string{"b.js", "const a = require('./a');\n"}
+	for _, a := range []string{
+		"describe('x', () => { import('./b'); });\nconst b = require('./b');\n",
+		"const b = require('./b');\ndescribe('x', () => { import('./b'); });\n",
+		"import './b';\ndescribe('x', () => { import('./b'); });\n",
+	} {
+		got := edgeSet(t, [][2]string{{"a.js", a}, b}, "imports_from")
+		checkEdges(t, got, []string{"a.js:a.js imports_from b.js:b.js deferred"}, []string{"a.js:a.js imports_from b.js:b.js"})
+	}
+}
+
 // A static import of the target hides the file's dynamic_import.
 func TestJSDynamicImportBehindStaticImport(t *testing.T) {
 	got := edgeSet(t, [][2]string{

@@ -187,7 +187,6 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 			num uint32
 		}
 		ids := map[string]tgtID{}
-		// one edge per kind, source, target
 		type dynKey struct {
 			src, tgt string
 			rel      model.Relation
@@ -220,7 +219,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					for _, t := range b.targets[nextImp+k] {
 						fileHas[idutil.MakeID(t)] = true
 					}
-					if len(b.targets[nextImp+k]) == 0 {
+					if len(b.targets[nextImp+k]) == 0 && im.Dyn == dynDeferred {
 						fileHas[idutil.MakeID(im.Spec)] = true
 					}
 				}
@@ -260,6 +259,13 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 								continue
 							}
 							dynSeen[key] = true
+							// upstream lets deferred win a static pair
+							if tn, ok := tgtNum[t]; ok {
+								if i, ok := impEdge[uint64(src)<<32|uint64(tn)]; ok && im.Dyn == dynDeferred {
+									impEdges[i/impPart][i%impPart].deferred = true
+									continue
+								}
+							}
 							add(impRec{imp: im, tgt: t, rel: rel, external: external, deferred: im.Dyn == dynDeferred})
 						}
 						continue
@@ -273,6 +279,9 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 								tgtNum[t.id] = t.num
 							}
 							ids[target] = t
+						}
+						if dynSeen[dynKey{im.FileID, t.id, model.RelImportsFrom}] {
+							continue
 						}
 						ekey := uint64(src)<<32 | uint64(t.num)
 						if i, ok := impEdge[ekey]; ok {
@@ -625,6 +634,16 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		bareJS := map[string][]string{}    // callee -> its global list without class members
 		for _, r := range results {
 			rf := model.FileOf(r.File)
+			var named map[string]bool // definitions a name import of r binds
+			symImp := func(id string) bool {
+				if named == nil {
+					named = map[string]bool{}
+					for _, d := range jm.bound(&r) {
+						named[d] = true
+					}
+				}
+				return named[id]
+			}
 			for i, n := range r.Calls {
 				c := r.call(n)
 				if len(resolved) > 0 && resolved[callSite{c.CallerID, c.Callee, c.Loc}] {
@@ -734,9 +753,16 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					// to disambiguate rather than guess.
 					if c.Recv == "" {
 						tgt = jsAlias[lkey]
+						// new binds by the class's own name
+						if isNew && !slices.Contains(local[[2]string{idFile[tgt], c.Callee}], tgt) {
+							tgt = ""
+						}
 					}
 					if tgt == "" && len(here) == 1 {
 						tgt = here[0]
+					}
+					if tgt == "" && isNew {
+						tgt = unique(all, symImp)
 					}
 					if tgt == "" {
 						tgt = disambiguate(all, r.File, idFile, &imported)
@@ -754,7 +780,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				if isNew && tgt != "" {
 					cross := idFile[tgt] != r.File
 					if tgt == owner[c.CallerID] || !slices.Contains(local[[2]string{idFile[tgt], c.Callee}], tgt) ||
-						cross && (jsAlias[[2]string{r.File, c.Callee}] != tgt && !imported.of(r.File)[idFile[tgt]] || refd()[[2]string{c.CallerID, tgt}]) {
+						cross && (!symImp(tgt) && !imported.of(r.File)[idFile[tgt]] || refd()[[2]string{c.CallerID, tgt}]) {
 						tgt = ""
 					}
 				}

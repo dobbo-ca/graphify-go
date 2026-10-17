@@ -276,7 +276,7 @@ func (b *builder) jsCallImport(n *ts.Node, src []byte, caller string) {
 			b.imp(unquote(args.NamedChild(0).Utf8Text(src)), line(n))
 		}
 	case fn.Kind() == "import":
-		// import x = require() recovers as a call
+		// TS import-equals parses as a call
 		if strings.TrimSpace(string(src[fn.EndByte():args.StartByte()])) != "" && one {
 			b.imp(unquote(args.NamedChild(0).Utf8Text(src)), line(n))
 		}
@@ -1131,6 +1131,15 @@ type jsBody struct {
 // jsFnBody registers a function body and the functions declared inside it.
 func (b *builder) jsFnBody(body *ts.Node, callerID string, src []byte) {
 	b.jsCalls(body, callerID)
+	// only a class of the body itself shadows an imported one
+	for i := uint(0); body != nil && i < body.ChildCount(); i++ {
+		if c := body.Child(i); c.Kind() == "class_declaration" {
+			if b.jsLocalCls == nil {
+				b.jsLocalCls = map[[2]string]bool{}
+			}
+			b.jsLocalCls[[2]string{callerID, fieldText(c, "name", src)}] = true
+		}
+	}
 	b.jsNestedFuncs(body, callerID, src)
 }
 
@@ -1159,12 +1168,6 @@ func (b *builder) jsNestedFuncs(n *ts.Node, parent string, src []byte) {
 				b.jsScope(parent, name, id)
 			}
 			b.jsFnBody(c.ChildByFieldName("body"), id, src)
-		case "class_declaration":
-			if b.jsLocalCls == nil {
-				b.jsLocalCls = map[[2]string]bool{}
-			}
-			b.jsLocalCls[[2]string{parent, fieldText(c, "name", src)}] = true
-			b.jsNestedFuncs(c, parent, src)
 		case "method_definition":
 			b.jsCalls(c.ChildByFieldName("body"), "")
 			b.jsNestedFuncs(c, parent, src)
@@ -1263,10 +1266,7 @@ func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte) {
 				return
 			}
 		}
-		if isNew {
-			if !jsNewBuiltins[name] {
-				b.callRecv(callerID, name, jsNewRecv, line(c))
-			}
+		if isNew && jsNewBuiltins[name] {
 			return
 		}
 		// Innermost namespace first; a name in none is a plain global call.
@@ -1276,6 +1276,10 @@ func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte) {
 				b.jsNestedCall(callerID, id, line(c))
 				return
 			}
+		}
+		if isNew {
+			b.callRecv(callerID, name, jsNewRecv, line(c))
+			return
 		}
 		// The file's contains edge to its own function hides this call upstream.
 		if callerID == b.fileID && b.jsFileOwns(name) {
