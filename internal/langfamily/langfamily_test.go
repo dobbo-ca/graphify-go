@@ -28,3 +28,11 @@ func TestCross(t *testing.T) {
 		}
 	}
 }
+
+func TestComponent(t *testing.T) {
+	for f, want := range map[string]bool{"App.vue": true, "P.SVELTE": true, "a.astro": true, "t.ejs": true, "a.ts": false, "": false} {
+		if Component(f) != want {
+			t.Errorf("Component(%q) = %v", f, !want)
+		}
+	}
+}

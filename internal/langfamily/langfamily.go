@@ -70,3 +70,13 @@ func Cross(a, b string) bool {
 	fa, fb := Of(a), Of(b)
 	return fa != "" && fb != "" && fa != fb
 }
+
+// Component reports a single-file component. Extractors treat it as jsts, but
+// upstream's edge filter has no family for it, so its edges are never dropped.
+func Component(sourceFile string) bool {
+	switch strings.ToLower(filepath.Ext(sourceFile)) {
+	case ".vue", ".svelte", ".astro", ".ejs":
+		return true
+	}
+	return false
+}

@@ -232,6 +232,9 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					}
 					targets := b.targets[nextImp]
 					nextImp++
+					if jsSelfFallback(im, targets) {
+						continue
+					}
 					if im.Dyn != 0 {
 						rel := model.RelDynamicImport
 						if im.Dyn == dynDeferred {
@@ -597,6 +600,41 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		}
 	}
 
+	// Upstream indexes every node, not just defs.
+	newIDs, newFile := map[string][]string{}, map[string]string{}
+	newIndex := sync.OnceFunc(func() {
+		names := map[string]bool{}
+		for _, r := range results {
+			if k := slices.Index(r.CallText, jsNewRecv); k > 0 {
+				for _, n := range r.Calls {
+					if n.Recv == uint32(k) {
+						names[r.CallText[n.Callee]] = true
+					}
+				}
+			}
+		}
+		for _, r := range results {
+			if !jsLike(r.File) {
+				continue
+			}
+			// member labels carry the owner
+			for _, d := range r.Defs {
+				if _, ok := newFile[d.ID]; names[d.Name] && !ok {
+					newIDs[d.Name] = append(newIDs[d.Name], d.ID)
+					newFile[d.ID] = r.File
+				}
+			}
+			for _, n := range r.Nodes {
+				if _, ok := newFile[n.ID]; !ok && n.FileType != "rationale" {
+					if l := strings.TrimLeft(strings.Trim(n.Label, "()"), "."); names[l] {
+						newIDs[l] = append(newIDs[l], n.ID)
+						newFile[n.ID] = r.File
+					}
+				}
+			}
+		}
+	})
+
 	// Calls: prefer a definition in the same file, else disambiguate among the
 	// definitions sharing the called name (unique global, imported file, or same
 	// package) rather than guessing. A member call binds on its receiver: self/this
@@ -719,6 +757,10 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 						}
 						all = ids
 					}
+					if isNew {
+						newIndex()
+						all = newIDs[c.Callee]
+					}
 					if c.Recv != "" {
 						q := recvTail(c.Recv)
 						ok := func(id string) bool { return q != "" && quals[id].has(q) }
@@ -762,9 +804,9 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 						tgt = here[0]
 					}
 					if tgt == "" && isNew && len(all) > 1 {
-						// upstream never breaks a tie by directory
+						// no directory tie-break upstream
 						if tgt = unique(all, symImp); tgt == "" {
-							tgt = unique(all, func(id string) bool { return imported.of(r.File)[idFile[id]] })
+							tgt = unique(all, func(id string) bool { return imported.of(r.File)[newFile[id]] })
 						}
 					} else if tgt == "" {
 						tgt = disambiguate(all, r.File, idFile, &imported)
@@ -775,7 +817,8 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				// and a name match across a family boundary is a phantom edge, not a
 				// real call. Unknown families (non-code, unrecognized ext) stay
 				// permissive.
-				if tgt != "" && langfamily.Cross(r.File, idFile[tgt]) {
+				if tgt != "" && langfamily.Cross(r.File, idFile[tgt]) &&
+					!(langfamily.Component(r.File) && c.Recv == "" && tgt == jsAlias[[2]string{r.File, c.Callee}]) {
 					tgt = ""
 				}
 				// new needs import evidence
@@ -1653,9 +1696,6 @@ func importTargets(im Imp, corpus map[string]bool, goPkgs map[string][]string, g
 			}
 			for _, to := range tos {
 				t := resolveRelImport(im.File, strings.TrimSuffix(spec, ext)+to, corpus)
-				if t == from {
-					break // upstream stops here
-				}
 				if t != "" {
 					return []string{t}
 				}
@@ -1663,6 +1703,13 @@ func importTargets(im Imp, corpus map[string]bool, goPkgs map[string][]string, g
 		}
 	}
 	return out
+}
+
+// jsSelfFallback reports a './x.js' that fell back to the importing file
+// itself, which upstream drops.
+func jsSelfFallback(im *Imp, targets []string) bool {
+	ext := path.Ext(im.Spec)
+	return len(targets) == 1 && targets[0] == im.File && (ext == ".js" || ext == ".jsx") && path.Ext(im.File) != ext
 }
 
 // resolveRustPath maps a `crate::`, `self::` or `super::` path to the corpus

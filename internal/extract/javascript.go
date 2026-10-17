@@ -136,6 +136,9 @@ func extractJSFile(rel string, src []byte, langPtr *gositter.Language) Result {
 		if slash {
 			continue
 		}
+		if src[k+1] == '/' { // upstream drops an empty package name
+			continue
+		}
 		res.Imps = append(res.Imps, Imp{FileID: fileID, File: rel, Spec: string(src[k+1 : end]), Loc: model.Line(line), Dyn: dynImport})
 	}
 	return res

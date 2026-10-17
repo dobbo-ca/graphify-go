@@ -49,6 +49,9 @@ func extractComponent(rel string, src []byte, isAstro bool) Result {
 	fileID := idutil.MakeID(rel)
 	for _, m := range dynamicImportRE.FindAllSubmatchIndex(src, -1) {
 		spec := string(src[m[2]:m[3]])
+		if strings.HasPrefix(spec, "/") { // upstream drops an empty package name
+			continue
+		}
 		if spec == "" {
 			continue
 		}

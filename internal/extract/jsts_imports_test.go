@@ -38,7 +38,7 @@ export function main() { Button(); render(); bothTs(); realJs(); jsxTs() }
 		{"plain.js:plain.js", "imports_from", "Button.tsx:Button.tsx"},
 		{"App.vue:App.vue", "imports_from", "Button.tsx:Button.tsx"},
 		{"barrel.ts:barrel.ts", "re_exports", "Comp.tsx:Comp.tsx"},
-		// bound by the alias, not the tie-break: render() is defined twice
+		// the alias binds, not a tie-break
 		{"main.ts:main()", "calls", "Widget.tsx:render()"},
 	} {
 		if !edges[want] {
@@ -158,7 +158,7 @@ describe('x', () => { new Circle(); new Local(); });
 		"noeffect.ts:c() calls side.ts:Side",
 		"builtin.ts:r() calls builtin.ts:Response",
 	})
-	// no edge for a builtin name, or for a new at the file level or in its closure
+	// no edge: builtin, file level or closure
 	for k := range got {
 		if strings.HasPrefix(k, "main.ts:mkMap") || strings.HasPrefix(k, "main.ts:main.ts calls") {
 			t.Errorf("unexpected edge %q", k)
@@ -228,7 +228,7 @@ func TestJSDynamicImportInTopLevelClosure(t *testing.T) {
 	checkEdges(t, got, []string{"spec.ts:spec.ts imports_from a.ts:a.ts deferred"},
 		[]string{"spec.ts:spec.ts dynamic_import a.ts:a.ts", "spec.ts:spec.ts imports_from a.ts:a.ts"})
 
-	// the closure of the file wins over a function, for the same target
+	// closure beats function
 	got = edgeSet(t, [][2]string{a, {"spec.ts", "function f() { import('./a'); }\ndescribe('x', () => { import('./a'); });\n"}}, "imports_from", "dynamic_import")
 	checkEdges(t, got, []string{"spec.ts:spec.ts imports_from a.ts:a.ts deferred", "spec.ts:f() imports_from a.ts:a.ts deferred"},
 		[]string{"spec.ts:spec.ts dynamic_import a.ts:a.ts"})
@@ -492,4 +492,72 @@ func TestJSDynamicImportLines(t *testing.T) {
 	if want := "./a@L1 ./b@L3 ./e@L5 ./f@L5"; strings.Join(got, " ") != want {
 		t.Errorf("got %v, want %s", got, want)
 	}
+}
+
+// import("/x") names no package: only the function defers it.
+func TestJSDynamicImportAbsolute(t *testing.T) {
+	got := edgeSet(t, [][2]string{
+		{"a.ts", "/** @type {typeof import(\"/some-mod\")} */\nconst top = import(\"/abs/top\");\nexport function f() { return import(\"/abs/inner\"); }\n"},
+		{"R.vue", "<script setup lang=\"ts\">\nfunction g() { return import('/abs/vue'); }\n</script>\n"},
+	}, "imports_from", "dynamic_import")
+	checkEdges(t, got, []string{"a.ts:f() imports_from :/abs/inner deferred", "R.vue:g() imports_from :/abs/vue deferred"}, []string{
+		"a.ts:a.ts dynamic_import :/some-mod", "a.ts:a.ts dynamic_import :/abs/top", "a.ts:a.ts dynamic_import :/abs/inner",
+		"R.vue:R.vue dynamic_import :/abs/vue",
+	})
+}
+
+// A .js specifier that falls back to its own file is resolved, not external.
+func TestJSImportJsSelfNotExternal(t *testing.T) {
+	srcs := [][2]string{
+		{"self.ts", "import './self.js';\nexport async function s() { return import('./self.js'); }\n"},
+		{"self.tsx", "export class Z {}\n"},
+		{"me.ts", "export class M {}\n"},
+		{"me.tsx", "import './me.jsx';\n"},
+	}
+	var results []Result
+	var files []string
+	for _, s := range srcs {
+		results = append(results, FileFromBytes(s[0], []byte(s[1])))
+		files = append(files, s[0])
+	}
+	for _, n := range Resolve(results, files).Nodes {
+		if strings.Contains(n.Label, ".js") {
+			t.Errorf("external stub node %q", n.Label)
+		}
+	}
+	got := edgeSet(t, srcs, "imports", "imports_from", "dynamic_import")
+	checkEdges(t, got, nil, []string{
+		"self.ts:self.ts imports :./self.js", "me.tsx:me.tsx imports :./me.jsx", "self.ts:self.ts imports_from self.tsx:self.tsx",
+		"self.ts:self.ts imports_from self.ts:self.ts", "me.tsx:me.tsx imports_from me.tsx:me.tsx",
+		"self.ts:self.ts dynamic_import self.ts:self.ts", "self.ts:s() imports_from self.ts:self.ts deferred",
+	})
+}
+
+// A component keeps an import and a call bound through it, whatever the language.
+func TestSFCImportKeepsPythonCall(t *testing.T) {
+	got := edgeSet(t, [][2]string{
+		{"util.py", "def helper(): pass\n"},
+		{"App.vue", "<script setup lang=\"ts\">\nimport { helper } from './util.py';\nfunction run() { helper(); other(); }\n</script>\n"},
+		{"o.py", "def other(): pass\n"},
+	}, "imports_from", "calls")
+	checkEdges(t, got, []string{"App.vue:App.vue imports_from util.py:util.py", "App.vue:run() calls util.py:helper()"},
+		[]string{"App.vue:run() calls o.py:other()"})
+}
+
+// Namespaces, values and class members of the same name make a new X() ambiguous.
+func TestJSNewAmbiguousWithOtherNodes(t *testing.T) {
+	got := edgeSet(t, [][2]string{
+		{"s1.ts", "export class A {}\nexport class D {}\nexport class E {}\nexport class Order {}\nexport class User {}\nexport class Solo {}\nexport namespace M { export const z = 1; }\n"},
+		{"t.ts", "export namespace A { export const x = 1; }\nexport const D = 1;\nexport class K { E() {} }\n"},
+		{"api.ts", "export class Client { User() { return 1; } }\n"},
+		{"m.ts", "export class M {}\n"},
+		{"u.ts", "import * as S from './s1';\nimport * as T from './t';\nimport * as Q from './m';\nexport function f() { new A(); new D(); new E(); new M(); }\n"},
+		{"w.ts", "import { A, D } from './s1';\nimport './t';\nexport function h() { new A(); new D(); new E(); }\n"},
+		{"svc.ts", "import { Order as O } from './s1';\nimport { Client } from './api';\nexport function make() { new User(); new Order(); return new Client(); }\n"},
+		{"solo.ts", "import { Solo } from './s1';\nexport function k() { return new Solo(); }\n"},
+	}, "calls")
+	checkEdges(t, got, []string{"svc.ts:make() calls api.ts:Client", "solo.ts:k() calls s1.ts:Solo", "w.ts:h() calls s1.ts:A", "w.ts:h() calls s1.ts:D"}, []string{
+		"u.ts:f() calls s1.ts:A", "u.ts:f() calls s1.ts:D", "u.ts:f() calls s1.ts:E", "u.ts:f() calls m.ts:M", "u.ts:f() calls s1.ts:M",
+		"w.ts:h() calls s1.ts:E", "svc.ts:make() calls s1.ts:User",
+	})
 }
