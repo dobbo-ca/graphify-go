@@ -160,7 +160,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	type impRec struct {
 		imp                *Imp // source, file and location
 		tgt                string
-		rel                model.Relation // imports if external
+		rel                model.Relation // 0: imports_from, or imports
 		typeOnly, external bool
 		deferred           bool
 	}
@@ -213,7 +213,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				}
 				for k := range r.Imps {
 					im := &r.Imps[k]
-					if fileHas == nil || im.Dyn == dynImport || im.Dyn == dynDeferred && im.FileID != idutil.MakeID(im.File) {
+					if fileHas == nil || im.Dyn == dynImport || im.Dyn == dynDeferred && im.FileID != idutil.MakeID(im.File) || im.Dyn == 0 && jsSelfFallback(im, b.targets[nextImp+k]) {
 						continue
 					}
 					for _, t := range b.targets[nextImp+k] {
@@ -232,7 +232,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					}
 					targets := b.targets[nextImp]
 					nextImp++
-					if jsSelfFallback(im, targets) {
+					if im.Dyn == 0 && jsSelfFallback(im, targets) {
 						continue
 					}
 					if im.Dyn != 0 {
@@ -600,7 +600,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		}
 	}
 
-	// Upstream indexes every node, not just defs.
+	// Upstream indexes all nodes, not defs.
 	newIDs, newFile := map[string][]string{}, map[string]string{}
 	newIndex := sync.OnceFunc(func() {
 		names := map[string]bool{}
@@ -921,6 +921,9 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				Source: e.imp.FileID, Target: e.tgt, Relation: rel,
 				Confidence: model.ConfExtracted, SourceFile: fc.of(e.imp.File), SourceLocation: e.imp.Loc,
 			})
+			if rel == model.RelDynamicImport {
+				part[len(part)-1].SourceLocation = 0 // upstream writes none
+			}
 			part[len(part)-1].SetTypeOnly(e.typeOnly)
 			part[len(part)-1].SetDeferred(e.deferred)
 		}

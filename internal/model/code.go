@@ -47,7 +47,7 @@ var (
 )
 
 // codeTable gives each string a number. Lookups by number take no lock.
-// No cap: a code wraps past 2^30 strings (Loc), a table over 20 GB.
+// No cap: a code wraps past 2^29 strings (Loc), a table over 10 GB.
 type codeTable struct {
 	mu    sync.RWMutex
 	ids   map[string]uint32

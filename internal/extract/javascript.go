@@ -7,6 +7,7 @@ import (
 	tsjs "github.com/dobbo-ca/gositter/grammars/javascript"
 	tstsx "github.com/dobbo-ca/gositter/grammars/tsx"
 	tsts "github.com/dobbo-ca/gositter/grammars/typescript"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
@@ -54,13 +55,13 @@ func extractJS(rel string, src []byte, langPtr *gositter.Language) Result {
 			}
 			next++
 		}
-		caller := ""
+		var body jsBody
 		if len(open) > 0 {
-			caller = open[len(open)-1].callerID
+			body = open[len(open)-1]
 		}
-		b.jsCallImport(c, src, caller)
+		b.jsCallImport(c, src, body.callerID, body)
 		if len(open) > 0 {
-			b.jsCall(c, open[len(open)-1], src)
+			b.jsCall(c, body, src)
 		}
 		return true
 	})
@@ -95,7 +96,7 @@ func extractJSFile(rel string, src []byte, langPtr *gositter.Language) Result {
 		}
 		return i
 	}
-	line, prev, slash := 1, 0, false // slash: a // opens the current line
+	line, prev, slash := 1, 0, false // slash: // seen on this line
 	for i := 0; ; {
 		j := bytes.Index(src[i:], []byte("import"))
 		if j < 0 {
@@ -271,9 +272,63 @@ func (b *builder) jsChildren(n *ts.Node, src []byte, owner string) {
 	}
 }
 
+// jsInSignature reports whether n lies in the params or type of a nested
+// callable, which upstream's closure walk skips.
+func jsInSignature(n *ts.Node, body jsBody) bool {
+	for p := n; p != nil && (p.StartByte() != body.start || p.EndByte() != body.end); p = p.Parent() {
+		switch p.Kind() {
+		case "function_declaration", "generator_function_declaration", "method_definition":
+			return true
+		}
+	}
+	return false
+}
+
+// jsMaskedImport reports an import() in the type arguments of a generic call
+// that tree-sitter takes for `a < b > (c)`. Upstream blanks it before parsing.
+func (b *builder) jsMaskedImport(n *ts.Node, src []byte) bool {
+	if e := path.Ext(b.file); e == ".js" || e == ".jsx" || e == ".mjs" || e == ".cjs" {
+		return false
+	}
+	var bin *ts.Node
+	for p, q := n, n.Parent(); q != nil; p, q = q, q.Parent() {
+		k := q.Kind()
+		if k == "binary_expression" {
+			r, op := q.ChildByFieldName("right"), q.ChildByFieldName("operator")
+			if r != nil && op != nil && op.Kind() == "<" && r.StartByte() == p.StartByte() && r.EndByte() == p.EndByte() {
+				bin = q
+			}
+			break
+		}
+		if k != "unary_expression" && k != "member_expression" && k != "subscript_expression" {
+			break
+		}
+	}
+	if bin == nil {
+		return false
+	}
+	end := n.EndByte()
+	for end < uint(len(src)) && src[end] != '>' && !strings.ContainsRune("();{}", rune(src[end])) {
+		end++
+	}
+	if end >= uint(len(src)) || src[end] != '>' {
+		return false
+	}
+	end++
+	// A real comparison parses clean; only a failed generic leaves an error here.
+	for a := bin; a.Parent() != nil; a = a.Parent() {
+		for _, ch := range a.Parent().Children() {
+			if ch.Kind() == "ERROR" && ch.StartByte() <= end+2 && ch.EndByte()+1 >= end {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // jsCallImport records `require("m")` and `import("m")` as imports; caller is
 // the function holding the call. A computed spec names no file.
-func (b *builder) jsCallImport(n *ts.Node, src []byte, caller string) {
+func (b *builder) jsCallImport(n *ts.Node, src []byte, caller string, body jsBody) {
 	if n.Kind() != "call_expression" {
 		return
 	}
@@ -291,6 +346,9 @@ func (b *builder) jsCallImport(n *ts.Node, src []byte, caller string) {
 		// TS import-equals parses as a call
 		if strings.TrimSpace(string(src[fn.EndByte():args.StartByte()])) != "" && one {
 			b.imp(unquote(args.NamedChild(0).Utf8Text(src)), line(n))
+		}
+		if caller != "" && (jsInSignature(n, body) || b.jsMaskedImport(n, src)) {
+			caller = ""
 		}
 		b.impDeferred(jsImportSpec(args, src), line(n), caller)
 	}
@@ -1245,7 +1303,7 @@ func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte) {
 	if isNew {
 		fn = c.ChildByFieldName("constructor")
 	}
-	// no edge upstream
+	// Upstream binds no module-scope new.
 	if fn == nil || callerID == "" || isNew && callerID == b.fileID {
 		return
 	}
@@ -1273,7 +1331,7 @@ func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte) {
 		for k := len(body.ns); k > 0; k-- {
 			id := idutil.MakeID(append(append([]string{b.stem, "ns"}, body.ns[:k]...), name)...)
 			if b.seen[id] && !b.jsBare[id] {
-				// no self edge
+				// Own-member new X() makes no edge
 				if !isNew || !slices.ContainsFunc(b.res.Edges, func(e model.Edge) bool {
 					return e.Source == id && e.Target == callerID && e.Relation == model.RelContains
 				}) {

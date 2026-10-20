@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/dobbo-ca/graphify-go/internal/model"
 )
 
 // A .js specifier names a .ts or .tsx file; a real .js file wins.
@@ -529,7 +531,85 @@ func TestJSImportJsSelfNotExternal(t *testing.T) {
 	checkEdges(t, got, nil, []string{
 		"self.ts:self.ts imports :./self.js", "me.tsx:me.tsx imports :./me.jsx", "self.ts:self.ts imports_from self.tsx:self.tsx",
 		"self.ts:self.ts imports_from self.ts:self.ts", "me.tsx:me.tsx imports_from me.tsx:me.tsx",
-		"self.ts:self.ts dynamic_import self.ts:self.ts", "self.ts:s() imports_from self.ts:self.ts deferred",
+	})
+}
+
+// Only the static './x.js' self import is dropped: import() of the file
+// itself still gives the file's dynamic_import and the function's deferred edge.
+func TestJSDynamicImportSelfFallback(t *testing.T) {
+	got := edgeSet(t, [][2]string{
+		{"self.ts", "export function s1() { return import('./self.js'); }\n"},
+		{"tx.tsx", "export function s2() { return import('./tx.jsx'); }\n"},
+		{"st.ts", "import './st.js';\nexport function s3() { return import('./st.js'); }\n"},
+	}, "imports_from", "dynamic_import")
+	checkEdges(t, got, []string{
+		"self.ts:self.ts dynamic_import self.ts:self.ts", "self.ts:s1() imports_from self.ts:self.ts deferred",
+		"tx.tsx:tx.tsx dynamic_import tx.tsx:tx.tsx", "tx.tsx:s2() imports_from tx.tsx:tx.tsx deferred",
+		"st.ts:st.ts dynamic_import st.ts:st.ts",
+	}, []string{"st.ts:st.ts imports_from st.ts:st.ts"})
+}
+
+// Upstream's closure walk skips the params and type of a nested callable, so
+// an import() there gives the file its dynamic_import and no deferred edge.
+func TestJSDynamicImportNestedSignature(t *testing.T) {
+	srcs := [][2]string{{"main.ts", `declare function setup(f: () => void): void;
+declare function stub(o: any): void;
+setup(() => {
+  stub({ get(m: import('./a.js').Ta) { return 1; } });
+  stub({ get(): import('./c.js').Tc | undefined { return undefined; } });
+  class K { m(): import('./d.js').Td | undefined { return undefined; } }
+  class L { constructor(p: import('./e.js').Te) {} }
+  function inner(x: import('./f.js').Tf) { return import('./g.js'); }
+  const g = (t: import('./b.js').Tb[]) => t;
+});
+export function f() {
+  function nested(x = import('./h.js')) { return x; }
+}
+`}}
+	for _, f := range []string{"a", "b", "c", "d", "e", "f", "g", "h"} {
+		srcs = append(srcs, [2]string{f + ".ts", "export const " + f + " = 1;\n"})
+	}
+	got := edgeSet(t, srcs, "imports_from", "dynamic_import")
+	checkEdges(t, got, []string{
+		"main.ts:main.ts imports_from b.ts:b.ts deferred", // arrow params stay
+		"main.ts:inner() imports_from g.ts:g.ts deferred", // bodies stay
+		"main.ts:main.ts dynamic_import a.ts:a.ts",
+		"main.ts:main.ts dynamic_import c.ts:c.ts",
+		"main.ts:main.ts dynamic_import d.ts:d.ts",
+		"main.ts:main.ts dynamic_import e.ts:e.ts",
+		"main.ts:main.ts dynamic_import f.ts:f.ts",
+		"main.ts:main.ts dynamic_import h.ts:h.ts",
+	}, []string{
+		"main.ts:main.ts imports_from a.ts:a.ts deferred",
+		"main.ts:main.ts imports_from c.ts:c.ts deferred",
+		"main.ts:main.ts imports_from d.ts:d.ts deferred",
+		"main.ts:main.ts imports_from e.ts:e.ts deferred",
+		"main.ts:main.ts imports_from f.ts:f.ts deferred",
+		"main.ts:f() imports_from h.ts:h.ts deferred",
+	})
+}
+
+// A generic call that tree-sitter misreads as a comparison has its import()
+// type masked upstream, so only the regex pass sees it.
+func TestJSDynamicImportMaskedTypeArgs(t *testing.T) {
+	srcs := [][2]string{{"s.ts", `declare function foo<T>(...a: any[]): Promise<T>;
+declare function suite(n: string, f: () => void): void;
+export function a1() { return foo<typeof import("./t1")>(); }
+export async function a2() { return await foo<typeof import('./t2')>(1, ''); }
+export function a3() { return foo<import("./t3").X>(); }
+export function a4() { return new Map<string, typeof import("./t4")>(); }
+suite("x", () => { foo<typeof import("./u")>(); });
+`}}
+	for _, f := range []string{"t1", "t2", "t3", "t4", "u"} {
+		srcs = append(srcs, [2]string{f + ".ts", "export const " + f + " = 1;\n"})
+	}
+	got := edgeSet(t, srcs, "imports_from", "dynamic_import")
+	checkEdges(t, got, []string{
+		"s.ts:s.ts dynamic_import t1.ts:t1.ts", "s.ts:s.ts dynamic_import t3.ts:t3.ts", "s.ts:s.ts dynamic_import u.ts:u.ts",
+		"s.ts:a2() imports_from t2.ts:t2.ts deferred", "s.ts:a4() imports_from t4.ts:t4.ts deferred",
+	}, []string{
+		"s.ts:a1() imports_from t1.ts:t1.ts deferred", "s.ts:a3() imports_from t3.ts:t3.ts deferred",
+		"s.ts:s.ts imports_from u.ts:u.ts deferred",
 	})
 }
 
@@ -560,4 +640,24 @@ func TestJSNewAmbiguousWithOtherNodes(t *testing.T) {
 		"u.ts:f() calls s1.ts:A", "u.ts:f() calls s1.ts:D", "u.ts:f() calls s1.ts:E", "u.ts:f() calls m.ts:M", "u.ts:f() calls s1.ts:M",
 		"w.ts:h() calls s1.ts:E", "svc.ts:make() calls s1.ts:User",
 	})
+}
+
+// Upstream's dynamic_import carries no location.
+func TestJSDynamicImportNoLocation(t *testing.T) {
+	results := []Result{
+		FileFromBytes("a.ts", []byte("\nexport const x = import('./b');\n")),
+		FileFromBytes("b.ts", []byte("export const b = 1;\n")),
+	}
+	n := 0
+	for _, e := range Resolve(results, []string{"a.ts", "b.ts"}).Edges {
+		if e.Relation == model.RelDynamicImport {
+			n++
+			if e.SourceLocation != 0 {
+				t.Errorf("dynamic_import has location %v", e.SourceLocation)
+			}
+		}
+	}
+	if n != 1 {
+		t.Errorf("got %d dynamic_import edges, want 1", n)
+	}
 }
