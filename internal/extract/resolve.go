@@ -368,6 +368,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 
 	// Upstream indexes all nodes, not defs.
 	newIDs, newFile, newPos := map[string][]string{}, map[string]string{}, map[string]int{}
+	newHere := map[[2]string][]string{} // file, name -> its newIDs
 	newIndex := sync.OnceFunc(func() {
 		names := map[string]bool{}
 		for _, r := range results {
@@ -387,6 +388,8 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 			for _, d := range r.Defs {
 				if _, ok := newFile[d.ID]; names[d.Name] && !ok {
 					newIDs[d.Name] = append(newIDs[d.Name], d.ID)
+					k := [2]string{r.File, d.Name}
+					newHere[k] = append(newHere[k], d.ID)
 					newFile[d.ID] = r.File
 				}
 			}
@@ -396,6 +399,8 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				} else if n.FileType != "rationale" {
 					if l := strings.TrimLeft(strings.Trim(n.Label, "()"), "."); names[l] {
 						newIDs[l] = append(newIDs[l], n.ID)
+						k := [2]string{r.File, l}
+						newHere[k] = append(newHere[k], n.ID)
 						newFile[n.ID] = r.File
 						newPos[n.ID] = i
 					}
@@ -766,7 +771,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					if isNew {
 						newIndex()
 						all = newIDs[c.Callee]
-						here = keep(all, func(id string) bool { return newFile[id] == r.File })
+						here = newHere[lkey]
 						if len(here) > 1 {
 							// upstream: last same-label node wins
 							nsPrefix := idutil.MakeID(r.File, "ns") + "_"
@@ -1705,7 +1710,8 @@ func importTargets(im Imp, corpus map[string]bool, goPkgs map[string][]string, g
 			spec += ".rb"
 		}
 		// TypeScript names the output file: `./x.js` is x.ts on disk.
-		if base, ok := relBase(im.File, spec); ok && jsLike(im.File) && !corpus[base] {
+		base, ok := relBase(im.File, spec)
+		if ok && jsLike(im.File) && !corpus[base] {
 			tos := []string{".ts", ".tsx"}
 			switch path.Ext(base) {
 			case ".js":
@@ -1720,8 +1726,10 @@ func importTargets(im Imp, corpus map[string]bool, goPkgs map[string][]string, g
 				}
 			}
 		}
-		if t := resolveRelImport(im.File, spec, corpus); t != "" {
-			return []string{t}
+		if ok {
+			if t := resolveModulePath(base, corpus); t != "" {
+				return []string{t}
+			}
 		}
 	}
 	return out
@@ -1822,16 +1830,6 @@ func resolvePyModule(from, mod string, corpus map[string]bool) string {
 		}
 	}
 	return found
-}
-
-// resolveRelImport maps a relative import specifier to a file in the corpus,
-// trying common extensions and index files. Returns "" for bare (external)
-// specifiers or unresolved paths.
-func resolveRelImport(fromFile, spec string, corpus map[string]bool) string {
-	if base, ok := relBase(fromFile, spec); ok {
-		return resolveModulePath(base, corpus)
-	}
-	return ""
 }
 
 // relBase is the corpus path a relative specifier names, before any probing.
