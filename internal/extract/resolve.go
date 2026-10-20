@@ -602,7 +602,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	}
 
 	// Upstream indexes all nodes, not defs.
-	newIDs, newFile := map[string][]string{}, map[string]string{}
+	newIDs, newFile, newPos := map[string][]string{}, map[string]string{}, map[string]int{}
 	newIndex := sync.OnceFunc(func() {
 		names := map[string]bool{}
 		for _, r := range results {
@@ -625,11 +625,14 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					newFile[d.ID] = r.File
 				}
 			}
-			for _, n := range r.Nodes {
-				if _, ok := newFile[n.ID]; !ok && n.FileType != "rationale" {
+			for i, n := range r.Nodes {
+				if _, ok := newFile[n.ID]; ok {
+					newPos[n.ID] = i
+				} else if n.FileType != "rationale" {
 					if l := strings.TrimLeft(strings.Trim(n.Label, "()"), "."); names[l] {
 						newIDs[l] = append(newIDs[l], n.ID)
 						newFile[n.ID] = r.File
+						newPos[n.ID] = i
 					}
 				}
 			}
@@ -761,8 +764,15 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					if isNew {
 						newIndex()
 						all = newIDs[c.Callee]
-						// upstream's in-file label map covers every node
 						here = keep(all, func(id string) bool { return newFile[id] == r.File })
+						if len(here) > 1 {
+							// upstream: last same-label node wins
+							nsPrefix := idutil.MakeID(r.File, "ns") + "_"
+							if d := keep(here, func(id string) bool { return !strings.HasPrefix(id, nsPrefix) }); len(d) > 0 {
+								here = d
+							}
+							here = []string{slices.MaxFunc(here, func(a, b string) int { return newPos[a] - newPos[b] })}
+						}
 					}
 					if c.Recv != "" {
 						q := recvTail(c.Recv)
@@ -827,7 +837,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				// new needs import evidence
 				if isNew && tgt != "" {
 					cross := newFile[tgt] != r.File
-					if tgt == owner[c.CallerID] || newFile[tgt] != r.File && !slices.Contains(local[[2]string{idFile[tgt], c.Callee}], tgt) ||
+					if tgt == owner[c.CallerID] || owner[tgt] == c.CallerID || newFile[tgt] != r.File && !slices.Contains(local[[2]string{idFile[tgt], c.Callee}], tgt) ||
 						cross && (!symImp(tgt) && !imported.of(r.File)[idFile[tgt]] || refd()[[2]string{c.CallerID, tgt}]) ||
 						c.CallerID == idutil.MakeID(r.File) && symImp(tgt) { // imports edge links the pair
 						tgt = ""

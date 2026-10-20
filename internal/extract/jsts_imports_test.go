@@ -745,3 +745,35 @@ func TestJSDynamicImportNoLocation(t *testing.T) {
 		t.Errorf("got %d dynamic_import edges, want 1", n)
 	}
 }
+
+// A same-file new X() binds the last node labelled X, as upstream's label
+// map does; a namespace twin of a plain class is no candidate.
+func TestJSNewSameLabel(t *testing.T) {
+	for _, c := range []struct{ name, file, src, from, to string }{
+		{"ns twin", "m1.ts", "class Repo {}\nnamespace inner { export class Repo {} }\nfunction use() { return new Repo(); }\n", "m1_ts_use", "m1_ts_repo"},
+		{"nested after top", "a15.ts", "function T15() {}\nexport function o15() { function T15() {} return new T15(); }\nexport function p15() { return new T15(); }\n", "a15_ts_p15", "a15_ts_o15_t15"},
+		{"nested after top js", "j3.js", "function T3() {}\nfunction o3() { function T3() {} return new T3(); }\nfunction p3() { return new T3(); }\n", "j3_js_p3", "j3_js_o3_t3"},
+		{"method after class", "a1.ts", "class Foo1 {}\nclass Other1 { Foo1() { return 1; } }\nexport function h1() { return new Foo1(); }\n", "a1_ts_h1", "a1_ts_other1_foo1"},
+		{"nested fn after class", "a2.ts", "class Foo2 {}\nfunction g2() { function Foo2() {} return Foo2; }\nexport function h2() { return new Foo2(); }\n", "a2_ts_h2", "a2_ts_g2_foo2"},
+		{"caller nested, top last", "n3.ts", "export function o3() { function Q3() {} return new Q3(); }\nexport function Q3() {}\n", "n3_ts_o3", "n3_ts_q3"},
+		{"nested outer, top last", "n2.ts", "export function o2() { function Q2() {} function d2() { return new Q2(); } }\nexport function Q2() {}\n", "n2_ts_o2_d2", "n2_ts_q2"},
+	} {
+		ext := Resolve([]Result{FileFromBytes(c.file, []byte(c.src))}, []string{c.file})
+		got := ""
+		for _, e := range ext.Edges {
+			if e.Relation == model.RelCalls && e.Source == c.from {
+				got = e.Target
+			}
+		}
+		if got != c.to {
+			t.Errorf("%s: %s calls %q, want %q", c.name, c.from, got, c.to)
+		}
+	}
+	// the nested def is last, and contains links it
+	ext := Resolve([]Result{FileFromBytes("q.ts", []byte("export function Q2() {}\nexport function o2() { function Q2() {} return new Q2(); }\n"))}, []string{"q.ts"})
+	for _, e := range ext.Edges {
+		if e.Relation == model.RelCalls && e.Source == "q_ts_o2" {
+			t.Errorf("o2 calls %q, want no edge", e.Target)
+		}
+	}
+}
