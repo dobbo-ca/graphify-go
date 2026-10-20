@@ -607,7 +607,10 @@ func resolveJavaChains(results []Result, owner, idFile map[string]string, method
 	}
 	for _, p := range edges {
 		for _, e := range p {
-			if l, ok := label[e.Target]; ok && e.Relation == model.RelContains && !contains(types[l], e.Target) {
+			if e.Relation != model.RelContains {
+				continue
+			}
+			if l, ok := label[e.Target]; ok && !contains(types[l], e.Target) {
 				types[l] = append(types[l], e.Target)
 			}
 		}
@@ -716,8 +719,18 @@ func resolveJavaChains(results []Result, owner, idFile map[string]string, method
 			pairs[[2]string{ch.c.CallerID, m}] = false
 		}
 	}
+	if len(hits) == 0 {
+		return nil
+	}
+	callers := map[string]bool{}
+	for _, h := range hits {
+		callers[h.ch.c.CallerID] = true
+	}
 	for _, p := range edges {
 		for _, e := range p {
+			if !callers[e.Source] {
+				continue
+			}
 			if _, ok := pairs[[2]string{e.Source, e.Target}]; ok {
 				pairs[[2]string{e.Source, e.Target}] = true
 			}
