@@ -23,6 +23,7 @@ func init() {
 	for _, l := range []*gositter.Language{tsjs.Language(), tsts.Language(), tstsx.Language()} {
 		l.KindMask("call_expression")
 		l.KindMask("new_expression")
+		l.KindMask("method_definition")
 		l.KindMask("export_statement")
 	}
 }
@@ -44,8 +45,16 @@ func extractJS(rel string, src []byte, langPtr *gositter.Language) Result {
 	slices.SortStableFunc(b.jsBodies, func(x, y jsBody) int { return cmp.Compare(x.start, y.start) })
 	next := 0
 	var open []jsBody
-	walkKinds(root, langPtr.KindMask("call_expression")|langPtr.KindMask("new_expression"), func(cv ts.Node) bool {
+	var meths [][2]uint // open method_definition spans
+	walkKinds(root, langPtr.KindMask("call_expression")|langPtr.KindMask("new_expression")|langPtr.KindMask("method_definition"), func(cv ts.Node) bool {
 		c := &cv
+		for len(meths) > 0 && c.StartByte() >= meths[len(meths)-1][1] {
+			meths = meths[:len(meths)-1]
+		}
+		if c.Kind() == "method_definition" {
+			meths = append(meths, [2]uint{c.StartByte(), c.EndByte()})
+			return true
+		}
 		for len(open) > 0 && c.StartByte() >= open[len(open)-1].end {
 			open = open[:len(open)-1]
 		}
@@ -61,7 +70,8 @@ func extractJS(rel string, src []byte, langPtr *gositter.Language) Result {
 		}
 		b.jsCallImport(c, src, body.callerID, body)
 		if len(open) > 0 {
-			b.jsCall(c, body, src)
+			inMethod := len(meths) > 0 && meths[len(meths)-1][0] >= body.start && meths[len(meths)-1] != [2]uint{body.start, body.end}
+			b.jsCall(c, body, src, inMethod)
 		}
 		return true
 	})
@@ -1307,7 +1317,7 @@ const jsNewRecv = "\x00new"
 
 // jsCall records the call site c, a call_expression or new_expression, for
 // the body's caller.
-func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte) {
+func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte, inMethod bool) {
 	callerID := body.callerID
 	isNew := c.Kind() == "new_expression"
 	fn := c.ChildByFieldName("function")
@@ -1318,10 +1328,8 @@ func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte) {
 		return
 	}
 	// A method body is a boundary: its calls are no caller's.
-	for p := c; p != nil && (p.StartByte() != body.start || p.EndByte() != body.end); p = p.Parent() {
-		if p.Kind() == "method_definition" {
-			return
-		}
+	if inMethod {
+		return
 	}
 	switch fn.Kind() {
 	case "identifier":

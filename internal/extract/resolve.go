@@ -369,6 +369,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	// Upstream indexes all nodes, not defs.
 	newIDs, newFile, newPos := map[string][]string{}, map[string]string{}, map[string]int{}
 	newHere := map[[2]string][]string{} // file, name -> its newIDs
+	newCallers := map[string]bool{}     // who calls a new X()
 	newIndex := sync.OnceFunc(func() {
 		names := map[string]bool{}
 		for _, r := range results {
@@ -376,6 +377,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				for _, n := range r.Calls {
 					if n.Recv == uint32(k) {
 						names[r.CallText[n.Callee]] = true
+						newCallers[r.CallText[n.CallerID]] = true
 					}
 				}
 			}
@@ -654,9 +656,12 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	// so the runs are bound side by side and their edges joined in file order.
 	// shared by all runs
 	refd := sync.OnceValue(func() map[[2]string]bool { // signature already links these
-		m := make(map[[2]string]bool, len(inherit))
+		newIndex()
+		m := map[[2]string]bool{}
 		for _, e := range inherit {
-			m[[2]string{e.Source, e.Target}] = true
+			if newCallers[e.Source] { // only they ask
+				m[[2]string{e.Source, e.Target}] = true
+			}
 		}
 		return m
 	})
