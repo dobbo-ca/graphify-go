@@ -265,7 +265,8 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 							// deferred wins, as upstream
 							if tn, ok := tgtNum[t]; ok {
 								if i, ok := impEdge[uint64(src)<<32|uint64(tn)]; ok && im.Dyn == dynDeferred {
-									impEdges[i/impPart][i%impPart].deferred = true
+									e := &impEdges[i/impPart][i%impPart]
+									e.deferred, e.imp, e.typeOnly = true, im, false // import() site wins
 									continue
 								}
 							}
@@ -825,7 +826,8 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				if isNew && tgt != "" {
 					cross := idFile[tgt] != r.File
 					if tgt == owner[c.CallerID] || !slices.Contains(local[[2]string{idFile[tgt], c.Callee}], tgt) ||
-						cross && (!symImp(tgt) && !imported.of(r.File)[idFile[tgt]] || refd()[[2]string{c.CallerID, tgt}]) {
+						cross && (!symImp(tgt) && !imported.of(r.File)[idFile[tgt]] || refd()[[2]string{c.CallerID, tgt}]) ||
+						c.CallerID == idutil.MakeID(r.File) && symImp(tgt) { // imports edge links the pair
 						tgt = ""
 					}
 				}
@@ -1688,21 +1690,25 @@ func importTargets(im Imp, corpus map[string]bool, goPkgs map[string][]string, g
 		if path.Ext(from) == ".rb" && path.Ext(spec) != ".rb" {
 			spec += ".rb"
 		}
-		if t := resolveRelImport(im.File, spec, corpus); t != "" {
-			return []string{t}
-		}
-		// TypeScript names the output file: `./x.js` is x.ts on disk.
-		if ext := path.Ext(spec); jsLike(im.File) && (ext == ".js" || ext == ".jsx") {
+		// TypeScript names the output file: `./x.js` is x.ts on disk. It beats
+		// x.js.ts and x.js/index.ts, as upstream tries it before appending.
+		if base, ok := relBase(im.File, spec); ok && jsLike(im.File) && !corpus[base] {
 			tos := []string{".ts", ".tsx"}
-			if ext == ".jsx" {
+			switch path.Ext(base) {
+			case ".js":
+			case ".jsx":
 				tos = tos[1:]
+			default:
+				tos = nil
 			}
 			for _, to := range tos {
-				t := resolveRelImport(im.File, strings.TrimSuffix(spec, ext)+to, corpus)
-				if t != "" {
+				if t := strings.TrimSuffix(base, path.Ext(base)) + to; corpus[t] {
 					return []string{t}
 				}
 			}
+		}
+		if t := resolveRelImport(im.File, spec, corpus); t != "" {
+			return []string{t}
 		}
 	}
 	return out
@@ -1809,16 +1815,24 @@ func resolvePyModule(from, mod string, corpus map[string]bool) string {
 // trying common extensions and index files. Returns "" for bare (external)
 // specifiers or unresolved paths.
 func resolveRelImport(fromFile, spec string, corpus map[string]bool) string {
+	if base, ok := relBase(fromFile, spec); ok {
+		return resolveModulePath(base, corpus)
+	}
+	return ""
+}
+
+// relBase is the corpus path a relative specifier names, before any probing.
+func relBase(fromFile, spec string) (string, bool) {
 	// The `@/` alias is the de-facto project-root convention in Next.js/Vite/
 	// modern-TS repos; resolve it against the corpus root so those imports
 	// become imports_from edges instead of external dependency nodes.
 	if strings.HasPrefix(spec, "@/") {
-		return resolveModulePath(path.Clean(strings.TrimPrefix(spec, "@/")), corpus)
+		return path.Clean(strings.TrimPrefix(spec, "@/")), true
 	}
 	if spec == "" || (spec[0] != '.' && spec[0] != '/') {
-		return "" // bare specifier — an external package
+		return "", false // bare specifier — an external package
 	}
-	return resolveModulePath(path.Clean(path.Join(path.Dir(filepath.ToSlash(fromFile)), spec)), corpus)
+	return path.Clean(path.Join(path.Dir(filepath.ToSlash(fromFile)), spec)), true
 }
 
 // resolveModulePath probes a corpus-relative module path as-is, then with each

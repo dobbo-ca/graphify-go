@@ -275,10 +275,14 @@ func (b *builder) jsChildren(n *ts.Node, src []byte, owner string) {
 // jsInSignature reports whether n lies in the params or type of a nested
 // callable, which upstream's closure walk skips.
 func jsInSignature(n *ts.Node, body jsBody) bool {
-	for p := n; p != nil && (p.StartByte() != body.start || p.EndByte() != body.end); p = p.Parent() {
+	for c, p := n, n; p != nil && (p.StartByte() != body.start || p.EndByte() != body.end); c, p = p, p.Parent() {
 		switch p.Kind() {
-		case "function_declaration", "generator_function_declaration", "method_definition":
+		case "method_definition":
 			return true
+		case "function_declaration", "generator_function_declaration":
+			if bd := p.ChildByFieldName("body"); bd == nil || bd.StartByte() != c.StartByte() || bd.EndByte() != c.EndByte() {
+				return true
+			}
 		}
 	}
 	return false
@@ -291,6 +295,7 @@ func (b *builder) jsMaskedImport(n *ts.Node, src []byte) bool {
 		return false
 	}
 	var bin *ts.Node
+	parens := 0
 	for p, q := n, n.Parent(); q != nil; p, q = q, q.Parent() {
 		k := q.Kind()
 		if k == "binary_expression" {
@@ -300,7 +305,10 @@ func (b *builder) jsMaskedImport(n *ts.Node, src []byte) bool {
 			}
 			break
 		}
-		if k != "unary_expression" && k != "member_expression" && k != "subscript_expression" {
+		if k == "parenthesized_expression" {
+			parens++
+		}
+		if k != "unary_expression" && k != "member_expression" && k != "subscript_expression" && k != "parenthesized_expression" && k != "array" {
 			break
 		}
 	}
@@ -308,14 +316,17 @@ func (b *builder) jsMaskedImport(n *ts.Node, src []byte) bool {
 		return false
 	}
 	end := n.EndByte()
-	for end < uint(len(src)) && src[end] != '>' && !strings.ContainsRune("();{}", rune(src[end])) {
+	for end < uint(len(src)) && src[end] != '>' && (src[end] == ')' && parens > 0 || !strings.ContainsRune("();{}", rune(src[end]))) {
+		if src[end] == ')' {
+			parens--
+		}
 		end++
 	}
 	if end >= uint(len(src)) || src[end] != '>' {
 		return false
 	}
 	end++
-	// A real comparison parses clean; only a failed generic leaves an error here.
+	// only failed generics leave ERROR
 	for a := bin; a.Parent() != nil; a = a.Parent() {
 		for _, ch := range a.Parent().Children() {
 			if ch.Kind() == "ERROR" && ch.StartByte() <= end+2 && ch.EndByte()+1 >= end {
@@ -359,7 +370,7 @@ func jsImportSpec(args *ts.Node, src []byte) string {
 	for i := uint(0); i < args.NamedChildCount(); i++ {
 		switch a := args.NamedChild(i); a.Kind() {
 		case "string":
-			return unquote(a.Utf8Text(src))
+			return strings.Trim(a.Utf8Text(src), "'\" ")
 		case "template_string":
 			for j := uint(0); j < a.NamedChildCount(); j++ {
 				if a.NamedChild(j).Kind() == "template_substitution" {
@@ -1303,8 +1314,7 @@ func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte) {
 	if isNew {
 		fn = c.ChildByFieldName("constructor")
 	}
-	// Upstream binds no module-scope new.
-	if fn == nil || callerID == "" || isNew && callerID == b.fileID {
+	if fn == nil || callerID == "" {
 		return
 	}
 	// A method body is a boundary: its calls are no caller's.
@@ -1341,7 +1351,10 @@ func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte) {
 			}
 		}
 		if isNew {
-			b.callRecv(callerID, name, jsNewRecv, line(c))
+			// contains edge already links the pair
+			if callerID != b.fileID || !b.jsFileOwns(name) {
+				b.callRecv(callerID, name, jsNewRecv, line(c))
+			}
 			return
 		}
 		// The file's contains edge to its own function hides this call upstream.

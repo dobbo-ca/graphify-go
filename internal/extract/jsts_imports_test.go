@@ -425,6 +425,74 @@ export function own() { class Widget {} return new Widget(); }
 	})
 }
 
+// A new X() in a closure passed to a top-level call is the file's, unless an
+// imports or contains edge already links the pair; module scope makes none.
+func TestJSNewFileClosure(t *testing.T) {
+	got := edgeSet(t, [][2]string{
+		{"x/a.ts", "export class Foo {}\nexport class Bar {}\nexport function helper() {}\n"},
+		{"t.ts", "import './x/a';\nsuite('s', () => { new Foo(); });\n"},
+		{"u.ts", "import * as ns from './x/a';\nsuite('s', async () => { new Bar(); });\nnew Foo();\n"},
+		{"v.ts", "import { helper } from './x/a';\nsuite(() => { new Foo(); new Bar(); });\n"},
+		{"n.ts", "import { Foo } from './x/a';\nsuite('s', () => { new Foo(); });\n"},
+		{"w.ts", "export class Loc {}\nsuite('s', () => { new Loc(); });\n"},
+	}, "calls")
+	checkEdges(t, got, []string{
+		"t.ts:t.ts calls x/a.ts:Foo", "u.ts:u.ts calls x/a.ts:Bar", "v.ts:v.ts calls x/a.ts:Foo", "v.ts:v.ts calls x/a.ts:Bar",
+	}, []string{"u.ts:u.ts calls x/a.ts:Foo", "n.ts:n.ts calls x/a.ts:Foo", "w.ts:w.ts calls w.ts:Loc"})
+}
+
+// './x.js' is x.ts before x.js.ts or x.js/index.ts, as upstream tries it.
+func TestJSImportJsSwapFirst(t *testing.T) {
+	got := edgeSet(t, [][2]string{
+		{"lib/x.ts", "export class A {}\n"}, {"lib/x.js.ts", "export class A {}\n"},
+		{"lib2/y.ts", "export class B {}\n"}, {"lib2/y.js/index.ts", "export class B {}\n"},
+		{"m.ts", "import './lib/x.js';\nimport './lib2/y.js';\n"},
+	}, "imports_from")
+	checkEdges(t, got, []string{"m.ts:m.ts imports_from lib/x.ts:x.ts", "m.ts:m.ts imports_from lib2/y.ts:y.ts"},
+		[]string{"m.ts:m.ts imports_from lib/x.js.ts:x.js.ts", "m.ts:m.ts imports_from lib2/y.js/index.ts:index.ts"})
+}
+
+// A file-level import() replaces the static edge's line, either order.
+func TestJSDeferredMergeTakesImportSite(t *testing.T) {
+	srcs := [][2]string{
+		{"s1.ts", "import {y1} from './y1';\nsetup(() => import('./y1'));\n"},
+		{"s2.ts", "setup(() => import('./y2'));\nimport {y2} from './y2';\n"},
+		{"s3.ts", "import type {y3} from './y3';\nsetup(() => import('./y3'));\n"},
+		{"s4.ts", "setup(() => import('./y4'));\nimport type {y4} from './y4';\n"},
+	}
+	for _, y := range []string{"y1", "y2", "y3", "y4"} {
+		srcs = append(srcs, [2]string{y + ".ts", "export const y = 1;\n"})
+	}
+	var results []Result
+	var files []string
+	for _, s := range srcs {
+		results = append(results, FileFromBytes(s[0], []byte(s[1])))
+		files = append(files, s[0])
+	}
+	line := map[string]string{"s1.ts": "L2", "s2.ts": "L1", "s3.ts": "L2", "s4.ts": "L1"}
+	n := 0
+	for _, e := range Resolve(results, files).Edges {
+		if e.Relation == model.RelImportsFrom && e.Deferred() {
+			if f := e.SourceFile.String(); line[f] != e.SourceLocation.String() {
+				t.Errorf("%s: location %s, want %s", f, e.SourceLocation, line[f])
+			}
+			n++
+		}
+	}
+	if n != 4 {
+		t.Errorf("got %d deferred edges, want 4", n)
+	}
+}
+
+// import(' ./d ') trims spaces inside the quotes.
+func TestJSDynamicImportSpaces(t *testing.T) {
+	got := edgeSet(t, [][2]string{
+		{"a.ts", "export function f2() { return import(' ./d2 '); }\n"},
+		{"d2.ts", "export const d = 1;\n"},
+	}, "imports_from")
+	checkEdges(t, got, []string{"a.ts:f2() imports_from d2.ts:d2.ts deferred"}, nil)
+}
+
 // An external module imported statically still gets the file's dynamic_import.
 func TestJSDynamicImportExternalBehindStatic(t *testing.T) {
 	got := edgeSet(t, [][2]string{
@@ -565,8 +633,9 @@ setup(() => {
 export function f() {
   function nested(x = import('./h.js')) { return x; }
 }
+export let sys = (() => { function nf() { return import('./i1.js'); } const o = { om() { return import('./i2.js'); } }; class K { cm() { return import('./i3.js'); } } function* g() { yield import('./i4.js'); } })();
 `}}
-	for _, f := range []string{"a", "b", "c", "d", "e", "f", "g", "h"} {
+	for _, f := range []string{"a", "b", "c", "d", "e", "f", "g", "h", "i1", "i2", "i3", "i4"} {
 		srcs = append(srcs, [2]string{f + ".ts", "export const " + f + " = 1;\n"})
 	}
 	got := edgeSet(t, srcs, "imports_from", "dynamic_import")
@@ -579,7 +648,11 @@ export function f() {
 		"main.ts:main.ts dynamic_import e.ts:e.ts",
 		"main.ts:main.ts dynamic_import f.ts:f.ts",
 		"main.ts:main.ts dynamic_import h.ts:h.ts",
+		"main.ts:sys imports_from i1.ts:i1.ts deferred", // var IIFE body stays
+		"main.ts:sys imports_from i4.ts:i4.ts deferred",
 	}, []string{
+		"main.ts:sys imports_from i2.ts:i2.ts deferred",
+		"main.ts:sys imports_from i3.ts:i3.ts deferred",
 		"main.ts:main.ts imports_from a.ts:a.ts deferred",
 		"main.ts:main.ts imports_from c.ts:c.ts deferred",
 		"main.ts:main.ts imports_from d.ts:d.ts deferred",
@@ -599,8 +672,11 @@ export async function a2() { return await foo<typeof import('./t2')>(1, ''); }
 export function a3() { return foo<import("./t3").X>(); }
 export function a4() { return new Map<string, typeof import("./t4")>(); }
 suite("x", () => { foo<typeof import("./u")>(); });
+export function n1() { return foo<(typeof import('./a'))>(); }
+export function n3() { return foo<[typeof import('./c')]>(); }
+export function m12() { return foo<(typeof import('./l'))['vl']>(); }
 `}}
-	for _, f := range []string{"t1", "t2", "t3", "t4", "u"} {
+	for _, f := range []string{"t1", "t2", "t3", "t4", "u", "a", "c", "l"} {
 		srcs = append(srcs, [2]string{f + ".ts", "export const " + f + " = 1;\n"})
 	}
 	got := edgeSet(t, srcs, "imports_from", "dynamic_import")
@@ -610,6 +686,7 @@ suite("x", () => { foo<typeof import("./u")>(); });
 	}, []string{
 		"s.ts:a1() imports_from t1.ts:t1.ts deferred", "s.ts:a3() imports_from t3.ts:t3.ts deferred",
 		"s.ts:s.ts imports_from u.ts:u.ts deferred",
+		"s.ts:n1() imports_from a.ts:a.ts deferred", "s.ts:n3() imports_from c.ts:c.ts deferred", "s.ts:m12() imports_from l.ts:l.ts deferred",
 	})
 }
 
