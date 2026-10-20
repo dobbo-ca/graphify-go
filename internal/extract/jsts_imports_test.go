@@ -369,18 +369,25 @@ export class B {
 export function alias() { return new W(); }
 export function dflt() { return new Def(); }
 export function barrel() { return new Renamed(); }
-export function shadowFn() { function Y() {} return new Y(); }
 export function shadowCls() { class Y {} return new Y(); }
 `},
+		{"s.ts", "import { Y } from './x';\nexport function shadowFn() { function Y() {} return new Y(); }\n"},
+		{"c5a.ts", "const Thing1 = mk();\nfunction f1() { return new Thing1(); }\nexport namespace Evt { export const v = 1; }\nfunction bar() { return new Evt(); }\n"},
+		{"c5b.ts", "export class Thing1 {}\nexport class Evt {}\n"},
+		{"e1.ts", "export namespace Solo1 { export const v = 1; }\nfunction baz() { return new Solo1(); }\n"},
+		{"nest.ts", "function o() { function Q() {} function d() { return new Q(); } function self() { return new Q(); } }\nfunction p() { function R() { return new R(); } }\n"},
 	}, "calls")
-	checkEdges(t, got, []string{"b.ts:B.noRetM() calls x.ts:Y", "b.ts:shadowCls() calls x.ts:Y"}, []string{
+	checkEdges(t, got, []string{"b.ts:B.noRetM() calls x.ts:Y", "b.ts:shadowCls() calls x.ts:Y",
+		"c5a.ts:f1() calls c5a.ts:Thing1", "c5a.ts:bar() calls c5a.ts:Evt", "e1.ts:baz() calls e1.ts:Solo1",
+		"nest.ts:d() calls nest.ts:Q()", "nest.ts:self() calls nest.ts:Q()"}, []string{
+		"nest.ts:o() calls nest.ts:Q()", "nest.ts:R() calls nest.ts:R()", "c5a.ts:f1() calls c5b.ts:Thing1", "c5a.ts:bar() calls c5b.ts:Evt",
 		"b.ts:B.retM() calls x.ts:X", // a references edge is there already
 		"b.ts:B.paramM() calls x.ts:X",
 		"b.ts:B.make() calls b.ts:B", // upstream drops the owner pair
 		"b.ts:alias() calls x.ts:Widget",
 		"b.ts:dflt() calls x.ts:Thing",
 		"b.ts:barrel() calls item.ts:Other",
-		"b.ts:shadowFn() calls x.ts:Y",
+		"s.ts:shadowFn() calls x.ts:Y", "s.ts:shadowFn() calls s.ts:Y()",
 	})
 }
 

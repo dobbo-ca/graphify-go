@@ -1328,7 +1328,8 @@ func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte) {
 		name := fn.Utf8Text(src)
 		for s := callerID; s != ""; s = b.jsParent[s] {
 			if id, ok := b.jsNested[[2]string{s, name}]; ok {
-				if !isNew {
+				// no edge when the caller owns the def: contains links them
+				if !isNew || s != callerID {
 					b.jsNestedCall(callerID, id, line(c))
 				}
 				return

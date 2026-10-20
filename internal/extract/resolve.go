@@ -761,6 +761,8 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					if isNew {
 						newIndex()
 						all = newIDs[c.Callee]
+						// upstream's in-file label map covers every node
+						here = keep(all, func(id string) bool { return newFile[id] == r.File })
 					}
 					if c.Recv != "" {
 						q := recvTail(c.Recv)
@@ -824,8 +826,8 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				}
 				// new needs import evidence
 				if isNew && tgt != "" {
-					cross := idFile[tgt] != r.File
-					if tgt == owner[c.CallerID] || !slices.Contains(local[[2]string{idFile[tgt], c.Callee}], tgt) ||
+					cross := newFile[tgt] != r.File
+					if tgt == owner[c.CallerID] || newFile[tgt] != r.File && !slices.Contains(local[[2]string{idFile[tgt], c.Callee}], tgt) ||
 						cross && (!symImp(tgt) && !imported.of(r.File)[idFile[tgt]] || refd()[[2]string{c.CallerID, tgt}]) ||
 						c.CallerID == idutil.MakeID(r.File) && symImp(tgt) { // imports edge links the pair
 						tgt = ""
@@ -1690,8 +1692,7 @@ func importTargets(im Imp, corpus map[string]bool, goPkgs map[string][]string, g
 		if path.Ext(from) == ".rb" && path.Ext(spec) != ".rb" {
 			spec += ".rb"
 		}
-		// TypeScript names the output file: `./x.js` is x.ts on disk. It beats
-		// x.js.ts and x.js/index.ts, as upstream tries it before appending.
+		// TypeScript names the output file: `./x.js` is x.ts on disk.
 		if base, ok := relBase(im.File, spec); ok && jsLike(im.File) && !corpus[base] {
 			tos := []string{".ts", ".tsx"}
 			switch path.Ext(base) {
