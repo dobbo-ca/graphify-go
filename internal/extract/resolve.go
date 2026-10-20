@@ -366,6 +366,45 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	}
 	resolved := resolveImportGuided(results, idFile, &out, corpus, local, owner, reexports)
 
+	// Upstream indexes all nodes, not defs.
+	newIDs, newFile, newPos := map[string][]string{}, map[string]string{}, map[string]int{}
+	newIndex := sync.OnceFunc(func() {
+		names := map[string]bool{}
+		for _, r := range results {
+			if k := slices.Index(r.CallText, jsNewRecv); k > 0 {
+				for _, n := range r.Calls {
+					if n.Recv == uint32(k) {
+						names[r.CallText[n.Callee]] = true
+					}
+				}
+			}
+		}
+		for _, r := range results {
+			if !jsLike(r.File) {
+				continue
+			}
+			// member labels carry the owner
+			for _, d := range r.Defs {
+				if _, ok := newFile[d.ID]; names[d.Name] && !ok {
+					newIDs[d.Name] = append(newIDs[d.Name], d.ID)
+					newFile[d.ID] = r.File
+				}
+			}
+			for i, n := range r.Nodes {
+				if _, ok := newFile[n.ID]; ok {
+					newPos[n.ID] = i
+				} else if n.FileType != "rationale" {
+					if l := strings.TrimLeft(strings.Trim(n.Label, "()"), "."); names[l] {
+						newIDs[l] = append(newIDs[l], n.ID)
+						newFile[n.ID] = r.File
+						newPos[n.ID] = i
+					}
+				}
+			}
+		}
+	})
+	go newIndex() // beside the inheritance pass
+
 	// Inheritance: a declared supertype name binds the same way a call does —
 	// same file first, then disambiguated among the definitions sharing the name.
 	// An unresolvable name (a library type outside the corpus) drops, or binds to
@@ -601,44 +640,6 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		}
 	}
 
-	// Upstream indexes all nodes, not defs.
-	newIDs, newFile, newPos := map[string][]string{}, map[string]string{}, map[string]int{}
-	newIndex := sync.OnceFunc(func() {
-		names := map[string]bool{}
-		for _, r := range results {
-			if k := slices.Index(r.CallText, jsNewRecv); k > 0 {
-				for _, n := range r.Calls {
-					if n.Recv == uint32(k) {
-						names[r.CallText[n.Callee]] = true
-					}
-				}
-			}
-		}
-		for _, r := range results {
-			if !jsLike(r.File) {
-				continue
-			}
-			// member labels carry the owner
-			for _, d := range r.Defs {
-				if _, ok := newFile[d.ID]; names[d.Name] && !ok {
-					newIDs[d.Name] = append(newIDs[d.Name], d.ID)
-					newFile[d.ID] = r.File
-				}
-			}
-			for i, n := range r.Nodes {
-				if _, ok := newFile[n.ID]; ok {
-					newPos[n.ID] = i
-				} else if n.FileType != "rationale" {
-					if l := strings.TrimLeft(strings.Trim(n.Label, "()"), "."); names[l] {
-						newIDs[l] = append(newIDs[l], n.ID)
-						newFile[n.ID] = r.File
-						newPos[n.ID] = i
-					}
-				}
-			}
-		}
-	})
-
 	// Calls: prefer a definition in the same file, else disambiguate among the
 	// definitions sharing the called name (unique global, imported file, or same
 	// package) rather than guessing. A member call binds on its receiver: self/this
@@ -646,6 +647,14 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	// else only to a definition the receiver's last segment qualifies.
 	// Each run of files binds against the indexes above, which no longer change,
 	// so the runs are bound side by side and their edges joined in file order.
+	// shared by all runs
+	refd := sync.OnceValue(func() map[[2]string]bool { // signature already links these
+		m := make(map[[2]string]bool, len(inherit))
+		for _, e := range inherit {
+			m[[2]string{e.Source, e.Target}] = true
+		}
+		return m
+	})
 	bind := func(results []Result) [][]model.Edge {
 		// In parts of impPart: one slice a run grew by copies, and the outgrown
 		// ones were live with it at the collection that sets the peak. Only
@@ -663,13 +672,6 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 			edges[n-1] = append(edges[n-1], e)
 		}
 		imported := importedSet{targets: impTargets}
-		refd := sync.OnceValue(func() map[[2]string]bool { // signature already links these
-			m := make(map[[2]string]bool, len(inherit))
-			for _, e := range inherit {
-				m[[2]string{e.Source, e.Target}] = true
-			}
-			return m
-		})
 		pyMod := map[[2]string]string{}    // file, module -> the corpus file of a Python import
 		kept := map[string][]string{}      // callee\x00qualifier -> the definitions it qualifies
 		allQuals := map[string][]qualSet{} // callee -> quals of each id in its global list
