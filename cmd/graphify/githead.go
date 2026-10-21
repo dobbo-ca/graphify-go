@@ -64,11 +64,14 @@ func readGitHead(root string) (sha string, ok bool) {
 			return "", true
 		}
 		pfi, err := os.Stat(parent)
-		if err != nil || !sameDevice(fi, pfi) {
-			// git will not cross filesystems by default.
+		if err != nil {
 			return "", false
 		}
-		dir, fi = parent, pfi
+		if !sameDevice(fi, pfi) {
+			// git stops at a mount point and fails.
+			return "", true
+		}
+		dir = parent
 	}
 }
 
