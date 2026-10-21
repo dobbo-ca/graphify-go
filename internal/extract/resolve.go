@@ -160,7 +160,9 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	type impRec struct {
 		imp                *Imp // source, file and location
 		tgt                string
+		rel                model.Relation // 0: imports_from, or imports
 		typeOnly, external bool
+		deferred           bool
 	}
 	var impEdges [][]impRec // parts of impPart
 	type impBatch struct {
@@ -185,6 +187,11 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 			num uint32
 		}
 		ids := map[string]tgtID{}
+		type dynKey struct {
+			src, tgt string
+			rel      model.Relation
+		}
+		dynSeen := map[dynKey]bool{}
 		n := 0
 		add := func(e impRec) {
 			if n%impPart == 0 {
@@ -196,6 +203,26 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		for b := range batches {
 			nextImp := 0
 			for _, r := range b.results {
+				// a file-level import hides dynamic_import
+				var fileHas map[string]bool
+				for k := range r.Imps {
+					if r.Imps[k].Dyn == dynImport {
+						fileHas = map[string]bool{}
+						break
+					}
+				}
+				for k := range r.Imps {
+					im := &r.Imps[k]
+					if fileHas == nil || im.Dyn == dynImport || im.Dyn == dynDeferred && im.FileID != idutil.MakeID(im.File) || im.Dyn == 0 && jsSelfFallback(im, b.targets[nextImp+k]) {
+						continue
+					}
+					for _, t := range b.targets[nextImp+k] {
+						fileHas[idutil.MakeID(t)] = true
+					}
+					if len(b.targets[nextImp+k]) == 0 && im.Dyn == dynDeferred {
+						fileHas[idutil.MakeID(im.Spec)] = true
+					}
+				}
 				for k := range r.Imps {
 					im := &r.Imps[k]
 					src, ok := srcNum[im.FileID]
@@ -205,6 +232,48 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					}
 					targets := b.targets[nextImp]
 					nextImp++
+					if im.Dyn == 0 && jsSelfFallback(im, targets) {
+						continue
+					}
+					if im.Dyn != 0 {
+						rel := model.RelDynamicImport
+						if im.Dyn == dynDeferred {
+							rel = model.RelImportsFrom
+						}
+						var tgts []string
+						for _, t := range targets {
+							tgts = append(tgts, idutil.MakeID(t))
+						}
+						external := len(tgts) == 0
+						if external {
+							depID := idutil.MakeID(im.Spec)
+							if depID == "" {
+								continue
+							}
+							if !extSeen[depID] {
+								extSeen[depID] = true
+								impNodes = append(impNodes, model.Node{ID: depID, Label: im.Spec, FileType: "concept"})
+							}
+							tgts = append(tgts, depID)
+						}
+						for _, t := range tgts {
+							key := dynKey{im.FileID, t, rel}
+							if dynSeen[key] || rel == model.RelDynamicImport && fileHas[t] {
+								continue
+							}
+							dynSeen[key] = true
+							// deferred wins, as upstream
+							if tn, ok := tgtNum[t]; ok {
+								if i, ok := impEdge[uint64(src)<<32|uint64(tn)]; ok && im.Dyn == dynDeferred {
+									e := &impEdges[i/impPart][i%impPart]
+									e.deferred, e.imp, e.typeOnly = true, im, false // import() site wins
+									continue
+								}
+							}
+							add(impRec{imp: im, tgt: t, rel: rel, external: external, deferred: im.Dyn == dynDeferred})
+						}
+						continue
+					}
 					for _, target := range targets {
 						t, ok := ids[target]
 						if !ok {
@@ -214,6 +283,9 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 								tgtNum[t.id] = t.num
 							}
 							ids[target] = t
+						}
+						if dynSeen[dynKey{im.FileID, t.id, model.RelImportsFrom}] {
+							continue
 						}
 						ekey := uint64(src)<<32 | uint64(t.num)
 						if i, ok := impEdge[ekey]; ok {
@@ -254,7 +326,8 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				targets := importTargets(im, corpus, goPkgs, goMods, goTargets)
 				b.targets = append(b.targets, targets)
 				external[[2]string{im.File, im.Spec}] = len(targets) == 0
-				if len(targets) > 0 {
+				// function import() runs late
+				if len(targets) > 0 && (im.Dyn == 0 || im.Dyn == dynDeferred && im.FileID == idutil.MakeID(im.File)) {
 					impTargets[im.File] = append(impTargets[im.File], targets)
 				}
 			}
@@ -292,6 +365,52 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		}
 	}
 	resolved := resolveImportGuided(results, idFile, &out, corpus, local, owner, reexports)
+
+	// Upstream indexes all nodes, not defs.
+	newIDs, newFile, newPos := map[string][]string{}, map[string]string{}, map[string]int{}
+	newHere := map[[2]string][]string{} // file, name -> its newIDs
+	newCallers := map[string]bool{}     // who calls a new X()
+	newIndex := sync.OnceFunc(func() {
+		names := map[string]bool{}
+		for _, r := range results {
+			if k := slices.Index(r.CallText, jsNewRecv); k > 0 {
+				for _, n := range r.Calls {
+					if n.Recv == uint32(k) {
+						names[r.CallText[n.Callee]] = true
+						newCallers[r.CallText[n.CallerID]] = true
+					}
+				}
+			}
+		}
+		for _, r := range results {
+			if !jsLike(r.File) {
+				continue
+			}
+			// member labels carry the owner
+			for _, d := range r.Defs {
+				if _, ok := newFile[d.ID]; names[d.Name] && !ok {
+					newIDs[d.Name] = append(newIDs[d.Name], d.ID)
+					k := [2]string{r.File, d.Name}
+					newHere[k] = append(newHere[k], d.ID)
+					newFile[d.ID] = r.File
+				}
+			}
+			for i, n := range r.Nodes {
+				if _, ok := newFile[n.ID]; ok {
+					newPos[n.ID] = i
+				} else if n.FileType != "rationale" {
+					if l := strings.TrimLeft(strings.Trim(n.Label, "()"), "."); names[l] {
+						newIDs[l] = append(newIDs[l], n.ID)
+						k := [2]string{r.File, l}
+						newHere[k] = append(newHere[k], n.ID)
+						newFile[n.ID] = r.File
+						newPos[n.ID] = i
+					}
+				}
+			}
+		}
+	})
+	go newIndex() // beside the inheritance pass
 
 	// Inheritance: a declared supertype name binds the same way a call does —
 	// same file first, then disambiguated among the definitions sharing the name.
@@ -535,6 +654,17 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	// else only to a definition the receiver's last segment qualifies.
 	// Each run of files binds against the indexes above, which no longer change,
 	// so the runs are bound side by side and their edges joined in file order.
+	// shared by all runs
+	refd := sync.OnceValue(func() map[[2]string]bool { // signature already links these
+		newIndex()
+		m := map[[2]string]bool{}
+		for _, e := range inherit {
+			if newCallers[e.Source] { // only they ask
+				m[[2]string{e.Source, e.Target}] = true
+			}
+		}
+		return m
+	})
 	bind := func(results []Result) [][]model.Edge {
 		// In parts of impPart: one slice a run grew by copies, and the outgrown
 		// ones were live with it at the collection that sets the peak. Only
@@ -558,12 +688,26 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		bareJS := map[string][]string{}    // callee -> its global list without class members
 		for _, r := range results {
 			rf := model.FileOf(r.File)
+			var named map[string]bool
+			symImp := func(id string) bool {
+				if named == nil {
+					named = map[string]bool{}
+					for _, d := range jm.bound(&r) {
+						named[d] = true
+					}
+				}
+				return named[id]
+			}
 			for i, n := range r.Calls {
 				c := r.call(n)
 				if len(resolved) > 0 && resolved[callSite{c.CallerID, c.Callee, c.Loc}] {
 					continue
 				}
 				tgt, conf := "", model.ConfInferred
+				isNew := c.Recv == jsNewRecv
+				if isNew {
+					c.Recv = ""
+				}
 				super, isSelf := selfRecv[c.Recv]
 				if ext := langRecv[c.Recv]; ext != "" && path.Ext(r.File) != ext {
 					isSelf = false
@@ -629,6 +773,19 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 						}
 						all = ids
 					}
+					if isNew {
+						newIndex()
+						all = newIDs[c.Callee]
+						here = newHere[lkey]
+						if len(here) > 1 {
+							// upstream: last same-label node wins
+							nsPrefix := idutil.MakeID(r.File, "ns") + "_"
+							if d := keep(here, func(id string) bool { return !strings.HasPrefix(id, nsPrefix) }); len(d) > 0 {
+								here = d
+							}
+							here = []string{slices.MaxFunc(here, func(a, b string) int { return newPos[a] - newPos[b] })}
+						}
+					}
 					if c.Recv != "" {
 						q := recvTail(c.Recv)
 						ok := func(id string) bool { return q != "" && quals[id].has(q) }
@@ -661,13 +818,22 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					// Two types in one file can each own a method of the same name; a
 					// bare call then has no unambiguous local target, so fall through
 					// to disambiguate rather than guess.
-					if c.Recv == "" {
+					if c.Recv == "" && !(isNew && len(all) > 1) {
 						tgt = jsAlias[lkey]
+						// new binds by class name
+						if isNew && !slices.Contains(local[[2]string{idFile[tgt], c.Callee}], tgt) {
+							tgt = ""
+						}
 					}
 					if tgt == "" && len(here) == 1 {
 						tgt = here[0]
 					}
-					if tgt == "" {
+					if tgt == "" && isNew && len(all) > 1 {
+						// no directory tie-break upstream
+						if tgt = unique(all, symImp); tgt == "" {
+							tgt = unique(all, func(id string) bool { return imported.of(r.File)[newFile[id]] })
+						}
+					} else if tgt == "" {
 						tgt = disambiguate(all, r.File, idFile, &imported)
 					}
 				}
@@ -676,8 +842,18 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				// and a name match across a family boundary is a phantom edge, not a
 				// real call. Unknown families (non-code, unrecognized ext) stay
 				// permissive.
-				if tgt != "" && langfamily.Cross(r.File, idFile[tgt]) {
+				if tgt != "" && langfamily.Cross(r.File, idFile[tgt]) &&
+					!(langfamily.Component(r.File) && c.Recv == "" && tgt == jsAlias[[2]string{r.File, c.Callee}]) {
 					tgt = ""
+				}
+				// new needs import evidence
+				if isNew && tgt != "" {
+					cross := newFile[tgt] != r.File
+					if tgt == owner[c.CallerID] || owner[tgt] == c.CallerID || newFile[tgt] != r.File && !slices.Contains(local[[2]string{idFile[tgt], c.Callee}], tgt) ||
+						cross && (!symImp(tgt) && !imported.of(r.File)[idFile[tgt]] || refd()[[2]string{c.CallerID, tgt}]) ||
+						c.CallerID == idutil.MakeID(r.File) && symImp(tgt) { // imports edge links the pair
+						tgt = ""
+					}
 				}
 				// A call on an external module has no definition to bind, so it
 				// lands on the module's import node.
@@ -760,15 +936,22 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	for _, recs := range impEdges {
 		part := make([]model.Edge, 0, len(recs))
 		for _, e := range recs {
-			rel := model.RelImportsFrom
-			if e.external {
-				rel = model.RelImports
+			rel := e.rel
+			if rel == 0 {
+				rel = model.RelImportsFrom
+				if e.external {
+					rel = model.RelImports
+				}
 			}
 			part = append(part, model.Edge{
 				Source: e.imp.FileID, Target: e.tgt, Relation: rel,
 				Confidence: model.ConfExtracted, SourceFile: fc.of(e.imp.File), SourceLocation: e.imp.Loc,
 			})
+			if rel == model.RelDynamicImport {
+				part[len(part)-1].SourceLocation = 0 // upstream writes none
+			}
 			part[len(part)-1].SetTypeOnly(e.typeOnly)
+			part[len(part)-1].SetDeferred(e.deferred)
 		}
 		edges = append(edges, part)
 	}
@@ -1531,18 +1714,37 @@ func importTargets(im Imp, corpus map[string]bool, goPkgs map[string][]string, g
 		if path.Ext(from) == ".rb" && path.Ext(spec) != ".rb" {
 			spec += ".rb"
 		}
-		if t := resolveRelImport(im.File, spec, corpus); t != "" {
-			return []string{t}
-		}
 		// TypeScript names the output file: `./x.js` is x.ts on disk.
-		if ext := path.Ext(spec); jsLike(im.File) && (ext == ".js" || ext == ".jsx") {
-			ts := strings.TrimSuffix(spec, ext) + ".t" + ext[2:]
-			if t := resolveRelImport(im.File, ts, corpus); t != "" && t != from {
+		base, ok := relBase(im.File, spec)
+		if ok && jsLike(im.File) && !corpus[base] {
+			tos := []string{".ts", ".tsx"}
+			switch path.Ext(base) {
+			case ".js":
+			case ".jsx":
+				tos = tos[1:]
+			default:
+				tos = nil
+			}
+			for _, to := range tos {
+				if t := strings.TrimSuffix(base, path.Ext(base)) + to; corpus[t] {
+					return []string{t}
+				}
+			}
+		}
+		if ok {
+			if t := resolveModulePath(base, corpus); t != "" {
 				return []string{t}
 			}
 		}
 	}
 	return out
+}
+
+// jsSelfFallback reports a './x.js' that fell back to the importing file
+// itself, which upstream drops.
+func jsSelfFallback(im *Imp, targets []string) bool {
+	ext := path.Ext(im.Spec)
+	return len(targets) == 1 && targets[0] == im.File && (ext == ".js" || ext == ".jsx") && path.Ext(im.File) != ext
 }
 
 // resolveRustPath maps a `crate::`, `self::` or `super::` path to the corpus
@@ -1635,20 +1837,18 @@ func resolvePyModule(from, mod string, corpus map[string]bool) string {
 	return found
 }
 
-// resolveRelImport maps a relative import specifier to a file in the corpus,
-// trying common extensions and index files. Returns "" for bare (external)
-// specifiers or unresolved paths.
-func resolveRelImport(fromFile, spec string, corpus map[string]bool) string {
+// relBase is the corpus path a relative specifier names, before any probing.
+func relBase(fromFile, spec string) (string, bool) {
 	// The `@/` alias is the de-facto project-root convention in Next.js/Vite/
 	// modern-TS repos; resolve it against the corpus root so those imports
 	// become imports_from edges instead of external dependency nodes.
 	if strings.HasPrefix(spec, "@/") {
-		return resolveModulePath(path.Clean(strings.TrimPrefix(spec, "@/")), corpus)
+		return path.Clean(strings.TrimPrefix(spec, "@/")), true
 	}
 	if spec == "" || (spec[0] != '.' && spec[0] != '/') {
-		return "" // bare specifier — an external package
+		return "", false // bare specifier — an external package
 	}
-	return resolveModulePath(path.Clean(path.Join(path.Dir(filepath.ToSlash(fromFile)), spec)), corpus)
+	return path.Clean(path.Join(path.Dir(filepath.ToSlash(fromFile)), spec)), true
 }
 
 // resolveModulePath probes a corpus-relative module path as-is, then with each

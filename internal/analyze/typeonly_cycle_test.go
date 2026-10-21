@@ -64,3 +64,18 @@ func TestImportCyclesTypeAndValueImportSameModule(t *testing.T) {
 		}
 	}
 }
+
+// A deferred import() runs late, so it closes no static cycle.
+func TestImportCyclesSkipsDeferredImports(t *testing.T) {
+	for _, imp := range []string{
+		"export async function lazy() { return import('./b'); }", // from a function
+		"describe('x', () => { import('./b'); });",               // from the file
+	} {
+		if cycles := ImportCycles(tsCycleGraph(t, imp), 5, 20); len(cycles) != 0 {
+			t.Errorf("expected no cycles for %q, got %v", imp, cycles)
+		}
+	}
+	if cycles := ImportCycles(tsCycleGraph(t, "import { B } from './b';"), 5, 20); len(cycles) != 1 {
+		t.Errorf("a static import still closes the cycle, got %v", cycles)
+	}
+}

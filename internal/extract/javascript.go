@@ -7,6 +7,7 @@ import (
 	tsjs "github.com/dobbo-ca/gositter/grammars/javascript"
 	tstsx "github.com/dobbo-ca/gositter/grammars/tsx"
 	tsts "github.com/dobbo-ca/gositter/grammars/typescript"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
@@ -21,6 +22,8 @@ import (
 func init() {
 	for _, l := range []*gositter.Language{tsjs.Language(), tsts.Language(), tstsx.Language()} {
 		l.KindMask("call_expression")
+		l.KindMask("new_expression")
+		l.KindMask("method_definition")
 		l.KindMask("export_statement")
 	}
 }
@@ -42,9 +45,16 @@ func extractJS(rel string, src []byte, langPtr *gositter.Language) Result {
 	slices.SortStableFunc(b.jsBodies, func(x, y jsBody) int { return cmp.Compare(x.start, y.start) })
 	next := 0
 	var open []jsBody
-	walkKinds(root, langPtr.KindMask("call_expression"), func(cv ts.Node) bool {
+	var meths [][2]uint // open method_definition spans
+	walkKinds(root, langPtr.KindMask("call_expression")|langPtr.KindMask("new_expression")|langPtr.KindMask("method_definition"), func(cv ts.Node) bool {
 		c := &cv
-		b.jsCallImport(c, src)
+		for len(meths) > 0 && c.StartByte() >= meths[len(meths)-1][1] {
+			meths = meths[:len(meths)-1]
+		}
+		if c.Kind() == "method_definition" {
+			meths = append(meths, [2]uint{c.StartByte(), c.EndByte()})
+			return true
+		}
 		for len(open) > 0 && c.StartByte() >= open[len(open)-1].end {
 			open = open[:len(open)-1]
 		}
@@ -54,8 +64,14 @@ func extractJS(rel string, src []byte, langPtr *gositter.Language) Result {
 			}
 			next++
 		}
+		var body jsBody
 		if len(open) > 0 {
-			b.jsCall(c, open[len(open)-1], src)
+			body = open[len(open)-1]
+		}
+		b.jsCallImport(c, src, body.callerID, body)
+		if len(open) > 0 {
+			inMethod := len(meths) > 0 && meths[len(meths)-1][0] >= body.start && meths[len(meths)-1] != [2]uint{body.start, body.end}
+			b.jsCall(c, body, src, inMethod)
 		}
 		return true
 	})
@@ -75,6 +91,68 @@ func extractJS(rel string, src []byte, langPtr *gositter.Language) Result {
 	b.jsProtoOwners()
 	b.jsRationale(src)
 	return b.res
+}
+
+// extractJSFile adds dynamic_import edges, found by regex as upstream does.
+func extractJSFile(rel string, src []byte, langPtr *gositter.Language) Result {
+	res := extractJS(rel, src, langPtr)
+	fileID := idutil.MakeID(rel)
+	isWord := func(c byte) bool {
+		return c == '_' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80
+	}
+	skipSpace := func(i int) int {
+		for i < len(src) && strings.IndexByte(" \t\n\r\f\v", src[i]) >= 0 {
+			i++
+		}
+		return i
+	}
+	line, prev, slash := 1, 0, false // slash: // seen on this line
+	for i := 0; ; {
+		j := bytes.Index(src[i:], []byte("import"))
+		if j < 0 {
+			break
+		}
+		at := i + j
+		i = at + len("import")
+		if at > 0 && isWord(src[at-1]) {
+			continue
+		}
+		k := skipSpace(i)
+		if k >= len(src) || src[k] != '(' {
+			continue
+		}
+		k = skipSpace(k + 1)
+		if k >= len(src) || src[k] != '\'' && src[k] != '"' && src[k] != '`' {
+			continue
+		}
+		q := src[k]
+		end := k + 1
+		for end < len(src) && src[end] != q && src[end] != '\n' && (q != '`' || src[end] != '$') {
+			end++
+		}
+		if end == k+1 || end >= len(src) || src[end] != q {
+			continue
+		}
+		if c := skipSpace(end + 1); c >= len(src) || src[c] != ')' {
+			continue
+		}
+		// incremental, keeps it linear
+		seg := src[prev:at]
+		prev = at
+		if n := bytes.Count(seg, []byte{'\n'}); n > 0 {
+			line, slash = line+n, false
+			seg = seg[bytes.LastIndexByte(seg, '\n')+1:]
+		}
+		slash = slash || bytes.Contains(seg, []byte("//"))
+		if slash {
+			continue
+		}
+		if src[k+1] == '/' { // upstream drops an empty package name
+			continue
+		}
+		res.Imps = append(res.Imps, Imp{FileID: fileID, File: rel, Spec: string(src[k+1 : end]), Loc: model.Line(line), Dyn: dynImport})
+	}
+	return res
 }
 
 // jsExportOrphans gives every exported declarator that has no node yet a
@@ -204,22 +282,115 @@ func (b *builder) jsChildren(n *ts.Node, src []byte, owner string) {
 	}
 }
 
-// jsCallImport records `require("m")` and dynamic `import("m")` as imports.
-// Only a lone string literal counts; a computed spec names no file.
-func (b *builder) jsCallImport(n *ts.Node, src []byte) {
+// jsInSignature reports whether n lies in the params or type of a nested
+// callable, which upstream's closure walk skips.
+func jsInSignature(n *ts.Node, body jsBody) bool {
+	for c, p := n, n; p != nil && (p.StartByte() != body.start || p.EndByte() != body.end); c, p = p, p.Parent() {
+		switch p.Kind() {
+		case "method_definition":
+			return true
+		case "function_declaration", "generator_function_declaration":
+			if bd := p.ChildByFieldName("body"); bd == nil || bd.StartByte() != c.StartByte() || bd.EndByte() != c.EndByte() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// jsMaskedImport reports an import() in the type arguments of a generic call
+// that tree-sitter takes for `a < b > (c)`. Upstream blanks it before parsing.
+func (b *builder) jsMaskedImport(n *ts.Node, src []byte) bool {
+	if e := path.Ext(b.file); e == ".js" || e == ".jsx" || e == ".mjs" || e == ".cjs" {
+		return false
+	}
+	var bin *ts.Node
+	parens := 0
+	for p, q := n, n.Parent(); q != nil; p, q = q, q.Parent() {
+		k := q.Kind()
+		if k == "binary_expression" {
+			r, op := q.ChildByFieldName("right"), q.ChildByFieldName("operator")
+			if r != nil && op != nil && op.Kind() == "<" && r.StartByte() == p.StartByte() && r.EndByte() == p.EndByte() {
+				bin = q
+			}
+			break
+		}
+		if k == "parenthesized_expression" {
+			parens++
+		}
+		if k != "unary_expression" && k != "member_expression" && k != "subscript_expression" && k != "parenthesized_expression" && k != "array" {
+			break
+		}
+	}
+	if bin == nil {
+		return false
+	}
+	end := n.EndByte()
+	for end < uint(len(src)) && src[end] != '>' && (src[end] == ')' && parens > 0 || !strings.ContainsRune("();{}", rune(src[end]))) {
+		if src[end] == ')' {
+			parens--
+		}
+		end++
+	}
+	if end >= uint(len(src)) || src[end] != '>' {
+		return false
+	}
+	end++
+	// only failed generics leave ERROR
+	for a := bin; a.Parent() != nil; a = a.Parent() {
+		for _, ch := range a.Parent().Children() {
+			if ch.Kind() == "ERROR" && ch.StartByte() <= end+2 && ch.EndByte()+1 >= end {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// jsCallImport records `require("m")` and `import("m")` as imports; caller is
+// the function holding the call. A computed spec names no file.
+func (b *builder) jsCallImport(n *ts.Node, src []byte, caller string, body jsBody) {
 	if n.Kind() != "call_expression" {
 		return
 	}
 	fn, args := n.ChildByFieldName("function"), n.ChildByFieldName("arguments")
-	if fn == nil || args == nil || args.NamedChildCount() != 1 {
+	if fn == nil || args == nil || args.NamedChildCount() == 0 {
 		return
 	}
-	if fn.Kind() != "import" && (fn.Kind() != "identifier" || fn.Utf8Text(src) != "require") {
-		return
+	one := args.NamedChildCount() == 1 && args.NamedChild(0).Kind() == "string"
+	switch {
+	case fn.Kind() == "identifier" && fn.Utf8Text(src) == "require":
+		if one {
+			b.imp(unquote(args.NamedChild(0).Utf8Text(src)), line(n))
+		}
+	case fn.Kind() == "import":
+		// TS import-equals parses as a call
+		if strings.TrimSpace(string(src[fn.EndByte():args.StartByte()])) != "" && one {
+			b.imp(unquote(args.NamedChild(0).Utf8Text(src)), line(n))
+		}
+		if caller != "" && (jsInSignature(n, body) || b.jsMaskedImport(n, src)) {
+			caller = ""
+		}
+		b.impDeferred(jsImportSpec(args, src), line(n), caller)
 	}
-	if a := args.NamedChild(0); a.Kind() == "string" {
-		b.imp(unquote(a.Utf8Text(src)), line(n))
+}
+
+// jsImportSpec is the first literal argument of an import(), "" if computed.
+func jsImportSpec(args *ts.Node, src []byte) string {
+	for i := uint(0); i < args.NamedChildCount(); i++ {
+		switch a := args.NamedChild(i); a.Kind() {
+		case "string":
+			return strings.Trim(a.Utf8Text(src), "'\" ")
+		case "template_string":
+			for j := uint(0); j < a.NamedChildCount(); j++ {
+				if a.NamedChild(j).Kind() == "template_substitution" {
+					return ""
+				}
+			}
+			return strings.Trim(a.Utf8Text(src), "`")
+		}
 	}
+	return ""
 }
 
 // jsTypeOnlyImport reports whether an import or re-export statement is a
@@ -1117,35 +1288,81 @@ func (b *builder) jsCalls(body *ts.Node, callerID string) {
 	b.jsBodies = append(b.jsBodies, jsBody{body.StartByte(), body.EndByte(), callerID, slices.Clone(b.jsNS)})
 }
 
-// jsCall records the call site c, a call_expression, for the body's caller.
-func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte) {
+// jsNewBuiltins are the names upstream never binds a `new` to: its one
+// builtin list for every language, Swift types included.
+var jsNewBuiltins = map[string]bool{}
+
+func init() {
+	for _, n := range strings.Fields(`String Number Boolean Object Array Symbol BigInt Date RegExp Error
+		TypeError RangeError SyntaxError ReferenceError EvalError URIError Promise Map Set WeakMap
+		WeakSet JSON Math Reflect Proxy Intl parseInt parseFloat isNaN isFinite encodeURIComponent
+		decodeURIComponent encodeURI decodeURI URL URLSearchParams FormData Blob File Headers
+		Request Response AbortController AbortSignal TextEncoder TextDecoder console str int float
+		bool list dict set tuple bytes len range enumerate zip map filter sum min max print open
+		isinstance type super sorted reversed any all abs round next iter hash id repr callable
+		getattr setattr hasattr delattr vars dir Int Int8 Int16 Int32 Int64 UInt UInt8 UInt16
+		UInt32 UInt64 Double Float Bool Character Sendable Codable Decodable Encodable Equatable
+		Hashable Identifiable Comparable CaseIterable RawRepresentable CustomStringConvertible
+		CustomDebugStringConvertible AnyObject LocalizedError Data UUID Decimal Calendar Locale
+		TimeZone Bundle IndexPath IndexSet NotificationCenter UserDefaults FileManager URLSession
+		URLRequest URLComponents JSONDecoder JSONEncoder DateFormatter NumberFormatter
+		ISO8601DateFormatter NSObject NSString NSError NSLock NSAttributedString DispatchQueue
+		DispatchGroup OperationQueue RunLoop View Color Font`) {
+		jsNewBuiltins[n] = true
+	}
+}
+
+// jsNewRecv marks the call of a `new X()`, which binds only with import evidence.
+const jsNewRecv = "\x00new"
+
+// jsCall records the call site c, a call_expression or new_expression, for
+// the body's caller.
+func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte, inMethod bool) {
 	callerID := body.callerID
+	isNew := c.Kind() == "new_expression"
 	fn := c.ChildByFieldName("function")
+	if isNew {
+		fn = c.ChildByFieldName("constructor")
+	}
 	if fn == nil || callerID == "" {
 		return
 	}
 	// A method body is a boundary: its calls are no caller's.
-	for p := c; p != nil && (p.StartByte() != body.start || p.EndByte() != body.end); p = p.Parent() {
-		if p.Kind() == "method_definition" {
-			return
-		}
+	if inMethod {
+		return
 	}
 	switch fn.Kind() {
 	case "identifier":
 		name := fn.Utf8Text(src)
-		for s := callerID; s != ""; s = b.jsParent[s] {
+		// new binds in the resolver
+		for s := callerID; s != "" && !isNew; s = b.jsParent[s] {
 			if id, ok := b.jsNested[[2]string{s, name}]; ok {
 				b.jsNestedCall(callerID, id, line(c))
 				return
 			}
 		}
+		if isNew && jsNewBuiltins[name] {
+			return
+		}
 		// Innermost namespace first; a name in none is a plain global call.
 		for k := len(body.ns); k > 0; k-- {
 			id := idutil.MakeID(append(append([]string{b.stem, "ns"}, body.ns[:k]...), name)...)
 			if b.seen[id] && !b.jsBare[id] {
-				b.jsNestedCall(callerID, id, line(c))
+				// Own-member new X() makes no edge
+				if !isNew || !slices.ContainsFunc(b.res.Edges, func(e model.Edge) bool {
+					return e.Source == id && e.Target == callerID && e.Relation == model.RelContains
+				}) {
+					b.jsNestedCall(callerID, id, line(c))
+				}
 				return
 			}
+		}
+		if isNew {
+			// contains edge already links the pair
+			if callerID != b.fileID || !b.jsFileOwns(name) {
+				b.callRecv(callerID, name, jsNewRecv, line(c))
+			}
+			return
 		}
 		// The file's contains edge to its own function hides this call upstream.
 		if callerID == b.fileID && b.jsFileOwns(name) {
@@ -1153,7 +1370,7 @@ func (b *builder) jsCall(c *ts.Node, body jsBody, src []byte) {
 		}
 		b.call(callerID, name, line(c))
 	case "member_expression":
-		if p := fn.ChildByFieldName("property"); p != nil {
+		if p := fn.ChildByFieldName("property"); p != nil && !isNew {
 			b.callRecv(callerID, p.Utf8Text(src), recvText(fn, p, src), line(c))
 		}
 	}

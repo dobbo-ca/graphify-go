@@ -49,10 +49,13 @@ func extractComponent(rel string, src []byte, isAstro bool) Result {
 	fileID := idutil.MakeID(rel)
 	for _, m := range dynamicImportRE.FindAllSubmatchIndex(src, -1) {
 		spec := string(src[m[2]:m[3]])
+		if strings.HasPrefix(spec, "/") { // upstream drops an empty package name
+			continue
+		}
 		if spec == "" {
 			continue
 		}
-		res.Imps = append(res.Imps, Imp{FileID: fileID, File: rel, Spec: spec, Loc: model.Line(lineOf(src, m[0]))})
+		res.Imps = append(res.Imps, Imp{FileID: fileID, File: rel, Spec: spec, Loc: model.Line(lineOf(src, m[0])), Dyn: dynImport})
 	}
 	return res
 }
