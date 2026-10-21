@@ -97,6 +97,9 @@ type TypeRef struct {
 	Deco bool `json:",omitempty"`
 	// Qual is the qualifier Name was written with (`ns` in `ns.Name`).
 	Qual string `json:",omitempty"`
+	// Arg marks a C# call-site type argument: upstream's in-file name
+	// table never holds its stub.
+	Arg bool `json:",omitempty"`
 }
 
 // Imp is an unresolved import: File imported the module named Spec. TypeOnly
@@ -183,6 +186,10 @@ type Result struct {
 	// JavaRets are "method-id type" pairs; they type chains.
 	// An empty id names a type with no node here.
 	JavaRets []string `json:",omitempty"`
+	// CsTypes are "id namespace F=T G[]=E ..." per top-level C# type: its
+	// namespace and the types of its fields and properties, G[] marking a
+	// list or array field.
+	CsTypes []string `json:",omitempty"`
 	// OverBudget: ts.Budget stopped the parse, only the file node is here.
 	OverBudget bool `json:",omitempty"`
 }
@@ -372,6 +379,16 @@ type builder struct {
 	jsBodySeen  map[uint]bool        // start bytes of the registered bodies
 	strs        map[string]uint32    // text -> its number in res.CallText
 	javaRets    map[string]string    // method id -> declared return type
+
+	// C# per file: nested type names, those of the type being walked, per
+	// top-level type its field table and inherits base names, the
+	// generic types for the stub check, and each type declaration.
+	csNested    map[string]bool
+	csOwnNested map[string]bool
+	csFields    map[string]map[string]string
+	csSupers    map[string][]string
+	csGen       []csGen
+	csDecls     []csDecl
 }
 
 func newBuilder(rel string) *builder {
