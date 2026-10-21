@@ -6,6 +6,7 @@ package detect
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -72,10 +73,10 @@ var SupportedExtensions = map[string]bool{
 
 var skipDirs = map[string]bool{
 	"node_modules": true, ".git": true, ".hg": true, ".svn": true,
-	"dist": true, "build": true, "target": true, "out": true,
-	"vendor": true, "coverage": true, "__snapshots__": true,
+	"dist": true, "build": true, "target": true,
+	"vendor": true, "__snapshots__": true,
 	".next": true, ".nuxt": true, ".turbo": true, ".svelte-kit": true,
-	".cache": true, ".idea": true, ".vscode": true, ".worktrees": true,
+	".cache": true, ".idea": true, ".worktrees": true,
 	"graphify-out": true, ".graphify": true,
 	".terraform": true, // provider/module cache from `terraform init` — vendored, never source
 	// Python venv/cache dirs: hardcoded skips must fire even when a repo does not
@@ -83,12 +84,16 @@ var skipDirs = map[string]bool{
 	// site-packages floods the graph with dependency noise (#1804).
 	".nox": true, ".tox": true, "site-packages": true, "lib64": true,
 	".eggs": true, ".pytest_cache": true, ".mypy_cache": true, ".ruff_cache": true,
+	"venv": true, ".venv": true, "__pycache__": true, "lcov-report": true,
+	"visual-tests": true, "visual-test": true, "storybook-static": true,
+	"dist-protected": true, ".angular": true, ".parcel-cache": true,
+	".serverless": true, ".obsidian": true, ".smart-env": true,
 }
 
 // skipDirSuffixes are directory-name suffixes that mark a dir as skippable even
 // when its exact name is not in skipDirs. Mirrors upstream's `*.egg-info` glob:
 // setuptools metadata dirs (foo.egg-info) are generated, never source.
-var skipDirSuffixes = []string{".egg-info"}
+var skipDirSuffixes = []string{".egg-info", "_venv"}
 
 const (
 	// graphifyOut is the output dir; memoryDir under it holds the Q&A docs
@@ -113,9 +118,9 @@ func isNestedWorktree(dir, slashRel string) bool {
 	return err == nil && !fi.IsDir()
 }
 
-// skipDir reports whether a directory named n should be pruned from the walk
-// (exact-name skip set or a skippable suffix like *.egg-info).
-func skipDir(n string) bool {
+// skipDir reports whether directory n under parent should be pruned from the
+// walk (exact-name skip set, a skippable suffix, or an evidence-gated name).
+func skipDir(parent, n string) bool {
 	if skipDirs[n] {
 		return true
 	}
@@ -125,12 +130,206 @@ func skipDir(n string) bool {
 	if v := os.Getenv("GRAPHIFY_OUT"); v != "" && n == filepath.Base(v) {
 		return true
 	}
+	switch {
+	case n == "env", n == ".env", strings.HasSuffix(n, "_env"):
+		return hasVenvMarkers(filepath.Join(parent, n))
+	case n == "coverage":
+		return hasCoverageArtifacts(filepath.Join(parent, n))
+	case n == "out":
+		return hasBuildOutputMarkers(filepath.Join(parent, n))
+	case n == "snapshots":
+		return hasSnapshotEvidence(parent, n)
+	}
 	for _, s := range skipDirSuffixes {
 		if strings.HasSuffix(n, s) {
 			return true
 		}
 	}
 	return false
+}
+
+// statIsFile and statIsDir follow symlinks like Python's is_file/is_dir.
+func statIsFile(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.Mode().IsRegular()
+}
+
+func statIsDir(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
+}
+
+// entryKind stats symlink entries; ok is false on any error but ENOENT,
+// where upstream's is_file raises and aborts the probe.
+func entryKind(dir string, e fs.DirEntry) (isFile, isDir, ok bool) {
+	if e.Type()&fs.ModeSymlink == 0 {
+		return e.Type().IsRegular(), e.IsDir(), true
+	}
+	fi, err := os.Stat(filepath.Join(dir, e.Name()))
+	if err != nil {
+		return false, false, errors.Is(err, fs.ErrNotExist)
+	}
+	return fi.Mode().IsRegular(), fi.IsDir(), true
+}
+
+var coverageArtifactFiles = []string{
+	"lcov.info", "coverage-final.json", "coverage-summary.json",
+	"clover.xml", "coverage.xml", "cobertura-coverage.xml", "jacoco.xml",
+	".coverage", "index.html",
+}
+
+// hasCoverageArtifacts reports whether dir holds coverage tool output.
+func hasCoverageArtifacts(dir string) bool {
+	for _, n := range coverageArtifactFiles {
+		if statIsFile(filepath.Join(dir, n)) {
+			return true
+		}
+	}
+	return statIsDir(filepath.Join(dir, "lcov-report")) || statIsDir(filepath.Join(dir, "html-report"))
+}
+
+var buildOutputSuffixes = []string{
+	".class", ".jar", ".o", ".obj", ".exe", ".dll", ".pyc",
+	".js.map", ".css.map", ".d.ts",
+}
+
+func hasBuildOutputSuffix(name string) bool {
+	name = strings.ToLower(name)
+	for _, s := range buildOutputSuffixes {
+		if strings.HasSuffix(name, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasBuildOutputMarkers reports whether dir looks compiler or bundler generated.
+func hasBuildOutputMarkers(dir string) bool {
+	if statIsDir(filepath.Join(dir, "production")) || statIsDir(filepath.Join(dir, "_next")) {
+		return true
+	}
+	df, err := os.Open(dir)
+	if err != nil {
+		return false
+	}
+	entries, err := df.ReadDir(-1) // directory order, like scandir
+	df.Close()
+	if err != nil {
+		return false
+	}
+	var subs []string
+	for _, e := range entries {
+		isFile, isDir, ok := entryKind(dir, e)
+		if !ok {
+			return false
+		}
+		if isFile && hasBuildOutputSuffix(e.Name()) {
+			return true
+		}
+		if isDir {
+			subs = append(subs, filepath.Join(dir, e.Name()))
+		}
+	}
+	budget := 4000 // matches upstream scan bound
+	for _, sub := range subs {
+		if budget <= 0 {
+			break
+		}
+		f, err := os.Open(sub)
+		if err != nil {
+			return false
+		}
+		es, _ := f.ReadDir(budget)
+		f.Close()
+		for _, e := range es {
+			isFile, _, ok := entryKind(sub, e)
+			if !ok {
+				return false
+			}
+			if isFile && hasBuildOutputSuffix(e.Name()) {
+				return true
+			}
+		}
+		budget -= len(es)
+	}
+	return false
+}
+
+// hasVenvMarkers reports whether dir has virtualenv or conda structure.
+func hasVenvMarkers(dir string) bool {
+	if statIsFile(filepath.Join(dir, "pyvenv.cfg")) ||
+		statIsFile(filepath.Join(dir, "bin", "activate")) ||
+		statIsFile(filepath.Join(dir, "Scripts", "activate")) ||
+		statIsDir(filepath.Join(dir, "conda-meta")) {
+		return true
+	}
+	es, _ := os.ReadDir(filepath.Join(dir, "lib"))
+	for _, e := range es {
+		if strings.HasPrefix(e.Name(), "python") {
+			return true
+		}
+	}
+	return false
+}
+
+// hasSnapshotEvidence reports whether parent/n is a Jest or Vitest snapshot dir.
+func hasSnapshotEvidence(parent, n string) bool {
+	parent = resolveRoot(parent) // "." has no useful base name
+	if pb := filepath.Base(parent); pb == "__tests__" || pb == "__test__" {
+		return true
+	}
+	es, _ := os.ReadDir(filepath.Join(parent, n))
+	for _, e := range es {
+		if strings.HasSuffix(e.Name(), ".snap") {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveRoot returns root as an absolute, symlink-free path.
+func resolveRoot(root string) string {
+	abs := absPhys(root)
+	if r, err := filepath.EvalSymlinks(abs); err == nil {
+		return r
+	}
+	return filepath.Clean(abs)
+}
+
+// absPhys anchors a relative path at the physical cwd, uncleaned: Getwd
+// returns the logical $PWD and Clean would fold ".." lexically.
+func absPhys(p string) string {
+	if filepath.IsAbs(p) {
+		return p
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return p
+	}
+	if r, err := filepath.EvalSymlinks(wd); err == nil {
+		wd = r
+	}
+	return wd + string(filepath.Separator) + p
+}
+
+// admitFile reports whether a non-dir entry is a regular file whose symlink
+// target, if any, stays under realRoot. It opens nothing.
+func admitFile(slashRel string, d fs.DirEntry, realRoot string) bool {
+	if d.Type().IsRegular() {
+		return true
+	}
+	if d.Type()&fs.ModeSymlink == 0 {
+		return false
+	}
+	target, err := filepath.EvalSymlinks(filepath.Join(realRoot, filepath.FromSlash(slashRel)))
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(realRoot, target)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	return statIsFile(target)
 }
 
 var skipFiles = map[string]bool{
@@ -362,6 +561,7 @@ type WalkReport struct {
 // returned Files slice is identical to CollectFiles' output.
 func CollectFilesReport(root string) (WalkReport, error) {
 	ign := newIgnorer(root)
+	realRoot := resolveRoot(root)
 	rep := walkTree(root, func(rep *WalkReport, path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			// Record the failing entry instead of swallowing it: an unreadable
@@ -389,9 +589,12 @@ func CollectFilesReport(root string) (WalkReport, error) {
 			if slashRel == graphifyOut || inMemoryDir(slashRel) {
 				return nil
 			}
-			if skipDir(d.Name()) || isNestedWorktree(path, slashRel) || ign.ignored(slashRel, true) {
+			if skipDir(filepath.Dir(path), d.Name()) || isNestedWorktree(path, slashRel) || ign.ignored(slashRel, true) {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+		if !admitFile(slashRel, d, realRoot) {
 			return nil
 		}
 		name := d.Name()
@@ -527,6 +730,7 @@ func CollectFiles(root string) ([]string, error) {
 func CollectManifests(root string) ([]string, error) {
 	var files []string
 	ign := newIgnorer(root)
+	realRoot := resolveRoot(root)
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil // unreadable entry — skip, don't abort the whole walk
@@ -543,12 +747,12 @@ func CollectManifests(root string) ([]string, error) {
 			if path == root {
 				return nil
 			}
-			if skipDir(d.Name()) || isNestedWorktree(path, slashRel) || ign.ignored(slashRel, true) {
+			if skipDir(filepath.Dir(path), d.Name()) || isNestedWorktree(path, slashRel) || ign.ignored(slashRel, true) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if !packageManifestFiles[d.Name()] {
+		if !packageManifestFiles[d.Name()] || !admitFile(slashRel, d, realRoot) {
 			return nil
 		}
 		if ign.ignored(slashRel, false) {
