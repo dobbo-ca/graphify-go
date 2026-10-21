@@ -180,6 +180,9 @@ type Result struct {
 	// union or enum tag that name stands for (`typedef struct _kv kv;`), or
 	// "name " when it stands for no tag.
 	TypeAliases []string `json:",omitempty"`
+	// JavaRets are "method-id type" pairs; they type chains.
+	// An empty id names a type with no node here.
+	JavaRets []string `json:",omitempty"`
 	// OverBudget: ts.Budget stopped the parse, only the file node is here.
 	OverBudget bool `json:",omitempty"`
 }
@@ -368,6 +371,7 @@ type builder struct {
 	jsOwners    []jsProto            // owner nodes made after every declaration
 	jsBodySeen  map[uint]bool        // start bytes of the registered bodies
 	strs        map[string]uint32    // text -> its number in res.CallText
+	javaRets    map[string]string    // method id -> declared return type
 }
 
 func newBuilder(rel string) *builder {
