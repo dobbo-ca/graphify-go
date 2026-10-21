@@ -17,7 +17,7 @@ func TestReadGitHeadMatchesGit(t *testing.T) {
 		os.Unsetenv(k)
 	}
 	commit := func(dir string) {
-		gitRun(t, dir, "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "x")
+		gitRun(t, dir, "-c", "commit.gpgsign=false", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x")
 	}
 	newRepo := func() string {
 		d := t.TempDir()
@@ -104,7 +104,7 @@ func TestReadGitHeadNeverDisagrees(t *testing.T) {
 		d := t.TempDir()
 		d, _ = filepath.EvalSymlinks(d)
 		gitRun(t, d, "init", "-q", "-b", "main")
-		gitRun(t, d, "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "x")
+		gitRun(t, d, "-c", "commit.gpgsign=false", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x")
 		return d
 	}
 	tests := []struct {
@@ -169,7 +169,7 @@ func TestReadGitHeadNeverDisagrees(t *testing.T) {
 			in := filepath.Join(d, "in")
 			os.Mkdir(in, 0o755)
 			gitRun(t, in, "init", "-q", "-b", "main")
-			gitRun(t, in, "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "y")
+			gitRun(t, in, "-c", "commit.gpgsign=false", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "y")
 			os.WriteFile(filepath.Join(in, ".git", "HEAD"), []byte(" ref: refs/heads/main\n"), 0o644)
 			return in
 		}},

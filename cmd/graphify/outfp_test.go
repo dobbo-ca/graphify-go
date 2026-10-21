@@ -25,7 +25,7 @@ func fpRoot(t *testing.T) string {
 		"b.go": "package p\n\nfunc B() {}\n",
 	})
 	gitRun(t, root, "add", ".")
-	gitRun(t, root, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "x")
+	gitRun(t, root, "-c", "commit.gpgsign=false", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "x")
 	return root
 }
 
@@ -79,7 +79,7 @@ func TestChangedInputsTakeFullPath(t *testing.T) {
 			writeTree(t, root, map[string]string{"x.zzz": "?"})
 		}, nil},
 		{"commit", func(t *testing.T, root string) {
-			gitRun(t, root, "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "y")
+			gitRun(t, root, "-c", "commit.gpgsign=false", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "y")
 		}, nil},
 		{"removed graph", func(t *testing.T, root string) {
 			os.Remove(filepath.Join(root, "graphify-out", "graph.json"))
