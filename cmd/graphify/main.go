@@ -423,7 +423,7 @@ func largeFirst(root string, files []string) []int {
 // between resolve and graph-build so communities reflect concepts; it never
 // alters the deterministic core. keepCache says the cache file on disk already
 // holds newCache, so it is not written again.
-func writeOutputs(root string, walk detect.WalkReport, results []extract.Result, newCache cache.Cache, newStat cache.StatIndex, sem semanticOpts, force, noCluster, keepCache bool) (*model.Graph, map[int][]string, error) {
+func writeOutputs(root string, walk detect.WalkReport, results []extract.Result, newCache cache.Cache, newStat cache.StatIndex, sem semanticOpts, force, noCluster, keepCache bool, flags string) (*model.Graph, map[int][]string, error) {
 	files := walk.Files
 	outDir := outDirFor(root)
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
@@ -529,9 +529,12 @@ func writeOutputs(root string, walk detect.WalkReport, results []extract.Result,
 	md := make(chan string, 1)
 	go func() { md <- report.Generate(g, communities, root, commit) }()
 	err = export.ToJSON(g, communities, graphPath, commit, true)
+	jsonSig := sigOf(graphPath)
+	reportPath := filepath.Join(outDir, "GRAPH_REPORT.md")
 	if err == nil {
-		err = fsutil.WriteFileAtomic(filepath.Join(outDir, "GRAPH_REPORT.md"), []byte(<-md), 0o644)
+		err = fsutil.WriteFileAtomic(reportPath, []byte(<-md), 0o644)
 	}
+	reportSig := sigOf(reportPath)
 	if serr := <-saved; err == nil {
 		err = serr
 	}
@@ -542,7 +545,13 @@ func writeOutputs(root string, walk detect.WalkReport, results []extract.Result,
 		os.Remove(pending)
 		return nil, nil, err
 	}
-	if err := cache.SaveStat(filepath.Join(outDir, cache.StatFileName), cacheStamp(), newStat); err != nil {
+	var out *cache.Output
+	// A changed output means another run raced this one.
+	// Over-budget warnings must repeat each update.
+	if !sem.enabled && overBudget == 0 && sigOf(graphPath) == jsonSig && sigOf(reportPath) == reportSig {
+		out = &cache.Output{FP: outFP(root, walk, commit, flags), Nodes: g.NumNodes(), Edges: g.NumEdges(), Communities: len(communities)}
+	}
+	if err := cache.SaveStat(filepath.Join(outDir, cache.StatFileName), cacheStamp(), newStat, out); err != nil {
 		return nil, nil, err
 	}
 	// Record the scanned tree so `update` from a subdirectory (or with a
@@ -625,7 +634,7 @@ func cmdBuild(args []string) error {
 	if err != nil {
 		return err
 	}
-	g, communities, err := writeOutputs(root, rep, results, newCache, newStat, opts.semanticOpts(), opts.force, opts.noCluster, false)
+	g, communities, err := writeOutputs(root, rep, results, newCache, newStat, opts.semanticOpts(), opts.force, opts.noCluster, false, outFlags(opts.noManifests, opts.cargo, opts.noCluster, results))
 	if err != nil {
 		return err
 	}
@@ -781,6 +790,7 @@ func cmdUpdate(args []string) error {
 	root, cargo, noManifests, force, noCluster := opts.root, opts.cargo, opts.noManifests, opts.force, opts.noCluster
 	root = updateRoot(root, opts.rootSet)
 	// Started here so the walk and the cache load hide it.
+	check := startStatCheck(root, !cargo && !force && !envForce())
 	manifests := startManifests(root, noManifests)
 	rep, err := detect.CollectFilesReport(root)
 	if err != nil {
@@ -790,6 +800,14 @@ func cmdUpdate(args []string) error {
 	warnWalkReport(rep)
 	if len(files) == 0 {
 		return fmt.Errorf("no supported source files found under %s", root)
+	}
+	if prevStat, out := check(); out != nil && sameFiles(files, prevStat) {
+		// Fall through on a manifest error: the full path reports it.
+		if mres, err := manifests(nil); err == nil && outputsCurrent(root, rep, out, outFlags(noManifests, cargo, noCluster, mres)) {
+			fmt.Printf("updated graph: %d files (0 reparsed, %d reused, 0 removed) · %d nodes · %d edges · %d communities → %s\n",
+				len(files), len(files), out.Nodes, out.Edges, out.Communities, outDirFor(root))
+			return nil
+		}
 	}
 	// Nearly all the load allocates stays live, so collect less often during
 	// it. A GOGC set by the user stays as set.
@@ -824,7 +842,7 @@ func cmdUpdate(args []string) error {
 	// Nothing parsed and nothing dropped: every entry came from the cache file
 	// and the file has no other, so encoding it again would write the same.
 	keepCache := prev != nil && stats.parsed == 0 && stats.dropped == 0
-	g, communities, err := writeOutputs(root, rep, results, newCache, newStat, semanticOpts{}, force, noCluster, keepCache)
+	g, communities, err := writeOutputs(root, rep, results, newCache, newStat, semanticOpts{}, force, noCluster, keepCache, outFlags(noManifests, cargo, noCluster, results))
 	if err != nil {
 		return err
 	}
@@ -1377,16 +1395,6 @@ func locOf(n *query.Node) string {
 		return "(external)"
 	}
 	return n.SourceFile + " " + n.SourceLocation
-}
-
-// gitHead returns the current commit SHA of the repo at root, or "" if unavailable.
-func gitHead(root string) string {
-	cmd := exec.Command("git", "-C", root, "rev-parse", "HEAD")
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
 }
 
 func arg(i int, def string) string {
