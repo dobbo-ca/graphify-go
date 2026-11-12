@@ -122,6 +122,16 @@ type cacheFile struct {
 type statFile struct {
 	V     string    `json:"v"`
 	Files StatIndex `json:"files"`
+	Out   *Output   `json:"out,omitempty"`
+}
+
+// Output describes the last write of graph.json and the report, so an update
+// that finds nothing changed can skip rewriting them.
+type Output struct {
+	FP          string `json:"fp"`
+	Nodes       int    `json:"nodes"`
+	Edges       int    `json:"edges"`
+	Communities int    `json:"communities"`
 }
 
 // Load reads a cache file. A missing, unreadable, or differently-stamped file
@@ -376,20 +386,26 @@ func writeCache(w io.Writer, stamp string, c Cache, drain bool) error {
 // file returns an empty index and no error, so callers fall back to reading and
 // hashing every file.
 func LoadStat(path, stamp string) StatIndex {
+	s, _ := LoadStatOut(path, stamp)
+	return s
+}
+
+// LoadStatOut is LoadStat plus the recorded Output, nil when absent.
+func LoadStatOut(path, stamp string) (StatIndex, *Output) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return StatIndex{}
+		return StatIndex{}, nil
 	}
 	var f statFile
 	if err := json.Unmarshal(data, &f); err != nil || f.V != stamp || f.Files == nil {
-		return StatIndex{}
+		return StatIndex{}, nil
 	}
-	return f.Files
+	return f.Files, f.Out
 }
 
 // SaveStat writes the stat sidecar as compact JSON under stamp.
-func SaveStat(path, stamp string, s StatIndex) error {
-	data, err := json.Marshal(statFile{V: stamp, Files: s})
+func SaveStat(path, stamp string, s StatIndex, out *Output) error {
+	data, err := json.Marshal(statFile{V: stamp, Files: s, Out: out})
 	if err != nil {
 		return err
 	}
@@ -405,6 +421,14 @@ func HashBytes(b []byte) string {
 // ioSlots caps the goroutines inside Stat and ReadFile: past 4 the kernel
 // spends more time contending on path lookups than the extra readers save.
 var ioSlots = make(chan struct{}, 4)
+
+// StatFresh reports whether HashFile would reuse prev without reading the file.
+func StatFresh(absPath string, prev StatEntry) bool {
+	ioSlots <- struct{}{}
+	fi, err := os.Stat(absPath)
+	<-ioSlots
+	return err == nil && statSigFresh(prev, fi.Size(), fi.ModTime().UnixNano())
+}
 
 // HashFile returns the content hash of the file at absPath plus the StatEntry to
 // persist for it, using a make(1)-style stat fastpath: when prev (the previous

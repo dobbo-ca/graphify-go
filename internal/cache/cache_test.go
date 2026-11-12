@@ -14,7 +14,7 @@ func TestStatIndexRoundTrip(t *testing.T) {
 	path := filepath.Join(dir, StatFileName)
 
 	want := StatIndex{"a.go": {Size: 12, MtimeNs: 345, Hash: "deadbeef"}}
-	if err := SaveStat(path, Stamp("v1"), want); err != nil {
+	if err := SaveStat(path, Stamp("v1"), want, nil); err != nil {
 		t.Fatalf("SaveStat: %v", err)
 	}
 	got := LoadStat(path, Stamp("v1"))
@@ -176,7 +176,7 @@ func TestStampMismatchDiscards(t *testing.T) {
 	if err := Save(cachePath, Stamp("v1.0.0"), want); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	if err := SaveStat(statPath, Stamp("v1.0.0"), wantStat); err != nil {
+	if err := SaveStat(statPath, Stamp("v1.0.0"), wantStat, nil); err != nil {
 		t.Fatalf("SaveStat: %v", err)
 	}
 

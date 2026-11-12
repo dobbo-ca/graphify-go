@@ -199,7 +199,7 @@ func TestRefusedShrinkAbortsAllOutputs(t *testing.T) {
 	newStat := cache.StatIndex{}
 
 	// force=false: the refusal must abort every write, leaving all four outputs byte-identical.
-	if _, _, err := writeOutputs(root, detect.WalkReport{Files: files}, results, newCache, newStat, semanticOpts{}, false, false, false); err != nil {
+	if _, _, err := writeOutputs(root, detect.WalkReport{Files: files}, results, newCache, newStat, semanticOpts{}, false, false, false, ""); err != nil {
 		t.Fatalf("writeOutputs (refused shrink) returned error, want a nil-error warning: %v", err)
 	}
 	for name, b := range snapshot() {
@@ -212,7 +212,7 @@ func TestRefusedShrinkAbortsAllOutputs(t *testing.T) {
 	}
 
 	// force=true: the same shrink is accepted and every output is rewritten.
-	if _, _, err := writeOutputs(root, detect.WalkReport{Files: files}, results, newCache, newStat, semanticOpts{}, true, false, false); err != nil {
+	if _, _, err := writeOutputs(root, detect.WalkReport{Files: files}, results, newCache, newStat, semanticOpts{}, true, false, false, ""); err != nil {
 		t.Fatalf("writeOutputs (forced shrink): %v", err)
 	}
 	for name, b := range snapshot() {
