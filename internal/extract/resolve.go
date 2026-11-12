@@ -421,6 +421,7 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 	imported := importedSet{targets: impTargets}
 	supers := map[string][]string{} // type id -> resolved base type ids
 	openSuper := map[string]bool{}  // type id with a base outside the corpus
+	edgedSuper := map[string]bool{} // openSuper less java builtin bases
 	jm := newJSMods(results, corpus, local, idFile)
 	jsAlias := jm.aliases()
 	// Every node id, true for a function; made for the first reference.
@@ -594,6 +595,10 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 			if tgt == "" || tgt == t.FromID || langfamily.Cross(t.File, idFile[tgt]) {
 				if t.Relation == "inherits" {
 					openSuper[t.FromID] = true
+					// Upstream draws no edge to a builtin.
+					if t.Stub || tgt != "" {
+						edgedSuper[t.FromID] = true
+					}
 				}
 				if !t.Stub || tgt == t.FromID {
 					continue
@@ -625,6 +630,8 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 			})
 		}
 	}
+
+	cs := newCSIndex(results, inherit, owner, local, idFile, methods, supers, openSuper)
 
 	// A Python file imports each top-level definition its from-imports name.
 	var pySyms []model.Edge
@@ -686,8 +693,10 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		kept := map[string][]string{}      // callee\x00qualifier -> the definitions it qualifies
 		allQuals := map[string][]qualSet{} // callee -> quals of each id in its global list
 		bareJS := map[string][]string{}    // callee -> its global list without class members
+		csm := &csMemo{map[[3]string]csPick{}, map[string]*csCands{}}
 		for _, r := range results {
 			rf := model.FileOf(r.File)
+			java := strings.HasSuffix(r.File, ".java")
 			var named map[string]bool
 			symImp := func(id string) bool {
 				if named == nil {
@@ -701,6 +710,10 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 			for i, n := range r.Calls {
 				c := r.call(n)
 				if len(resolved) > 0 && resolved[callSite{c.CallerID, c.Callee, c.Loc}] {
+					continue
+				}
+				// resolveJavaChains binds these.
+				if java && strings.HasPrefix(c.Recv, "#") {
 					continue
 				}
 				tgt, conf := "", model.ConfInferred
@@ -747,6 +760,8 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 					}
 				}
 				if tgt != "" {
+				} else if c.Recv != "" && strings.EqualFold(path.Ext(r.File), ".cs") {
+					tgt, conf = cs.bind(csm, r.File, c.CallerID, c.Callee, c.Recv)
 				} else if isSelf {
 					self := c.CallerID
 					// A Python def inside a method closes over the method's
@@ -867,9 +882,13 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 				if tgt == "" || tgt == c.CallerID {
 					continue
 				}
+				score := 0.0
+				if conf == model.ConfInferred && strings.EqualFold(path.Ext(r.File), ".cs") {
+					score = 0.85
+				}
 				add(model.Edge{
 					Source: c.CallerID, Target: tgt, Relation: model.RelCalls,
-					Confidence: conf, SourceFile: rf, SourceLocation: c.Loc,
+					Confidence: conf, SourceFile: rf, SourceLocation: c.Loc, ConfidenceScore: score,
 				})
 			}
 		}
@@ -1017,6 +1036,8 @@ func ResolveParts(results []Result, files []string) ([][]model.Node, [][]model.E
 		resolveNullLabels(results, &out)
 		nodes, edges = [][]model.Node{out.Nodes}, [][]model.Edge{out.Edges}
 	}
+
+	edges = append(edges, resolveJavaChains(results, owner, idFile, methods, supers, edgedSuper, edges))
 
 	// C# interface dispatch: join a single-implementer interface's method to the
 	// implementing method so directed walks do not stop at the interface.

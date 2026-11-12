@@ -59,6 +59,9 @@ func (r *Result) AppendJSON(b []byte) ([]byte, error) {
 		if t.Qual != "" {
 			b = appendJSONFields(b, `,"Qual":`, t.Qual)
 		}
+		if t.Arg {
+			b = append(b, `,"Arg":true`...)
+		}
 		return append(b, '}'), nil
 	})
 	b = append(b, `,"Imps":`...)
@@ -121,6 +124,18 @@ func (r *Result) AppendJSON(b []byte) ([]byte, error) {
 	if len(r.TypeAliases) > 0 {
 		b = append(b, `,"TypeAliases":`...)
 		b, _ = appendJSONArr(b, r.TypeAliases, func(b []byte, s *string) ([]byte, error) {
+			return model.AppendJSONString(b, *s), nil
+		})
+	}
+	if len(r.JavaRets) > 0 {
+		b = append(b, `,"JavaRets":`...)
+		b, _ = appendJSONArr(b, r.JavaRets, func(b []byte, s *string) ([]byte, error) {
+			return model.AppendJSONString(b, *s), nil
+		})
+	}
+	if len(r.CsTypes) > 0 {
+		b = append(b, `,"CsTypes":`...)
+		b, _ = appendJSONArr(b, r.CsTypes, func(b []byte, s *string) ([]byte, error) {
 			return model.AppendJSONString(b, *s), nil
 		})
 	}

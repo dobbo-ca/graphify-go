@@ -38,8 +38,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dnaeon/go-vcr v1.2.0 h1:zHCHvJYTMh1N7xnV7zf1m1GPBF9Ad0Jk/whtQ1663qI=
 github.com/dnaeon/go-vcr v1.2.0/go.mod h1:R4UdLID7HZT3taECzJs4YgbbH6PIGXB6W/sc5OLb6RQ=
-github.com/dobbo-ca/gositter v0.1.0 h1:hl4715oD3em4aHdVQLDAwiLEP/mt9e7CLxtaEjm8928=
-github.com/dobbo-ca/gositter v0.1.0/go.mod h1:0tFapi0SWF90PwFj2rrUWc+4lfqVqXKKkb/RugQe/OA=
+github.com/dobbo-ca/gositter v0.2.0 h1:gJ8CtdP5Jp68nXGho5HM884rDSZe5pEKJTwyJtk79p4=
+github.com/dobbo-ca/gositter v0.2.0/go.mod h1:0tFapi0SWF90PwFj2rrUWc+4lfqVqXKKkb/RugQe/OA=
 github.com/invopop/jsonschema v0.14.0 h1:MHQqLhvpNUZfw+hM3AZDYK7jxO8FZoQeQM77g8iyZjg=
 github.com/invopop/jsonschema v0.14.0/go.mod h1:ygm6C2EaVNMBDPpaPlnOA2pFAxBnxGjFlMZABxm9n2I=
 github.com/pb33f/ordered-map/v2 v2.3.1 h1:5319HDO0aw4DA4gzi+zv4FXU9UlSs3xGZ40wcP1nBjY=

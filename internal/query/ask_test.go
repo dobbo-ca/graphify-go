@@ -1,6 +1,7 @@
 package query
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -297,5 +298,152 @@ func TestAskMatchesAttributes(t *testing.T) {
 	out := Ask(g, "t3.large", false, 1, 2000, nil)
 	if !strings.HasPrefix(firstNodeLine(out), "NODE aws_instance.web") {
 		t.Errorf("attribute match did not seed aws_instance.web, got:\n%s", out)
+	}
+}
+
+func nodeJSON(id, label, file, loc string) string {
+	return `{"id":"` + id + `","label":"` + label + `","file_type":"code","source_file":"` + file + `","source_location":"` + loc + `","community":0}`
+}
+
+func linkJSON(src, tgt, rel, conf, file, loc, extra string) string {
+	return `{"source":"` + src + `","target":"` + tgt + `","relation":"` + rel + `","confidence":"` + conf + `","source_file":"` + file + `","source_location":"` + loc + `"` + extra + `}`
+}
+
+func graphJSON(nodes, links []string) string {
+	return `{"directed":false,"multigraph":true,"graph":{},"nodes":[` + strings.Join(nodes, ",") + `],"links":[` + strings.Join(links, ",") + `]}`
+}
+
+func TestAskStoredDirectionAndSite(t *testing.T) {
+	g := loadJSON(t, graphJSON([]string{
+		nodeJSON("m_py", "m.py", "m.py", "L1"),
+		nodeJSON("m_py_alpha", "alpha()", "m.py", "L1"),
+		nodeJSON("m_py_beta", "beta()", "m.py", "L5"),
+	}, []string{
+		linkJSON("m_py", "m_py_alpha", "contains", "EXTRACTED", "m.py", "L1", ""),
+		linkJSON("m_py", "m_py_beta", "contains", "EXTRACTED", "m.py", "L5", ""),
+		linkJSON("m_py_beta", "m_py_alpha", "calls", "INFERRED", "m.py", "L6", ""),
+	}))
+	want := "Traversal: BFS depth=2 | Start: [beta()] | 3 nodes found\n\nNODE beta() [src=m.py loc=L5 community=0]\nNODE m.py [src=m.py loc=L1 community=0]\nNODE alpha() [src=m.py loc=L1 community=0]\nEDGE m.py --contains [EXTRACTED]--> beta() at=m.py:L5\nEDGE beta() --calls [INFERRED]--> alpha() at=m.py:L6\nEDGE m.py --contains [EXTRACTED]--> alpha() at=m.py:L1"
+	if got := Ask(g, "beta", false, 2, 2000, nil); got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestAskParallelRelations(t *testing.T) {
+	g := loadJSON(t, graphJSON([]string{
+		nodeJSON("a_py", "a.py", "a.py", "L1"),
+		nodeJSON("a_py_alpha", "Alpha", "a.py", "L1"),
+		nodeJSON("a_py_make_alpha", "make_alpha()", "a.py", "L4"),
+	}, []string{
+		linkJSON("a_py", "a_py_alpha", "contains", "EXTRACTED", "a.py", "L1", ""),
+		linkJSON("a_py", "a_py_make_alpha", "contains", "EXTRACTED", "a.py", "L4", ""),
+		linkJSON("a_py_make_alpha", "a_py_alpha", "calls", "INFERRED", "a.py", "L5", ""),
+		linkJSON("a_py_make_alpha", "a_py_alpha", "references", "EXTRACTED", "a.py", "L4", ""),
+	}))
+	want := "Traversal: BFS depth=2 | Start: [make_alpha()] | 3 nodes found\n\nNODE make_alpha() [src=a.py loc=L4 community=0]\nNODE Alpha [src=a.py loc=L1 community=0]\nNODE a.py [src=a.py loc=L1 community=0]\nEDGE a.py --contains [EXTRACTED]--> make_alpha() at=a.py:L4\nEDGE make_alpha() --calls [INFERRED]--> Alpha at=a.py:L5\nEDGE make_alpha() --references [EXTRACTED]--> Alpha at=a.py:L4\nEDGE a.py --contains [EXTRACTED]--> Alpha at=a.py:L1"
+	if got := Ask(g, "make_alpha", false, 2, 2000, nil); got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+	got := Ask(g, "make_alpha", false, 2, 2000, []string{"calls"})
+	if !strings.Contains(got, "2 nodes found") || !strings.HasSuffix(got, "EDGE make_alpha() --calls [INFERRED]--> Alpha at=a.py:L5") || strings.Contains(got, "references") {
+		t.Errorf("relation filter: %s", got)
+	}
+}
+
+func TestAskMutualContextSelfLoop(t *testing.T) {
+	g := loadJSON(t, graphJSON([]string{
+		nodeJSON("a", "alpha()", "m.py", "L1"),
+		nodeJSON("b", "bravo()", "m.py", "L1"),
+	}, []string{
+		linkJSON("a", "b", "calls", "EXTRACTED", "m.py", "L5", `,"context":"call"`),
+		linkJSON("b", "a", "calls", "EXTRACTED", "m.py", "L9", ""),
+		linkJSON("a", "b", "references", "EXTRACTED", "m.py", "L4", ""),
+		linkJSON("a", "a", "calls", "EXTRACTED", "m.py", "L2", ""),
+	}))
+	want := []string{
+		"EDGE alpha() --calls [EXTRACTED]--> bravo() at=m.py:L5",
+		"EDGE bravo() --calls [EXTRACTED]--> alpha() at=m.py:L9",
+		"EDGE alpha() --references [EXTRACTED]--> bravo() at=m.py:L4",
+	}
+	var got []string
+	for _, l := range strings.Split(Ask(g, "alpha", false, 2, 2000, nil), "\n") {
+		if strings.HasPrefix(l, "EDGE ") {
+			got = append(got, l)
+		}
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestAskHopOrder(t *testing.T) {
+	g := loadJSON(t, graphJSON([]string{
+		nodeJSON("s", "zeta()", "m.py", "L1"),
+		nodeJSON("x", "xray()", "m.py", "L2"),
+		nodeJSON("h", "hub()", "m.py", "L3"),
+		nodeJSON("l1", "leaf1()", "m.py", "L4"),
+		nodeJSON("l2", "leaf2()", "m.py", "L5"),
+		nodeJSON("l3", "leaf3()", "m.py", "L6"),
+	}, []string{
+		linkJSON("s", "x", "calls", "EXTRACTED", "m.py", "L1", ""),
+		linkJSON("x", "h", "calls", "EXTRACTED", "m.py", "L2", ""),
+		linkJSON("l1", "h", "calls", "EXTRACTED", "m.py", "L4", ""),
+		linkJSON("l2", "h", "calls", "EXTRACTED", "m.py", "L5", ""),
+		linkJSON("l3", "h", "calls", "EXTRACTED", "m.py", "L6", ""),
+	}))
+	want := "Traversal: BFS depth=2 | Start: [zeta()] | 3 nodes found\n\nNODE zeta() [src=m.py loc=L1 community=0]\nNODE xray() [src=m.py loc=L2 community=0]\nNODE hub() [src=m.py loc=L3 community=0]\nEDGE zeta() --calls [EXTRACTED]--> xray() at=m.py:L1\nEDGE xray() --calls [EXTRACTED]--> hub() at=m.py:L2"
+	if got := Ask(g, "zeta", false, 2, 2000, nil); got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestHubThresholdCountsIsolatedNodes(t *testing.T) {
+	nodes := []string{nodeJSON("seedling", "seedling", "m.py", "L1"), nodeJSON("hubone", "hubone", "m.py", "L1"),
+		nodeJSON("hubtwo", "hubtwo", "m.py", "L1"), nodeJSON("x1", "x1", "m.py", "L1"), nodeJSON("x2", "x2", "m.py", "L1")}
+	links := []string{linkJSON("seedling", "hubtwo", "calls", "EXTRACTED", "", "", ""),
+		linkJSON("hubone", "x1", "calls", "EXTRACTED", "", "", ""), linkJSON("hubone", "x2", "calls", "EXTRACTED", "", "", "")}
+	for k := 0; k < 52; k++ {
+		id := fmt.Sprintf("leaf%d", k)
+		nodes = append(nodes, nodeJSON(id, id, "m.py", "L1"))
+		links = append(links, linkJSON("hubone", id, "calls", "EXTRACTED", "", "", ""), linkJSON("hubtwo", id, "calls", "EXTRACTED", "", "", ""))
+	}
+	for k := 0; k < 50; k++ {
+		id := fmt.Sprintf("iso%d", k)
+		nodes = append(nodes, nodeJSON(id, id, "m.py", "L1"))
+	}
+	g := loadJSON(t, graphJSON(nodes, links))
+	if got := Ask(g, "seedling", false, 2, 2000, nil); !strings.Contains(got, "| 2 nodes found") {
+		t.Errorf("got header: %.120s", got)
+	}
+}
+
+func TestHubThresholdContextKeepsDanglingNodes(t *testing.T) {
+	var nodes, links []string
+	add := func(id string) { nodes = append(nodes, nodeJSON(id, id, "m.py", "L1")) }
+	rel := func(a, b, r string) { links = append(links, linkJSON(a, b, r, "EXTRACTED", "", "", "")) }
+	add("seedling")
+	add("x")
+	add("y")
+	rel("seedling", "x", "rela")
+	rel("x", "seedling", "rela")
+	for k := 0; k < 29; k++ {
+		id := fmt.Sprintf("lx%d", k)
+		add(id)
+		rel("x", id, "rela")
+		rel("x", id, "rela")
+	}
+	for k := 0; k < 40; k++ {
+		id := fmt.Sprintf("ly%d", k)
+		add(id)
+		rel("y", id, "rela")
+		rel("y", id, "rela")
+	}
+	for k := 0; k < 28; k++ {
+		add(fmt.Sprintf("pad%d", k))
+	}
+	rel("pad0", "ghost", "relb")
+	g := loadJSON(t, graphJSON(nodes, links))
+	if got := Ask(g, "seedling", false, 2, 2000, []string{"rela"}); !strings.Contains(got, "| 2 nodes found") {
+		t.Errorf("got header: %.120s", got)
 	}
 }

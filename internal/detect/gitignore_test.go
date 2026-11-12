@@ -152,12 +152,12 @@ func TestIgnoreRuleLiteralsNeverRejectAMatch(t *testing.T) {
 	matched := 0
 	for _, r := range parseIgnore("", strings.Join(globs, "\n")).rules {
 		for _, tg := range targets {
-			if !r.re.MatchString(tg) {
+			if !r.matches(tg) {
 				continue
 			}
 			matched++
 			if !strings.HasPrefix(tg, r.prefix) || !strings.HasSuffix(tg, r.suffix) {
-				t.Fatalf("rule %v (prefix %q, suffix %q) matches %q but the literal check rejects it", r.re, r.prefix, r.suffix, tg)
+				t.Fatalf("rule %+v (prefix %q, suffix %q) matches %q but the literal check rejects it", r.segs, r.prefix, r.suffix, tg)
 			}
 		}
 	}
