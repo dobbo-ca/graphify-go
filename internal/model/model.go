@@ -35,15 +35,17 @@ type Edge struct {
 	Confidence Confidence `json:"confidence"`
 	// Zero size: where json reads "type_only".
 	TypeOnlyJSON typeOnlyJSON `json:"type_only"`
+	// Zero size: where json reads "deferred".
+	DeferredJSON deferredJSON `json:"deferred"`
 	SourceFile   File         `json:"source_file,omitempty"`
-	// Bit 30 is the type-only flag: read with Loc.
+	// Bits 30 and 29 are the type-only and deferred flags: read with Loc.
 	SourceLocation  Loc     `json:"source_location,omitempty"`
 	Weight          float64 `json:"weight,omitempty"`
 	ConfidenceScore float64 `json:"confidence_score,omitempty"`
 }
 
 // Loc returns the edge's source location.
-func (e Edge) Loc() Loc { return e.SourceLocation &^ locTypeOnly }
+func (e Edge) Loc() Loc { return e.SourceLocation &^ locFlags }
 
 // TypeOnly reports an import edge erased at compile time (TypeScript
 // `import type`), which cannot form a runtime import cycle.
@@ -57,7 +59,19 @@ func (e *Edge) SetTypeOnly(on bool) {
 	}
 }
 
-// MarshalJSON writes the flag as "type_only".
+// Deferred reports an import() edge: a real dependency that runs late, so
+// it cannot form a static import cycle.
+func (e Edge) Deferred() bool { return e.SourceLocation&locDeferred != 0 }
+
+// SetDeferred marks the edge deferred, or not.
+func (e *Edge) SetDeferred(on bool) {
+	e.SourceLocation &^= locDeferred
+	if on {
+		e.SourceLocation |= locDeferred
+	}
+}
+
+// MarshalJSON writes the flags as "type_only" and "deferred".
 func (e Edge) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		Source          string     `json:"source"`
@@ -65,11 +79,12 @@ func (e Edge) MarshalJSON() ([]byte, error) {
 		Relation        Relation   `json:"relation"`
 		Confidence      Confidence `json:"confidence"`
 		TypeOnly        bool       `json:"type_only,omitempty"`
+		Deferred        bool       `json:"deferred,omitempty"`
 		SourceFile      File       `json:"source_file,omitempty"`
 		SourceLocation  Loc        `json:"source_location,omitempty"`
 		Weight          float64    `json:"weight,omitempty"`
 		ConfidenceScore float64    `json:"confidence_score,omitempty"`
-	}{e.Source, e.Target, e.Relation, e.Confidence, e.TypeOnly(), e.SourceFile, e.Loc(), e.Weight, e.ConfidenceScore})
+	}{e.Source, e.Target, e.Relation, e.Confidence, e.TypeOnly(), e.Deferred(), e.SourceFile, e.Loc(), e.Weight, e.ConfidenceScore})
 }
 
 // typeOnlyJSON is the type of Edge.TypeOnlyJSON only. An UnmarshalJSON on
@@ -82,6 +97,18 @@ func (t *typeOnlyJSON) UnmarshalJSON(b []byte) error {
 	on := e.TypeOnly() // a null leaves it
 	err := json.Unmarshal(b, &on)
 	e.SetTypeOnly(on)
+	return err
+}
+
+// deferredJSON is the type of Edge.DeferredJSON only, like typeOnlyJSON.
+type deferredJSON struct{}
+
+// UnmarshalJSON sets the flag of the Edge around t.
+func (t *deferredJSON) UnmarshalJSON(b []byte) error {
+	e := (*Edge)(unsafe.Add(unsafe.Pointer(t), -int(unsafe.Offsetof(Edge{}.DeferredJSON))))
+	on := e.Deferred() // a null leaves it
+	err := json.Unmarshal(b, &on)
+	e.SetDeferred(on)
 	return err
 }
 

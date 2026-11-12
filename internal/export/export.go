@@ -57,6 +57,7 @@ type jsonLink struct {
 	Target          string    `json:"target"`
 	Relation        string    `json:"relation"`
 	Confidence      string    `json:"confidence"`
+	Deferred        bool      `json:"deferred,omitempty"`
 	SourceFile      string    `json:"source_file,omitempty"`
 	SourceLocation  model.Loc `json:"source_location,omitempty"`
 	Weight          float64   `json:"weight,omitempty"`
@@ -258,6 +259,9 @@ func appendJSONLink(b []byte, l jsonLink) ([]byte, error) {
 	b = model.AppendJSONString(b, l.Relation)
 	b = append(b, ",\n      \"confidence\": "...)
 	b = model.AppendJSONString(b, l.Confidence)
+	if l.Deferred {
+		b = append(b, ",\n      \"deferred\": true"...)
+	}
 	if l.SourceFile != "" {
 		b = append(b, ",\n      \"source_file\": "...)
 		b = model.AppendJSONString(b, l.SourceFile)
@@ -307,7 +311,7 @@ func toJSONLink(e *model.Edge) jsonLink {
 	}
 	return jsonLink{
 		Source: e.Source, Target: e.Target, Relation: e.Relation.String(),
-		Confidence: e.Confidence.String(), SourceFile: e.SourceFile.String(),
+		Confidence: e.Confidence.String(), Deferred: e.Deferred(), SourceFile: e.SourceFile.String(),
 		SourceLocation: e.Loc(), Weight: e.Weight, ConfidenceScore: score,
 	}
 }

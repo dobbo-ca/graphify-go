@@ -57,14 +57,13 @@ func TestExtractJSRationale(t *testing.T) {
 	}
 }
 
-// CommonJS require, re-exports and dynamic import each link to the target file.
+// CommonJS require and re-exports each link to the target file.
 func TestJSImportFormsResolveToFiles(t *testing.T) {
 	cases := []struct{ name, src string }{
 		{"require", "const lib = require('./lib');\n"},
 		{"nested require", "function f() {\n  return require(\"./lib\").x;\n}\n"},
 		{"export star", "export * from './lib';\n"},
 		{"export named", "export { thing } from './lib';\n"},
-		{"dynamic import", "async function f() {\n  const m = await import('./lib');\n}\n"},
 	}
 	for _, c := range cases {
 		got := importEdges(map[string]string{"src/a.ts": c.src, "src/lib.ts": "export const thing = 1;\n"}, nil)

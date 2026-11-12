@@ -62,7 +62,7 @@ func TestEdgeCodes(t *testing.T) {
 
 func TestLocAndFile(t *testing.T) {
 	// Every text comes back as it went in, and equal texts have equal codes.
-	texts := []string{"", "L1", "L0", "L42", "L1073741821", "L1073741822", "L1073741823", "L2147483646", "L2147483647", "L99999999999", "L01", "L-1", "L+1", "L", "l5", "L5 ", "12", "L1é", "a\x00\"<b>"}
+	texts := []string{"", "L1", "L0", "L42", "L536870909", "L536870910", "L536870911", "L2147483646", "L2147483647", "L99999999999", "L01", "L-1", "L+1", "L", "l5", "L5 ", "12", "L1é", "a\x00\"<b>"}
 	seen := map[Loc]string{}
 	for _, s := range texts {
 		l := LocOf(s)
@@ -81,17 +81,18 @@ func TestLocAndFile(t *testing.T) {
 	if LocOf("") != 0 || FileOf("") != 0 || Line(7) != LocOf("L7") || Line(-3).String() != "L-3" || Line(1<<31).String() != "L2147483648" {
 		t.Fatal("zero values or Line disagree with LocOf")
 	}
-	if LocOf("L7") >= locTypeOnly || LocOf("L1073741822") >= locTypeOnly || LocOf("L1073741823") < locText || LocOf("L01") < locText {
+	if LocOf("L7") >= locDeferred || LocOf("L536870910") >= locDeferred || LocOf("L536870911") < locText || LocOf("L01") < locText {
 		t.Fatal("a line is not held as a number, or a text is")
 	}
-	// Around the last line held as a number, with the type-only bit and without.
-	for _, n := range []int{0, 1, 1<<30 - 3, 1<<30 - 2, 1<<30 - 1, 1<<31 - 2} {
+	// Around the last line held as a number, with the flag bits and without.
+	for _, n := range []int{0, 1, 1<<29 - 3, 1<<29 - 2, 1<<29 - 1, 1<<31 - 2} {
 		s := "L" + strconv.Itoa(n)
 		l := Line(n)
 		want, _ := json.Marshal(s)
 		e := Edge{SourceLocation: l}
 		e.SetTypeOnly(true)
-		if l != LocOf(s) || l&locTypeOnly != 0 || (l >= locText) != (n > 1<<30-2) || e.Loc() != l || e.SourceLocation == l {
+		e.SetDeferred(true)
+		if l != LocOf(s) || l&locFlags != 0 || (l >= locText) != (n > 1<<29-2) || e.Loc() != l || e.SourceLocation == l {
 			t.Errorf("line %d: Loc %#x, with the bit %#x", n, l, e.SourceLocation)
 		}
 		for _, l := range []Loc{l, e.SourceLocation} {
@@ -101,7 +102,8 @@ func TestLocAndFile(t *testing.T) {
 			}
 		}
 		e.SetTypeOnly(false)
-		if e.SourceLocation != l || e.TypeOnly() {
+		e.SetDeferred(false)
+		if e.SourceLocation != l || e.TypeOnly() || e.Deferred() {
 			t.Errorf("line %d: %#x after the bit is cleared", n, e.SourceLocation)
 		}
 	}
@@ -265,11 +267,13 @@ func TestEdgeLayout(t *testing.T) {
 		{"Relation", unsafe.Offsetof(e.Relation), 32},
 		{"Confidence", unsafe.Offsetof(e.Confidence), 36},
 		{"TypeOnlyJSON", unsafe.Offsetof(e.TypeOnlyJSON), 40},
+		{"DeferredJSON", unsafe.Offsetof(e.DeferredJSON), 40},
 		{"SourceFile", unsafe.Offsetof(e.SourceFile), 40},
 		{"SourceLocation", unsafe.Offsetof(e.SourceLocation), 44},
 		{"Weight", unsafe.Offsetof(e.Weight), 48},
 		{"ConfidenceScore", unsafe.Offsetof(e.ConfidenceScore), 56},
 		{"size of TypeOnlyJSON", unsafe.Sizeof(e.TypeOnlyJSON), 0},
+		{"size of DeferredJSON", unsafe.Sizeof(e.DeferredJSON), 0},
 	} {
 		if f.got != f.want {
 			t.Errorf("%s: %d, want %d", f.name, f.got, f.want)
@@ -284,8 +288,9 @@ func TestEdgeLayout(t *testing.T) {
 		{Source: "e", Target: "f", Relation: RelImplements, Confidence: ConfExtracted},
 	}
 	want[1].SetTypeOnly(true)
+	want[2].SetDeferred(true)
 	in, err := json.Marshal(want)
-	if err != nil || strings.Count(string(in), "type_only") != 1 {
+	if err != nil || strings.Count(string(in), "type_only") != 1 || strings.Count(string(in), "deferred") != 1 {
 		t.Fatalf("%s %v", in, err)
 	}
 	got := buf[1:1:4]

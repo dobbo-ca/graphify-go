@@ -106,3 +106,18 @@ func TestBuildFillsMissingAttributesFromSameFile(t *testing.T) {
 		t.Errorf("same-file re-add lost attributes: %+v", *n)
 	}
 }
+
+func TestBuildKeepsComponentEdges(t *testing.T) {
+	ext := model.Extraction{
+		Nodes: []model.Node{
+			{ID: "app", Label: "App.vue", FileType: "code", SourceFile: "App.vue"},
+			{ID: "util", Label: "util.py", FileType: "code", SourceFile: "util.py"},
+		},
+		Edges: []model.Edge{
+			{Source: "app", Target: "util", Relation: model.RelImportsFrom, Confidence: model.ConfExtracted},
+		},
+	}
+	if !Build(ext).HasEdge("app", "util") {
+		t.Error("component -> python import was dropped")
+	}
+}

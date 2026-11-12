@@ -84,7 +84,9 @@ func BuildParts(nodes [][]model.Node, parts [][]model.Edge) *model.Graph {
 			if s == nil || t == nil {
 				continue // dangling edge to an external/stdlib node — expected
 			}
-			cross := func() bool { return langfamily.Cross(s.SourceFile, t.SourceFile) }
+			cross := func() bool {
+				return langfamily.Cross(s.SourceFile, t.SourceFile) && !langfamily.Component(s.SourceFile) && !langfamily.Component(t.SourceFile)
+			}
 			switch e.Relation {
 			case model.RelCalls:
 				if e.Confidence == model.ConfInferred && cross() {

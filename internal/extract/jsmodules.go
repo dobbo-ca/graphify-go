@@ -1,7 +1,6 @@
 package extract
 
 import (
-	"path"
 	"strings"
 
 	"github.com/dobbo-ca/graphify-go/internal/idutil"
@@ -11,10 +10,6 @@ import (
 
 // jsLike reports whether a file's imports are JS/TS ones (see jsImp).
 func jsLike(file string) bool {
-	switch path.Ext(file) {
-	case ".vue", ".svelte", ".astro":
-		return true
-	}
 	return langfamily.Of(file) == "jsts"
 }
 
@@ -77,13 +72,16 @@ func (m *jsMods) exports(r *Result) {
 			as = local
 		}
 		for _, im := range r.Imps {
-			t := importTargets(im, m.corpus, nil, nil, nil)
 			for _, n := range im.Names {
 				name, l, _ := strings.Cut(n, " as ")
 				if l == "" {
 					l = name
 				}
-				if im.Export || len(t) == 0 || l != local || name == "*" {
+				if im.Export || l != local || name == "*" {
+					continue
+				}
+				t := importTargets(im, m.corpus, nil, nil, nil)
+				if len(t) == 0 {
 					continue
 				}
 				m.reex[r.File] = append(m.reex[r.File], jsRe{t[0], name, as})

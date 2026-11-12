@@ -68,6 +68,7 @@ func streamGraph(n, m int) (*model.Graph, map[int][]string) {
 		case 1:
 			e.SourceFile, e.SourceLocation, e.Weight = model.FileOf("b/日.py"), model.Line(9), 0.1+float64(i)/3
 			e.SetTypeOnly(i%2 == 0)
+			e.SetDeferred(i%2 == 1)
 		case 2:
 			e.ConfidenceScore = 1e-7 * float64(i)
 			if i%5 == 0 {
